@@ -5,3 +5,8 @@ the standard ixgbe driver.
 
 These additional functions allow for 'QinQ' tunnelling and port mirroring.  
 There are possibly others functions that it provides.
+
+The daemon (VFD) has been extended to:
+	- read single configuration files as provided by nova (future)
+	- read all configuration files on restart (future)
+	- read requests from a named FIFO (future)
