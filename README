@@ -1,0 +1,14 @@
+
+
+This is code originally written by  "ZELEZNIAK, ALEX" <az5157@att.com>.
+It provides a daemon that configures PF/VFs in ways which are not possible through 
+the standard ixgbe driver.
+
+These additional functions allow for 'QinQ' tunnelling and port mirroring.  
+There are possibly others functions that it provides.
+
+
+The daemon (VFD) has been extended to:
+	- read single configuration files as provided by nova (future)
+	- read all configuration files on restart (future)
+	- read requests from a named FIFO (future)
