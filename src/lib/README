@@ -1,0 +1,18 @@
+
+Library modules 
+
+Symtab
+	Library which provides a symbol table (a.k.a. named hash or map)
+	This is code I wrote, and opensourced prior to joining AT&T. A 
+	dirivitive was used in Ningaui.
+
+Jwrapper
+	Library which provides a nice interface to the underlying jsmn json
+	parser. Jsmn is pulled from github (mk jsmn) and built. The contents
+	of the jsmn directory should NOT be checked into git.  The jsmn license
+	is added to the LICENCE file in this directory per the stipulation in
+	their license. 
+
+	See jwrapper_test as an example for use.
+
+
