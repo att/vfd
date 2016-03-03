@@ -16,7 +16,6 @@
 #include <time.h>
 #include <math.h>
 
-
 #include <stdarg.h>
 #include <errno.h>
 #include <stdio.h>
@@ -27,6 +26,9 @@
 #include <signal.h>
 #include <syslog.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <limits.h>
+
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -59,6 +61,7 @@
 
 #include <libconfig.h>
 
+#include "../dpdk/drivers/net/ixgbe/base/ixgbe_mbx.h"
 
 #define RX_RING_SIZE 64
 #define TX_RING_SIZE 64
@@ -76,6 +79,7 @@
 #define RTE_PORT_ALL            (~(portid_t)0x0)
 #define IXGBE_RXDCTL_VME        0x40000000 /* VLAN mode enable */
 
+#define STATS_FILE "/tmp/sriov_stats"
 
 
 //#define timeval_to_ms(timeval)  (timeval.tv_sec * 1000) + (timeval.tv_usec / 1000)
@@ -343,8 +347,8 @@ int set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_m
 void get_ethertype_filter(uint8_t port_id, uint16_t index);
 
 void nic_stats_clear(portid_t port_id);
-void nic_stats_display(uint8_t port_id);
-
+//void nic_stats_display(uint8_t port_id);
+void nic_stats_display(uint8_t port_id, char * buff);
 int port_init(uint8_t port, struct rte_mempool *mbuf_pool);
 
 
@@ -397,14 +401,14 @@ void daemonize(void);
 void detachFromTerminal(void);
 void traceLog(int eventTraceLevel, const char * file, int line, const char * format, ...);
 int readConfigFile(char *fname);
-void dump_sriov_config(void);
+void dump_sriov_config(struct sriov_conf_c config);
 int update_ports_config(void);
 
 
 void lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
 void vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
 void restore_vf_setings(uint8_t port_id, int vf);
-
+int check_mcast_mbox(uint32_t * mb);
 
 
 #endif /* _SRIOV_H_ */

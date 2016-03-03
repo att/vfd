@@ -79,7 +79,7 @@ int
 port_id_is_invalid(portid_t port_id, enum print_warning warning)
 {
   
-  traceLog(TRACE_INFO,"Port %d\n", port_id);
+  traceLog(TRACE_DEBUG,"Port %d\n", port_id);
 
 	if (port_id == (portid_t)RTE_PORT_ALL)
 		return 0;
@@ -191,11 +191,13 @@ rx_vlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id)
   
   reg_off += 4 * vf_id;
 
-  traceLog(TRACE_DEBUG, "BEFORE RX_vlan_insert_set_on_queue(bar=0x%08X, vf_id=%x, on=%x)\n", reg_off, vf_id, 0);
+  traceLog(TRACE_DEBUG, "rx_vlan_insert_set_on_queue(bar=0x%08X, vf_id=%x, on=%x)\n",
+      reg_off, vf_id, 0);
   
   uint32_t ctrl = port_pci_reg_read(port_id, reg_off);
 
-  traceLog(TRACE_DEBUG, "RX_vlan_insert_set_on_queue(bar=0x%08X, vf_id=%x, ctrl=%x)\n", reg_off, vf_id, ctrl);
+  traceLog(TRACE_DEBUG, "RX_vlan_insert_set_on_queue(bar=0x%08X, vf_id=%x, ctrl=%x)\n", 
+      reg_off, vf_id, ctrl);
  
   
   if (vlan_id){
@@ -207,7 +209,8 @@ rx_vlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id)
       
   port_pci_reg_write(port_id, reg_off, ctrl);    
   
- traceLog(TRACE_DEBUG, "rx_insert_set_on_queue(bar=0x%08X, vfid_id=%d, ctrl=0x%08X)\n", reg_off, vf_id, ctrl);
+  traceLog(TRACE_DEBUG, "rx_insert_set_on_queue(bar=0x%08X, vfid_id=%d, ctrl=0x%08X)\n", 
+      reg_off, vf_id, ctrl);
 }
 
 
@@ -224,16 +227,21 @@ rx_vlan_strip_set_on_vf(portid_t port_id, uint16_t vf_id, int on)
   
   reg_off += (0x40 * vf_id * queues_per_pool);
  
+  traceLog(TRACE_DEBUG, "rx_vlan_strip_set_on_vf(bar=0x%08X, vf_id=%x, # of Q's=%x) ---------------\n",
+      reg_off, vf_id, queues_per_pool);
+      
   uint32_t q;
   for(q = 0; q < queues_per_pool; ++q){
     
     reg_off += 0x40 * q;
 
-    traceLog(TRACE_DEBUG, "BEFORE RX_vlan_strip_set_on_queue(bar=0x%08X, vf_id=%x, on=%x)\n", reg_off, vf_id, 0);
+    traceLog(TRACE_DEBUG, "RX_vlan_strip_set_on_queue(bar=0x%08X, vf_id=%x, on=%x)\n", 
+        reg_off, vf_id, on);
     
     uint32_t ctrl = port_pci_reg_read(port_id, reg_off);
 
-    traceLog(TRACE_DEBUG, "RX_vlan_strip_set_on_queue(bar=0x%08X, vf_id=%x, ctrl=%x)\n", reg_off, vf_id, ctrl);
+    traceLog(TRACE_DEBUG, "RX_vlan_strip_set_on_queue(bar=0x%08X, vf_id=%x, ctrl=%x)\n", 
+        reg_off, vf_id, ctrl);
    
     
     if (on)
@@ -243,7 +251,8 @@ rx_vlan_strip_set_on_vf(portid_t port_id, uint16_t vf_id, int on)
         
     port_pci_reg_write(port_id, reg_off, ctrl);    
     
-    traceLog(TRACE_DEBUG, "rx_vlan_strip_set_on_queue(bar=0x%08X, vfid_id=%d, ctrl=0x%08X)\n", reg_off, vf_id, ctrl);
+    traceLog(TRACE_DEBUG, "rx_vlan_strip_set_on_queue(bar=0x%08X, vfid_id=%d, ctrl=0x%08X)\n",
+      reg_off, vf_id, ctrl);
   }
 }
 
@@ -306,7 +315,7 @@ set_vf_allow_untagged(portid_t port_id, uint16_t vf_id, int on)
   uint16_t rx_mode = 0;
   rx_mode |= ETH_VMDQ_ACCEPT_UNTAG;
   
-  traceLog(TRACE_INFO, "set_vf_allow_untagged(): rx_mode = %d, on = %d \n", rx_mode, on);
+  traceLog(TRACE_DEBUG, "set_vf_allow_untagged(): rx_mode = %d, on = %d \n", rx_mode, on);
    
 	int ret = rte_eth_dev_set_vf_rxmode(port_id, vf_id, rx_mode, (uint8_t) on);
 	
@@ -331,8 +340,7 @@ set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  __attribute__((__
 	       "diag=%d\n", port_id, diag);
          
 }
-
-  
+ 
 
 void
 set_vf_rx_vlan(portid_t port_id, uint16_t vlan_id, uint64_t vf_mask, uint8_t on)
@@ -347,7 +355,6 @@ set_vf_rx_vlan(portid_t port_id, uint16_t vlan_id, uint64_t vf_mask, uint8_t on)
 	       "diag=%d\n", port_id, diag);
          
 }
-
 
 
 void
@@ -387,35 +394,22 @@ nic_stats_clear(portid_t port_id)
 
 
 void
-nic_stats_display(uint8_t port_id)
+nic_stats_display(uint8_t port_id, char * buff)
 {
 	struct rte_eth_stats stats;
-//	struct rte_port *port = &ports[port_id];
-//	uint8_t i;
-
-	static const char *nic_stats_border = "########################";
-
-
+  struct rte_eth_link link;
+  rte_eth_link_get_nowait(port_id, &link);
 	rte_eth_stats_get(port_id, &stats);
-	traceLog(TRACE_DEBUG, "\n  %s NIC statistics for port %-2d %s\n",
-	       nic_stats_border, port_id, nic_stats_border);
-
-
-		traceLog(TRACE_DEBUG, "  RX-packets:              %10"PRIu64"    RX-errors: %10"PRIu64
-		       "    RX-bytes: %10"PRIu64"\n",
-		       stats.ipackets, stats.ierrors, stats.ibytes);
-		traceLog(TRACE_DEBUG, "  RX-errors:  %10"PRIu64"\n", stats.ierrors);
-		traceLog(TRACE_DEBUG, "  RX-nombuf:               %10"PRIu64"\n",
-		       stats.rx_nombuf);
-		traceLog(TRACE_DEBUG, "  TX-packets:              %10"PRIu64"    TX-errors: %10"PRIu64
-		       "    TX-bytes: %10"PRIu64"\n",
-		       stats.opackets, stats.oerrors, stats.obytes);
-
-	traceLog(TRACE_DEBUG, "  %s############################%s\n",
-	       nic_stats_border, nic_stats_border);
+  
+  char status[5];
+  if(!link.link_status)
+    stpcpy(status, "DOWN");
+  else
+    stpcpy(status, "UP  ");
+  
+  sprintf(buff, "        %s %10"PRIu16" %10"PRIu16" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64"\n", 
+    status, link.link_speed, link.link_duplex, stats.ipackets, stats.ibytes, stats.ierrors, stats.imissed, stats.opackets, stats.obytes, stats.oerrors);           
 }
-
-
 
 int 
 port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_pool)
@@ -441,8 +435,8 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 
   rte_eth_dev_callback_register(port, RTE_ETH_EVENT_INTR_LSC, lsi_event_callback, NULL);
   
-  
-  rte_eth_dev_callback_register(port, RTE_ETH_EVENT_INTR_VF_RST, vf_msb_event_callback, (void *) &param);    
+  rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vf_msb_event_callback, (void *) &param);   
+
 
 	// Allocate and set up 1 RX queue per Ethernet port. 
 	for (q = 0; q < rx_rings; q++) {
@@ -481,13 +475,11 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 			addr.addr_bytes[2], addr.addr_bytes[3],
 			addr.addr_bytes[4], addr.addr_bytes[5]);
 
-
 	// Enable RX in promiscuous mode for the Ethernet device. 
 	rte_eth_promiscuous_enable(port);
-
+  
 	return 0;
 }
-
 
 
 void
@@ -506,35 +498,111 @@ lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param)
 				("full-duplex") : ("half-duplex"));
 	} else
 		traceLog(TRACE_DEBUG, "Port %d Link Down\n\n", port_id);
+  
+  // notify every VF about link status change 
+  rte_eth_dev_ping_vfs(port_id, -1);
 }
 
-//static uint64_t ff = 777;
-
+int
+check_mcast_mbox(uint32_t * mb)
+{
+  //#define IXGBE_VFMAILBOX_SIZE	16 /* 16 32 bit words - 64 bytes */
+  uint32_t mbox[IXGBE_VFMAILBOX_SIZE];
+  RTE_SET_USED(mb);
+  
+  RTE_SET_USED(mbox);
+  
+  return 0;
+}
+  
 void
 vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param)
 {
-
-  //RTE_SET_USED(param);
-
-  struct rte_msb_param *p = (struct rte_msb_param*) param;
+  uint32_t *p = (uint32_t*) param;
+  uint16_t vf = p[0] & 0xffff;
+  uint16_t mbox_type = (p[0] >> 16) & 0xffff;
   
-  //uint32_t vf =  *(uint32_t*) p->in;
-  
-  uint32_t vf =  (uint32_t) p->in;
-  uint32_t out = 123;
+  traceLog(TRACE_DEBUG, "Event type: %s\n", type == RTE_ETH_EVENT_VF_MBOX ? "MBOX interrupt" : "unknown event");
  
-  
-  //uint32_t vf = (uint32_t) p->in;
-  //uint32_t out = (uint32_t) p->out;
+  /* check & process VF to PF mailbox message */
+  switch (mbox_type) {
+  case IXGBE_VF_RESET:
+    restore_vf_setings(port_id, vf);
+    *(int*) param = RTE_ETH_MB_EVENT_NOOP_ACK;     /* noop & ack */     
+    traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", 
+      type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_RESET");
+    break;
+  case IXGBE_VF_SET_MAC_ADDR:
+    *(int*) param = RTE_ETH_MB_EVENT_PROCEED;    /* do what's needed */
+    traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", 
+      type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_MAC_ADDR");
 
-  traceLog(TRACE_DEBUG, "--------------------\n Type: %d, Port: %d, VF: %d, OUT: %d\n------------------\n", type, port_id, vf,  p->out);
-	traceLog(TRACE_DEBUG, "Event type: %s\n", type == RTE_ETH_EVENT_INTR_VF_RST ? "VF RST interrupt" : "unknown event");
-  
+    struct ether_addr *new_mac = (struct ether_addr *)(&p[1]);
 
-  restore_vf_setings(port_id, vf);
+    if (is_valid_assigned_ether_addr(new_mac)) {
+      traceLog(TRACE_DEBUG, "SETTING MAC, VF %u, MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
+			   " %02" PRIx8 " %02" PRIx8 " %02" PRIx8 "\n",
+         (uint32_t)vf,
+        new_mac->addr_bytes[0], new_mac->addr_bytes[1],
+        new_mac->addr_bytes[2], new_mac->addr_bytes[3],
+        new_mac->addr_bytes[4], new_mac->addr_bytes[5]);
+    }    
+    break;
+  case IXGBE_VF_SET_MULTICAST:
+    *(int*) param = RTE_ETH_MB_EVENT_PROCEED;    /* do what's needed */
+    traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", 
+      type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_MULTICAST");
+      
+    new_mac = (struct ether_addr *)(&p[1]);
+
+    if (is_valid_assigned_ether_addr(new_mac)) {
+      traceLog(TRACE_DEBUG, "SETTING MCAST, VF %u, MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
+			   " %02" PRIx8 " %02" PRIx8 " %02" PRIx8 "\n",
+         (uint32_t)vf,
+        new_mac->addr_bytes[0], new_mac->addr_bytes[1],
+        new_mac->addr_bytes[2], new_mac->addr_bytes[3],
+        new_mac->addr_bytes[4], new_mac->addr_bytes[5]);
+    }       
+    break;    
+  case IXGBE_VF_SET_VLAN:
+    *(int*) param = RTE_ETH_MB_EVENT_NOOP_NACK;     /* noop & nack */
+    traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", 
+      type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_VLAN");
+    traceLog(TRACE_DEBUG, "SETTING VLAN ID = %d\n", p[1]);
+    break;  
+  case IXGBE_VF_SET_LPE:
+    *(int*) param = RTE_ETH_MB_EVENT_PROCEED;    /* do what's needed */
+    traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", 
+    type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_LPE");
+    traceLog(TRACE_DEBUG, "SETTING MTU = %d\n", p[1]);
+    break; 
+  case IXGBE_VF_SET_MACVLAN:
+    *(int*) param =  RTE_ETH_MB_EVENT_NOOP_NACK;    /* noop & nack */
+    traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", 
+      type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_MACVLAN");
+    traceLog(TRACE_DEBUG, "SETTING MAC_VLAN = %d\n", p[1]);
+    break;     
+  case IXGBE_VF_API_NEGOTIATE:
+    *(int*) param =  RTE_ETH_MB_EVENT_PROCEED;   /* do what's needed */
+    traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", 
+      type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_API_NEGOTIATE");
+    break;
+  case IXGBE_VF_GET_QUEUES:
+    *(int*) param =  RTE_ETH_MB_EVENT_PROCEED;   /* do what's needed */
+    traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", 
+      type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_GET_QUEUES");
+    break;
+  default:
+    *(int*) param = RTE_ETH_MB_EVENT_NOOP_NACK;     /* noop & nack */
+    traceLog(TRACE_DEBUG, "--------------------\n Type: %d, Port: %d, VF: %d, OUT: %d, MBOX_TYPE: %d\n---------------\n", 
+      type, port_id, vf, *(uint32_t*) param, mbox_type);
+		break;
+  }
   
-   p->out = out;
+  traceLog(TRACE_DEBUG, "--------------------\n Type: %d, Port: %d, VF: %d, OUT: %d, _T: %d\n---------------\n", 
+      type, port_id, vf, *(uint32_t*) param, mbox_type);
   
+  /*
   struct rte_eth_dev_info dev_info;
   rte_eth_dev_info_get(port_id, &dev_info);
  
@@ -558,8 +626,8 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 	traceLog(TRACE_DEBUG, "flow_type_rss_offloads = %lu\n", dev_info.flow_type_rss_offloads);
 	traceLog(TRACE_DEBUG, "vmdq_queue_base = %d\n", dev_info.vmdq_queue_base);
 	traceLog(TRACE_DEBUG, "vmdq_queue_num = %d\n", dev_info.vmdq_queue_num);
-	traceLog(TRACE_DEBUG, "vmdq_pool_base = %d\n", dev_info.vmdq_pool_base);
-  
+	traceLog(TRACE_DEBUG, "vmdq_pool_base = %d\n", dev_info.vmdq_pool_base); 
+  */
 }
 
 
