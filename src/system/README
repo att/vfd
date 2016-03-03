@@ -1,2 +1,7 @@
 This directory contains system tools created to support the VF daemon
 (e.g. iplex).
+
+iplex is a CLI tool which talks to VF daemon
+
+iplex uses docopt library.
+"pip install docopt"
