@@ -1,15 +1,16 @@
 # mk is better (see plan-9)
+MKSHELL = ksh
 
 jsmn_lib = -L jsmn -ljsmn
 cc = gcc
 cflags = -I jsmn -g
 
-binaries = jwrapper jwrapper_test
+binaries = jwrapper_test
 
 %.o: %.c
 	$cc $cflags -c $prereq
 
-all:V: jwrapper jwrapper_test tahlib.a
+all:V: jwrapper_test tahlib.a
 
 lib = tahlib.a
 lib_src = jwrapper symtab
