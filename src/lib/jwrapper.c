@@ -212,16 +212,16 @@ void* parse_jobject( void* st, char *json, char* prefix ) {
 				for( n = 0; n < size; n++ ) {
 					switch( jtokens[i+n].type ) {
 						case JSMN_UNDEFINED:
-							fprintf( stderr, "warn: [%d] array element %d is not valid type (undefined) is not string or primative\n", i, n, jtokens[i].type  );
+							fprintf( stderr, "warn: [%d] array element %d is not valid type (undefined) is not string or primative\n", i, n );
 							break;
 
 						case JSMN_OBJECT:
-							fprintf( stderr, "warn: [%d] array element %d is not valid type (object) is not string or primative\n", i, n, jtokens[i].type  );
+							fprintf( stderr, "warn: [%d] array element %d is not valid type (object) is not string or primative\n", i, n );
 							sym_free( st );
 							return NULL;			// FIXME -- for now we'll bail out, but we should really just skip over this
 
 						case JSMN_ARRAY:
-							fprintf( stderr, "warn: [%d] array element %d is not valid type (array) is not string or primative\n", i, n, jtokens[i].type  );
+							fprintf( stderr, "warn: [%d] array element %d is not valid type (array) is not string or primative\n", i, n );
 							n += jtokens[i].size;			// this should skip the nested array
 							break;
 
