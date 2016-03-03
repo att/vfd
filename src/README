@@ -1,0 +1,25 @@
+
+Top level source directory.  Things which maybe aren't obvious are described
+in this file.
+
+
+The dpdk directory is either a symlink, or a real directory. Either 
+way it references the dpdk repo clone from att-cloud.  That repo
+must be cloned and built before anything in the vfd source tree can 
+be done. Sadly, the implementation of the intel script requires a 
+human to execute (there is a menu choice) so initially the build 
+process cannot be automated without some extra effort. 
+
+Once the repo is cloned run these:
+	- 	cd dpdk
+	-	make config T=x86_64-native-linuxapp-gcc
+	-	make
+	-	tools/setup.sh 		#select option 14, it will set environment 
+	-	export RTE_SDK=$PWD
+	-	export RTE_TARGET=x86_64-native-linuxapp-gcc
+
+
+Todo:
+	A toplevel mk/make build needs to be provided
+
+
