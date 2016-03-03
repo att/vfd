@@ -113,6 +113,8 @@ timeDelta(struct timeval * now, struct timeval * before)
 void
 restore_vf_setings(uint8_t port_id, int vf_id)
 {
+  
+  dump_sriov_config(running_config);
   int i;
   int on = 1;
  
@@ -139,6 +141,7 @@ restore_vf_setings(uint8_t port_id, int vf_id)
           int v;
           for(v = 0; v < vf->num_vlans; ++v) {
             int vlan = vf->vlans[v];
+            traceLog(TRACE_DEBUG, "------------------ DELETING VLAN: %d, VF: %d --------------------\n", vlan, vf->num );
             set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, 0);
           }
         
@@ -147,6 +150,7 @@ restore_vf_setings(uint8_t port_id, int vf_id)
           
           for(v = 0; v < vf->num_vlans; ++v) {
             int vlan = vf->vlans[v];
+            traceLog(TRACE_DEBUG, "------------------ ADDIND VLAN: %d, VF: %d --------------------\n", vlan, vf->num );
             set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, on);
           }
           
@@ -157,14 +161,7 @@ restore_vf_setings(uint8_t port_id, int vf_id)
                  
           rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag);         
           rx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->insert_stag);
-          
-
-
-          set_vf_allow_bcast(port->rte_port_number, vf->num, vf->allow_bcast);
-          set_vf_allow_mcast(port->rte_port_number, vf->num, vf->allow_mcast);
-          set_vf_allow_un_ucast(port->rte_port_number, vf->num, vf->allow_un_ucast);          
-          
-          
+                 
           
          
           traceLog(TRACE_DEBUG, "------------------ DELETING MACs, VF: %d --------------------\n", vf->num);
@@ -182,6 +179,10 @@ restore_vf_setings(uint8_t port_id, int vf_id)
             __attribute__((__unused__)) char *mac = vf->macs[m];
             set_vf_rx_mac(port->rte_port_number, mac, vf->num, 1);
           }
+                 
+          set_vf_allow_bcast(port->rte_port_number, vf->num, vf->allow_bcast);
+          set_vf_allow_mcast(port->rte_port_number, vf->num, vf->allow_mcast);
+          set_vf_allow_un_ucast(port->rte_port_number, vf->num, vf->allow_un_ucast);            
         }
       }
     }      
@@ -302,6 +303,13 @@ update_ports_config(void)
         set_vf_allow_mcast(port->rte_port_number, vf->num, vf->allow_mcast);
         set_vf_allow_un_ucast(port->rte_port_number, vf->num, vf->allow_un_ucast); 
         
+        r_vf->vlan_anti_spoof = vf->vlan_anti_spoof;
+        r_vf->mac_anti_spoof  = vf->mac_anti_spoof;
+        r_vf->strip_stag      = vf->strip_stag;
+        r_vf->insert_stag     = vf->insert_stag;
+        r_vf->allow_bcast     = vf->allow_bcast;
+        r_vf->allow_mcast     = vf->allow_mcast;
+        r_vf->allow_un_ucast  = vf->allow_un_ucast;
         
         
         r_vf->last_updated = vf->last_updated;
@@ -539,7 +547,7 @@ readConfigFile(char *fname)
   }
 
   if (debug)
-    dump_sriov_config();
+    dump_sriov_config(sriov_config);
   
   return 0;
 }
@@ -547,7 +555,7 @@ readConfigFile(char *fname)
 
 
 void 
-dump_sriov_config(void)
+dump_sriov_config(struct sriov_conf_c sriov_config)
 {
   traceLog(TRACE_DEBUG, "Number of ports: %d\n", sriov_config.num_ports);
   int i;
@@ -563,8 +571,8 @@ dump_sriov_config(void)
     
     int y;
     for (y = 0; y < sriov_config.ports[i].num_vfs; y++){
-      traceLog(TRACE_DEBUG, "VF num: %d, last_updated: %d\nstrip_stag %d\ninsert_stag %d\nvlan_aspoof: %d\nmac_apoof: %d\nallow_bcast: %d\n\
-      allow_ucast: %d\nallow_mcast: %d\nallow_untagged: %d\nrate: %f\nlink: %d\num_vlans: %d\nnum_macs: %d\n", 
+      traceLog(TRACE_DEBUG, "VF num: %d, last_updated: %d\nstrip_stag %d\ninsert_stag %d\nvlan_aspoof: %d\nmac_aspoof: %d\nallow_bcast: %d\n\
+allow_ucast: %d\nallow_mcast: %d\nallow_untagged: %d\nrate: %f\nlink: %d\num_vlans: %d\nnum_macs: %d\n", 
             sriov_config.ports[i].vfs[y].num, 
             sriov_config.ports[i].vfs[y].last_updated, 
             sriov_config.ports[i].vfs[y].strip_stag,
@@ -861,19 +869,53 @@ main(int argc, char **argv)
 
   update_ports_config();
 
-  
+  char buff[1024];
+  if(mkfifo(STATS_FILE, 0666) != 0)
+    traceLog(TRACE_ERROR, "can't create pipe: %s, %d\n", STATS_FILE, errno);
+
+  int fd;
+  /*
+	FILE * dump = fopen("/tmp/pci_dump.txt", "w");
+	rte_eal_pci_dump(dump);
+	fclose (dump);
+	*/
+	
   while(!terminated)
 	{
-		usleep(10000000);
-	/*		
+		usleep(20000);
+   
+    fd = open(STATS_FILE, O_WRONLY);
+    sprintf(buff, "%s %18s %10s %10s %10s %10s %10s %10s %10s %10s %10s\n", "Iface", "Link", "Speed", "Duplex", "RX pkts", "RX bytes", 
+      "RX errors", "RX dropped", "TX pkts", "TX bytes", "TX errors");   
+    
+    __attribute__((__unused__)) int ret;
+    ret = write(fd, buff, strlen(buff));
+    
     for (i = 0; i < n_ports; ++i)
     {
-      if (debug)
-        nic_stats_display(i);
+			struct rte_eth_dev_info dev_info;
+			rte_eth_dev_info_get(i, &dev_info);			
+
+			sprintf(buff, "%04X:%02X:%02X.%01X", 
+			dev_info.pci_dev->addr.domain, 
+			dev_info.pci_dev->addr.bus, 
+			dev_info.pci_dev->addr.devid, 
+			dev_info.pci_dev->addr.function);
+						
+      ret = write(fd, buff, strlen(buff));  
+      
+      nic_stats_display(i, buff);
+      ret = write(fd, buff, strlen(buff));       
     }
-    */
+    
+    close(fd);
+   // if (debug)
+        //nic_stats_display(i);
 	}
  
+  if(unlink(STATS_FILE) != 0)
+    traceLog(TRACE_ERROR, "can't delete pipe: %s\n", STATS_FILE);
+  
   gettimeofday(&st.endTime, NULL);
   traceLog(TRACE_NORMAL, "Duration %.f sec\n", timeDelta(&st.endTime, &st.startTime));
 
