@@ -226,9 +226,9 @@ void sym_dump( void *vtable )
 		for( eptr = sym_tab[i]; eptr; eptr = eptr->next )  
 		{
 			if( eptr->val && eptr->flags & UT_FL_FREE )
-				fprintf( stderr, "%s %s\n", eptr->name, eptr->val );
+				fprintf( stderr, "%s %s\n", eptr->name, (char *) eptr->val );
 			else
-				fprintf( stderr, "%s -> #%x\n", eptr->name, eptr->val );
+				fprintf( stderr, "%s -> %p\n", eptr->name, eptr->val );
 		}
 	}
 }
@@ -376,10 +376,10 @@ void sym_stats( void *vtable, int level )
 				ch_count++;
 				if( level > 3 )
 				if( eptr->val && eptr->flags & UT_FL_FREE )
-					fprintf( stderr, "sym: (%d) %s str=(%s)  ref=%d mod=%d\n", 
-						i, eptr->name, eptr->val, eptr->rcount, eptr->mcount );
+					fprintf( stderr, "sym: (%d) %s str=(%s)  ref=%ld mod=%lu\n", 
+						i, eptr->name, (char *) eptr->val, eptr->rcount, eptr->mcount );
 				else
-					fprintf( stderr, "sym: (%d) %s ptr=%x  ref=%d mod=%d\n", 
+					fprintf( stderr, "sym: (%d) %s ptr=%p  ref=%ld mod=%lu\n", 
 						i, eptr->name, eptr->val, eptr->rcount, eptr->mcount );
 			}
 		}
@@ -395,7 +395,7 @@ void sym_stats( void *vtable, int level )
 			twoper++;
 
 		if( level > 2 )
-			fprintf( stderr, "sym: (%d) chained=%d\n", i, ch_count );
+			fprintf( stderr, "sym: (%d) chained=%ld\n", i, ch_count );
 	}
 
 	if( level > 1 )
@@ -406,8 +406,8 @@ void sym_stats( void *vtable, int level )
 		fprintf( stderr, "\n" );
 	}
 
-	fprintf( stderr, "sym:%d(size)  %d(inhab) %d(occupied) %d(dead) %ld(maxch) %d(>2per)\n", 
-	table->size, table->inhabitants, table->size - empty, table->deaths, max_chain, twoper );
+	fprintf( stderr, "sym:%ld(size)  %ld(inhab) %ld(occupied) %ld(dead) %ld(maxch) %ld(>2per)\n", 
+			table->size, table->inhabitants, table->size - empty, table->deaths, max_chain, twoper );
 }
 
 void sym_foreach_class( void *vst, unsigned int class, void (* user_fun)( void*, void*, char*, void*, void* ), void *user_data )
