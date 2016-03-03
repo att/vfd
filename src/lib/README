@@ -1,5 +1,5 @@
-Tegu ad hoc lib (tahlib)
-A Library modules to support various things in this ad hoc enviornment.
+
+Library modules 
 
 Symtab
 	Library which provides a symbol table (a.k.a. named hash or map)
@@ -13,6 +13,6 @@ Jwrapper
 	is added to the LICENCE file in this directory per the stipulation in
 	their license. 
 
-	Use jwrapper_test as an example for use.
+	See jwrapper_test as an example for use.
 
 
