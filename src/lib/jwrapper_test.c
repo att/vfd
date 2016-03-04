@@ -69,6 +69,7 @@ int main( int argc, char **argv ) {
 	if( argc > 3 ) {				// assume array and index are parms 3, 4
 		fprintf( stderr, "array %s has %d elements\n", argv[3], jw_array_len( jblob, argv[3] ) );
 
+		// TODO -- add a value element test though vf_config_test tests this too!
 		if(  (stuff = jw_string_ele( jblob, argv[3], atoi(argv[4]) )) ) {
 			fprintf( stderr, "found array element: %s[%s] = %s\n", argv[3], argv[4], stuff );
 		} else {

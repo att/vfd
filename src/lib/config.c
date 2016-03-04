@@ -104,11 +104,10 @@ extern parms_t* read_parms( char* fname ) {
 			errno = ENOMEM;
 			return NULL;
 		}
+		memset( parms, 0, sizeof( *parms ) );					// probably not needed, but we don't do this frequently enough to worry
 
 		parms->log_level = (int) jw_value( jblob, "log_level" );
-		if( (parms->log_keep = (int) jw_value( jblob, "log_keep" )) == 0 ) {
-			parms->log_keep = 30;
-		}
+		parms->log_keep = jw_missing( jblob, "log_keep" ) ? 30 : (int) jw_value( jblob, "allow_bcast" );
 
 		if(  (stuff = jw_string( jblob, "config_dir" )) ) {
 			parms->config_dir = strdup( stuff );
@@ -131,4 +130,94 @@ extern parms_t* read_parms( char* fname ) {
 
 	free( buf );
 	return parms;
+}
+
+/*
+	Open and read a VF config file returning a struct with the information populated
+	and defaults in places where the information was omitted.
+*/
+extern vf_config_t*	read_config( char* fname ) {
+	vf_config_t*	vfc = NULL;
+	void*		jblob;			// parsed json
+	char*		buf;			// buffer read from file (nil terminated)
+	char*		stuff;
+	int			val;
+	int			i;
+
+	if( (buf = file_into_buf( fname )) == NULL ) {
+		return NULL;
+	}
+
+	if( *buf == 0 ) {											// empty/missing file, an error in this situation because not everything has a default
+		free( buf );
+		return NULL;
+	}
+
+	if( (jblob = jw_new( buf )) != NULL ) {						// json successfully parsed
+		if( (vfc = (vf_config_t *) malloc( sizeof( *vfc ) )) == NULL ) {
+			errno = ENOMEM;
+			return NULL;
+		}
+
+		memset( vfc, 0, sizeof( *vfc ) );						// pointers default to nil
+
+		vfc->antispoof_mac = 1;				// these are forced to 1 regardless of what was in json
+		vfc->antispoof_vlan = 1;
+
+		vfc->strip_stag = jw_missing( jblob, "strip_stag" ) ? 0 : (int) jw_value( jblob, "strip_stag" );
+		vfc->allow_bcast = jw_missing( jblob, "allow_bcast" ) ? 1 : (int) jw_value( jblob, "allow_bcast" );
+		vfc->allow_mcast = jw_missing( jblob, "allow_mcast" ) ? 1 : (int) jw_value( jblob, "allow_mcast" );
+		vfc->allow_un_ucast = jw_missing( jblob, "allow_un_ucast" ) ? 1 : (int) jw_value( jblob, "allow_un_ucast" );
+		vfc->vfid = jw_missing( jblob, "vfid" ) ? -1 : (int) jw_value( jblob, "vfid" );			// there is no real default value, so set to invalid
+
+		if(  (stuff = jw_string( jblob, "name" )) ) {
+			vfc->name = strdup( stuff );
+		}
+
+		if(  (stuff = jw_string( jblob, "pciid" )) ) {
+			vfc->pciid = strdup( stuff );
+		}
+
+		if(  (stuff = jw_string( jblob, "link_status" )) ) {
+			vfc->link_status = strdup( stuff );
+		} else {
+			vfc->link_status = strdup( "auto" );
+		}
+	
+		if( (vfc->nvlans = jw_array_len( jblob, "vlans" )) > 0 ) {						// pick up values from the json array
+			vfc->vlans = malloc( sizeof( *vfc->vlans ) * vfc->nvlans );
+			if( vfc->vlans != NULL ) {
+				for( i = 0; i < vfc->nvlans; i++ ) {
+					vfc->vlans[i] = (int) jw_value_ele( jblob, "vlans", i );
+				}
+			} else {
+fprintf( stderr, ">>>>> alloc failed for mac array\n" );
+				// TODO -- how to handle error? free and return nil?
+			}
+		} else {
+			vfc->nvlans = 0;		// if not set len() might return -1
+		}
+
+		if( (vfc->nmacs = jw_array_len( jblob, "macs" )) > 0 ) {						// pick up values from the json array
+			vfc->macs = malloc( sizeof( *vfc->macs ) * vfc->nmacs );
+			if( vfc->macs != NULL ) {
+				for( i = 0; i < vfc->nmacs; i++ ) {
+					if( (stuff = jw_string_ele( jblob, "macs", i )) != NULL ) {
+						vfc->macs[i] = strdup( stuff );
+					} else {
+						vfc->macs[i] = NULL;
+					}
+				}
+			} else {
+				// TODO -- how to handle error? free and return nil?
+			}
+		} else {
+			vfc->nmacs = 0;		// if not set len() might return -1
+		}
+		
+		// TODO -- add code which picks up mirror stuff (jwrapper must be enhanced first)
+	}
+
+	free( buf );
+	return vfc;
 }

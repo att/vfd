@@ -33,6 +33,8 @@ jwrapper_test:: jwrapper_test.c jwrapper.h jwrapper.o symtab.o
 parm_file_test::	parm_file_test.c $lib
 	$cc $cflags parm_file_test.c -o parm_file_test -L. -lvfd $jsmn_lib
 	
+vf_config_test::	vf_config_test.c $lib
+	$cc $cflags vf_config_test.c -o vf_config_test -L. -lvfd $jsmn_lib
 
 all_tests:V:	parm_file_test jwrapper_test
 
