@@ -453,7 +453,6 @@ extern float jw_value_ele( void* st, char* name, int idx ) {
 		return 0;
 	}
 
-fprintf( stderr, ">>> jwrapper returning %.2f\n", jtp->v.fv  );
 	return jtp->v.fv;
 }
 
