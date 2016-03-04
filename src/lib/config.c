@@ -18,6 +18,12 @@
 #include "jwrapper.h"
 #include "vfdlib.h"
 
+// -------------------------------------------------------------------------------------
+#define SFREE(p) if((p)){free(p);}			// safe free (free shouldn't balk on nil, but don't chance it)
+
+
+// ---- vfd configuration (parms) ------------------------------------------------------
+
 /*
 	Read the json from the file (e.g. /etc/vfd/vfd.cfg).
 	Returns a pointer to a struct  or nil if error.
@@ -133,6 +139,22 @@ extern parms_t* read_parms( char* fname ) {
 }
 
 /*
+	Cleanup a parm block and free the data.
+*/
+extern void free_parms( parms_t* parms ) {
+	if( ! parms ) {
+		return;
+	}
+
+	SFREE( parms->log_dir );
+	SFREE( parms->fifo_path );
+	SFREE( parms->config_dir );
+
+	free( parms );
+}
+
+// --------------------------- vf config --------------------------------------------------------------
+/*
 	Open and read a VF config file returning a struct with the information populated
 	and defaults in places where the information was omitted.
 */
@@ -191,7 +213,6 @@ extern vf_config_t*	read_config( char* fname ) {
 					vfc->vlans[i] = (int) jw_value_ele( jblob, "vlans", i );
 				}
 			} else {
-fprintf( stderr, ">>>>> alloc failed for mac array\n" );
 				// TODO -- how to handle error? free and return nil?
 			}
 		} else {
@@ -221,3 +242,26 @@ fprintf( stderr, ">>>>> alloc failed for mac array\n" );
 	free( buf );
 	return vfc;
 }
+
+/*
+	One stop shopping to release a config struct and what ever it points to.
+*/
+extern void free_config( vf_config_t *vfc ) {
+	int i;
+
+	if( ! vfc ) {
+		return;
+	}
+
+	SFREE( vfc->name );
+	SFREE( vfc->pciid );
+	SFREE( vfc->link_status);
+	SFREE( vfc->vlans );
+
+	for( i = 0; i < vfc->nmacs; i++ ) {
+		SFREE( vfc->macs[i] );
+	}
+
+	free( vfc );
+}
+

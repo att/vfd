@@ -51,6 +51,8 @@ int main( int argc, char** argv ) {
 		for( i = 0; i < vfc->nmacs; i++ ) {
 			fprintf( stderr, "\t\tmac[%d] = %s\n", i, vfc->macs[i] );
 		}
+
+		free_config( vfc );
 	}
 
 	
