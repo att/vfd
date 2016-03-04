@@ -47,3 +47,11 @@ typedef struct {
 */
 extern parms_t* read_parms( char* fname );
 extern vf_config_t*	read_config( char* fname );
+
+//------------------ ng_flowmgr --------------------------------------------------------------------------
+void ng_flow_close( void *vf );
+void ng_flow_flush( void *vf );
+char* ng_flow_get( void *vf, char sep );
+void *ng_flow_open(  int size );
+void ng_flow_ref( void *vf, char *buf, long len );
+
