@@ -92,7 +92,7 @@ static void add2partial( Flowboss_t *f,  char *msg, int mlen )
 	}
 	else
 	{
-		ng_bleat( 0, "flowmgr: buffer overrun filling partial: %.100s(had...) %s(got)", f->partial, msg );
+		//ng_bleat( 0, "flowmgr: buffer overrun filling partial: %.100s(had...) %s(got)", f->partial, msg );
 		f->pnext = f->partial;
 		
 	}
@@ -124,9 +124,9 @@ void ng_flow_close( void *vf )
 	if( !f ||  f->cookie != COOKIE )
 		return;
 
-	ng_free( f->partial );
+	free( f->partial );
 	f->cookie = 0;			
-	ng_free( f );
+	free( f );
 }
 
 void ng_flow_ref( void *vf, char *buf, long len )
@@ -211,7 +211,7 @@ main( int argc, char **argv )
 		while( (len = read( fd, b, 29 )) > 0 )	
 		{
 			b[len] = 0;
-			ng_bleat( 2, "read %d bytes (%s)", len, b );
+			//ng_bleat( 2, "read %d bytes (%s)", len, b );
 			ng_flow_ref( flow, b, len );
 			while( p = ng_flow_get( flow, '\n' ) )
   				printf( "%s\n",  p ); 

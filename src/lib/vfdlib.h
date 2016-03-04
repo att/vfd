@@ -55,3 +55,9 @@ char* ng_flow_get( void *vf, char sep );
 void *ng_flow_open(  int size );
 void ng_flow_ref( void *vf, char *buf, long len );
 
+
+// ---------------- fifo ---------------------------------------------------------------------------------
+extern void* rfifo_create( char* fname );
+extern void rfifo_close( void* vfifo );
+extern char* rfifo_read( void* vfifo );
+

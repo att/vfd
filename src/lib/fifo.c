@@ -37,14 +37,13 @@ typedef struct {
 extern void* rfifo_create( char* fname ) {
 	int fd;
 	fifo_t*	fifo = NULL;
-	
 
 	unlink( fname );								// hard unlink and we don't care if this fails
 	if( mkfifo( fname, 0600 ) < 0 ) {
 		return NULL;								// can't make send back err errno still set
 	}
 
-	if( (fd =  open( fname, O_RDONLY )) >= 0 ) {
+	if( (fd =  open( fname, O_RDWR )) >= 0 ) {							// open in read AND write mode so that we don't block
 		if( (fifo = malloc( sizeof( *fifo ) )) == NULL ) {
 			return NULL;
 		}
@@ -86,7 +85,7 @@ extern void rfifo_close( void* vfifo ) {
 	}
 
 	if( fifo->fname != NULL ) {
-		unlink( fifo->fname );
+		state = unlink( fifo->fname );
 		free( fifo->fname );
 	}
 

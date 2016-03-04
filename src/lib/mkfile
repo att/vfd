@@ -36,6 +36,10 @@ parm_file_test::	parm_file_test.c $lib
 vf_config_test::	vf_config_test.c $lib
 	$cc $cflags vf_config_test.c -o vf_config_test -L. -lvfd $jsmn_lib
 
+fifo_test::	fifo_test.c $lib
+	$cc $cflags fifo_test.c -o fifo_test -L. -lvfd $jsmn_lib
+
+
 all_tests:V:	parm_file_test jwrapper_test
 
 test:V:
