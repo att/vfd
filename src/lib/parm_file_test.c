@@ -16,6 +16,14 @@
 #include "vfdlib.h"
 
 
+void pprint( parms_t* parms ) {
+	fprintf( stderr, "  parms read:\n" );
+	fprintf( stderr, "\tlog dir: %s\n", parms->log_dir );
+	fprintf( stderr, "\tconfig_dir: %s\n", parms->config_dir );
+	fprintf( stderr, "\tlog_level: %d\n", parms->log_level );
+	fprintf( stderr, "\tlog_keep: %d\n", parms->log_keep );
+	fprintf( stderr, "\tfifo: %s\n", parms->fifo_path );
+}
 
 int main( int argc, char** argv ) {
 	char*	fname = "vfd.cfg";
@@ -28,24 +36,21 @@ int main( int argc, char** argv ) {
 	parms = read_parms( fname );
 	if( parms == NULL ) {
 		fprintf( stderr, "[FAIL] unable to read parm file %s: %s\n", fname, strerror( errno ) );
+		pprint( parms );
+		free_parms( parms );
 		rc = 1;
 	} else {
 		fprintf( stderr, "[OK]   Able to open, read and parse json in parm file\n" );
-		fprintf( stderr, "  parms read:\n" );
-		fprintf( stderr, "\tlog dir: %s\n", parms->log_dir );
-		fprintf( stderr, "\tconfig_dir: %s\n", parms->config_dir );
-		fprintf( stderr, "\tlog_level: %d\n", parms->log_level );
-		fprintf( stderr, "\tlog_keep: %d\n", parms->log_keep );
-		fprintf( stderr, "\tfifo: %s\n", parms->fifo_path );
+		pprint( parms );
 	}
-
 	
-	// ensure that we get a failure if the file isn't there
-	parms = read_parms( "/hosuchdir/nosuchfile" );
-	if( parms == NULL ) {
-		fprintf( stderr, "[OK]   attempt to open a nonexistant file was rejected, as expected\n" );
+	parms = read_parms( "/hosuchdir/nosuchfile" );			// should return defaults all round rather than failing
+	if( parms != NULL ) {
+		fprintf( stderr, "[OK] opening nonexisting file resulted in default struct:\n" );
+		pprint( parms );
+		free_parms( parms );
 	} else {
-		fprintf( stderr, "[FAIL] attempt to open a nonexistant file was NOT rejected as expected\n" );
+		fprintf( stderr, "[FAIL] attempt to open a nonexistant file was rejected; should have returned a struct with defaults\n" );
 		rc = 1;
 	}
 
