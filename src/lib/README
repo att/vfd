@@ -15,4 +15,9 @@ Jwrapper
 
 	See jwrapper_test as an example for use.
 
+Config
+	This contains parsers which read the various configuration files (parms
+	in /etc/vfd/vfd.cfg, and vf config files written by nova). Unit tests:
+		vf_config_test [config-file]
+		parm_file_test [config-file]
 

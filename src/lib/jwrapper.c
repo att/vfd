@@ -5,6 +5,9 @@
 				to use.  Parses a json string capturing the contents in a symtab.
 	Author:		E. Scott Daniels
 	Date:		23 Feb 2016
+
+	Mods:		04 Mar 2016 : Added missing/exists functions.
+								Fixed bug in value array save.
 */
 
 #include <stdio.h>
@@ -255,7 +258,6 @@ void* parse_jobject( void* st, char *json, char* prefix ) {
 									break;
 							}
 
-							jarray[n].v.pv = (void *) data;
 							jarray[n].jsmn_type = JSMN_PRIMITIVE;
 							break;
 						
@@ -358,6 +360,20 @@ extern void* jw_new( char* json ) {
 	sym_fmap( st, (unsigned char *) JSON_SYM_NAME, 0, json );			// save a pointer so we can free on nuke (fmap flags the data to be free'd when deleted)
 
 	return parse_jobject( st,  json, "" );								// empty prefix for the root object
+}
+
+/*
+	Returns true (1) if the named field is missing. 
+*/
+extern int jw_missing( void* st, char* name ) {
+	return sym_get( st, name, 0 ) == NULL;
+}
+
+/*
+	Returns true (1) if the named field is in the blob;
+*/
+extern int jw_exists( void* st, char* name ) {
+	return sym_get( st, name, 0 ) != NULL;
 }
 
 /*

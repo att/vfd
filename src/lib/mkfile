@@ -10,10 +10,10 @@ binaries = jwrapper_test
 %.o: %.c
 	$cc $cflags -c $prereq
 
-all:V: jwrapper_test tahlib.a
+all:V: jwrapper_test vftlib.a
 
-lib = tahlib.a
-lib_src = jwrapper symtab
+lib = libvfd.a
+lib_src = jwrapper symtab config
 $lib(%.o):N:    %.o
 $lib:   ${lib_src:%=$lib(%.o)}
     ksh '(
@@ -26,8 +26,17 @@ $lib:   ${lib_src:%=$lib(%.o)}
 jwrapper.h:	jwrapper.c
 	grep "^extern.*{$" jwrapper.c | sed 's/ {$/;/' >jwrapper.h
 
-jwrapper_test: jwrapper_test.c jwrapper.h jwrapper.o symtab.o
+# --------- tests ----------------------------------------------------
+jwrapper_test:: jwrapper_test.c jwrapper.h jwrapper.o symtab.o
 	$cc $cflags jwrapper_test.c  -o jwrapper_test jwrapper.o symtab.o $jsmn_lib
+
+parm_file_test::	parm_file_test.c $lib
+	$cc $cflags parm_file_test.c -o parm_file_test -L. -lvfd $jsmn_lib
+	
+vf_config_test::	vf_config_test.c $lib
+	$cc $cflags vf_config_test.c -o vf_config_test -L. -lvfd $jsmn_lib
+
+all_tests:V:	parm_file_test jwrapper_test
 
 test:V:
 	ksh jwrapper_test.ksh

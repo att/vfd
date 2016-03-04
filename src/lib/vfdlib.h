@@ -1,0 +1,49 @@
+
+// vim: ts=4 sw=4 :
+
+/*
+	Things that need to be visible to vfd
+*/
+
+//----------------- config.c --------------------------------------------------------------------------
+/*
+        Parameter file contents parsed from json
+*/
+typedef struct {
+	char*	log_dir;                                // directory where log files should be written
+	int		log_level;                              // current log level
+	char*	fifo_path;                              // path to fifo that cli will write to
+	int		log_keep;                               // number of days of logs to keep (do we need this?)
+	char*	config_dir;                             // directory where nova writes pf config files
+} parms_t;
+
+/*
+	vf config file data
+*/
+typedef struct {
+	char*	name;			// nova supplied name or id; mostly ignored by us, but possibly useful
+	char*	pciid;			// physical interface id (0000:07:00.1)
+	int		vfid;			// the vf on the pf 1-32
+	int		strip_stag;		// bool
+	int		allow_bcast;	// bool
+	int		allow_mcast;	// bool
+	int		allow_un_ucast;	// bool
+	int		antispoof_mac;	//	bool -- forced to true but here for future
+	int		antispoof_vlan;	//	bool -- forced to true but here for future
+	char*	link_status;	// on, off, auto
+	int*	vlans;			// array of vlan IDs
+	int		nvlans;			// number of vlans allocated
+	char**	macs;			// array of mac addresses
+	int		nmacs;			// number of mac addresses
+	// ignoring mirrors right now
+	/*
+    "mirror":           [ { "vlan": 100; "vf": 3 },
+                          { "vlan": 430; "vf": 6 } ]
+	*/
+} vf_config_t;
+
+/*
+	Parm file functions
+*/
+extern parms_t* read_parms( char* fname );
+extern vf_config_t*	read_config( char* fname );
