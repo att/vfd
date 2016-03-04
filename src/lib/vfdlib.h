@@ -20,5 +20,4 @@ typedef struct {
 /*
 	Parm file functions
 */
-extern char* file_into_buf( char* fname );
 extern parms_t* read_parms( char* fname );

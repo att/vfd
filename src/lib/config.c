@@ -16,15 +16,7 @@
 #include <string.h>
 
 #include "jwrapper.h"
-
-typedef struct {
-	char*	log_dir;
-	int		log_level;
-	char*	fifo_path;
-	int		log_keep;
-	char*	config_dir;	
-} parms_t;
-
+#include "vfdlib.h"
 
 /*
 	Read the json from the file (e.g. /etc/vfd/vfd.cfg).
@@ -36,6 +28,10 @@ typedef struct {
 	they will be smallish and so this won't be a problem. 
 	Returns a pointer to the buffer, or NULL. Caller must free.
 	Terminates the buffer with a nil character for string processing.
+
+	If we cannot stat the file, we assume it's empty or missing and return
+	an empty buffer, as opposed to a NULL, so the caller can generate defaults
+	or error if an empty/missing file isn't tolerated.
 */
 static char* file_into_buf( char* fname ) {
 	struct stat	stats;
@@ -43,18 +39,27 @@ static char* file_into_buf( char* fname ) {
 	off_t		nread;			// number of bytes read
 	int			fd;
 	char*		buf;			// input buffer
-
 	
-	if( (fd = open( fname, O_RDONLY )) < 0 ) {
-		return NULL;
+	if( (fd = open( fname, O_RDONLY )) >= 0 ) {
+		if( fstat( fd, &stats ) >= 0 ) {
+			if( stats.st_size <= 0 ) {					// empty file
+				close( fd );
+				fd = -1;
+			} else {
+				fsize = stats.st_size;						// stat ok, save the file size
+			}
+		} else {
+			fsize = 8192; 								// stat failed, we'll leave the file open and try to read a default max of 8k
+		}
 	}
 
-	if( fstat( fd, &stats ) >= 0 ) {
-		if( stats.st_size <= 0 ) {				// empty file
-			close( fd );
+	if( fd < 0 ) {											// didn't open or empty
+		if( (buf = (char *) malloc( sizeof( char ) * 128 )) == NULL ) {
 			return NULL;
 		}
-		fsize = stats.st_size;
+
+		*buf = 0;
+		return buf;
 	}
 
 	if( (buf = (char *) malloc( sizeof( char ) * fsize + 2 )) == NULL ) {
@@ -64,7 +69,7 @@ static char* file_into_buf( char* fname ) {
 	}
 
 	nread = read( fd, buf, fsize );
-	if( nread < 0 || nread > fsize ) {						// too much or two little
+	if( nread < 0 || nread > fsize ) {							// too much or two little
 		errno = EFBIG;											// likely too much to handle
 		close( fd );
 		return NULL;
@@ -88,7 +93,12 @@ extern parms_t* read_parms( char* fname ) {
 	if( (buf = file_into_buf( fname )) == NULL ) {
 		return NULL;
 	}
-	
+
+	if( *buf == 0 ) {											// empty/missing file
+		free( buf );
+		buf = strdup( "{ \"empty\": true }" );					// dummy json to parse which will cause all defaults to be set
+	}
+
 	if( (jblob = jw_new( buf )) != NULL ) {						// json successfully parsed
 		if( (parms = (parms_t *) malloc( sizeof( *parms ) )) == NULL ) {
 			errno = ENOMEM;
@@ -96,7 +106,9 @@ extern parms_t* read_parms( char* fname ) {
 		}
 
 		parms->log_level = (int) jw_value( jblob, "log_level" );
-		parms->log_keep = (int) jw_value( jblob, "log_keep" );
+		if( (parms->log_keep = (int) jw_value( jblob, "log_keep" )) == 0 ) {
+			parms->log_keep = 30;
+		}
 
 		if(  (stuff = jw_string( jblob, "config_dir" )) ) {
 			parms->config_dir = strdup( stuff );
@@ -105,9 +117,9 @@ extern parms_t* read_parms( char* fname ) {
 		}
 
 		if(  (stuff = jw_string( jblob, "fifo" )) ) {
-			parms->log_dir = strdup( stuff );
+			parms->fifo_path = strdup( stuff );
 		} else {
-			parms->log_dir = strdup( "/var/lib/vfd/request" );
+			parms->fifo_path = strdup( "/var/lib/vfd/request" );
 		}
 
 		if(  (stuff = jw_string( jblob, "log_dir" )) ) {
@@ -117,5 +129,6 @@ extern parms_t* read_parms( char* fname ) {
 		}
 	}
 
+	free( buf );
 	return parms;
 }
