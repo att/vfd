@@ -43,7 +43,7 @@ extern void* rfifo_create( char* fname ) {
 		return NULL;								// can't make send back err errno still set
 	}
 
-	if( (fd =  open( fname, O_RDWR )) >= 0 ) {							// open in read AND write mode so that we don't block
+	if( (fd =  open( fname, O_RDWR | O_NONBLOCK )) >= 0 ) {				// open in read AND write mode so that we don't block
 		if( (fifo = malloc( sizeof( *fifo ) )) == NULL ) {
 			return NULL;
 		}
@@ -85,7 +85,7 @@ extern void rfifo_close( void* vfifo ) {
 	}
 
 	if( fifo->fname != NULL ) {
-		state = unlink( fifo->fname );
+		unlink( fifo->fname );
 		free( fifo->fname );
 	}
 
@@ -93,11 +93,14 @@ extern void rfifo_close( void* vfifo ) {
 }
 
 /*
-	Read a complete json block from the fifo. A block is 
-	all data up to a double newline (\n\n).
+	Read a complete "block" from the fifo. A block is 
+	all data up to a double newline (\n\n). Single newlines are left
+	and a final newline is added to the buffer.  The buffer is nil 
+	terminated.
 
 	We don't expect a high rate of requests so we aren't concerned 
-	about the additional copies and length checking we do here.
+	about the additional copies, length checking and newline smashing
+	that we do here.
 
 	Caller must free the pointer returned.
 */
@@ -119,24 +122,27 @@ extern char* rfifo_read( void* vfifo ) {
 	*rbuf = 0;
 	while( 1 ) {
 		while( (nb = ng_flow_get( fifo->flow, '\n' )) != NULL ) {
+			if( tlen > 0 ) {
+				strcat( rbuf, "\n" );
+			}
+
 			if( *nb == 0 ) {
-				break;													// empty line (\n\n) signals end
+				return rbuf;
 			}
 			
-			tlen += strlen( rbuf );
-			if( tlen > RBUF_SIZE ) {
+			tlen += strlen( nb );
+			if( tlen > RBUF_SIZE-2 ) {									// give us room to blindly add \n on next go round if we don't overflow
 				return rbuf;											// buffer overrun avoided, but data is lost. 
 			}
 			strcat( rbuf, nb );											// we could use some trickery to avoid this copy, but speed here isn't crutial
 		}	
 
-		if( (len = read( fifo->fd, fifo->rbuf, RBUF_SIZE )) < 0 ) {			// TODO: make non-blocking unless we've read an incomplete buffer on this call
+		if( (len = read( fifo->fd, fifo->rbuf, RBUF_SIZE )) < 0 ) {		// nothing to read
 			return rbuf;
 		}
 
 		ng_flow_ref( fifo->flow, fifo->rbuf, len );						// register the buffer (zero copy)
 	}
 
-
-	return rbuf;
+	return rbuf;			// shouldn't get here, but this keeps the compiler from tossing a warning.
 }
