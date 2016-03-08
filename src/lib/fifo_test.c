@@ -18,6 +18,36 @@
 #include "vfdlib.h"
 
 
+/*
+	Loops reading the fifo.
+*/
+static void loop_test( char* fname ) {
+	char	*rbuf;			// read buffer
+	void*	fifo;			// fifo 'handle'
+
+	if( fname == NULL ) {
+		fprintf( stderr, "argv2 was nil: requires loop pipe-name\n" );
+		exit( 1 );
+	}
+
+	fifo = rfifo_create( fname );
+	if( fifo == NULL ) {
+		fprintf( stderr, "[FAIL] unable to create fifo: %s\n", strerror( errno ) );
+		exit( 1 );
+	}
+	fprintf( stderr, "[OK]  fifo created successfully, entering read loop.\n" );
+	
+	while( 1 ) {
+		rbuf = rfifo_read( fifo );
+		if( rbuf != NULL ) {
+			if( strlen( rbuf ) > 0 ) {
+				fprintf( stderr, "read got %d bytes in the buffer: %s\n", (int) strlen( rbuf ), rbuf );
+			}
+		} 
+
+		sleep( 1 );
+	}
+}
 
 int main( int argc, char** argv ) {
 	char*	fname = "test_pipe";
@@ -27,6 +57,12 @@ int main( int argc, char** argv ) {
 	int		fd;				// we will open it again and write something, then call read
 	char*	wbuf = "Mary didn't really have a lamb, she had a dog.\nIt was brown, lazy, and liked to play down by the river.\n\n";	// we should get both records back, each with a trailing newline
 	char*	rbuf;			// read buffer
+
+
+	if( strcmp( argv[1], "loop" ) == 0 ) {
+		loop_test( argv[2] );
+		exit( 0 );
+	}
 
 	if( argv[1] != NULL ) {
 		fname = argv[1];
