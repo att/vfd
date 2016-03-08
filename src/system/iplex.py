@@ -1,4 +1,14 @@
-""" iplex
+#!/usr/bin/env python
+# vi: sw=4 ts=4:
+"""		Mnemonic:	iplex.py
+		Abstract:	iplex is a cli to VF Daemon, used by nova (compute) and operators
+					to manually add, delete, list VF's of a port.
+		Date:		3 March 2016
+		Author:		Dhanunjaya Naidu Ravada (dr3662@att.com)
+		Mod:		2016 3 Mar - Created script
+"""
+
+__doc__ = """ iplex
 
         Usage:
         iplex (add | delete) <port-id> [--loglevel=<value>] [--debug]
@@ -13,19 +23,18 @@
         --loglevel=<value>  Default logvalue [default: 0]
 """
 
-from __future__ import print_function
 from docopt import docopt
 import os
 import errno
-import pprint
 import json
 import logging
 import sys
+import ast
 import time
 from logging.handlers import RotatingFileHandler
 
-LOG_FORMAT = '%(asctime)s %(name)-12s %(levelname)-8s %(message)s'
-LOG_DATE = '%m-%d-%Y %H:%M:%S'
+#LOG_FORMAT = '%(asctime)s %(name)-12s %(levelname)-8s %(message)s'
+#LOG_DATE = '%m-%d-%Y %H:%M:%S'
 LOG_DIR = '/var/log/vfd'
 
 VFD_CONFIG = '/etc/vfd/vfd.cfg'
@@ -35,7 +44,7 @@ def setup_logging(args, filename='iplex.log'):
     level = logging.INFO
     if args['--debug']:
         level = logging.DEBUG
-    logging.basicConfig(level=level, format=LOG_FORMAT, datefmt=LOG_DATE)
+    logging.basicConfig(level=level, format='%(name)s: [%(levelname)s] %(message)s')
     handler = RotatingFileHandler(os.path.join(LOG_DIR, filename), maxBytes=200000, backupCount=20)
     log_formatter = logging.Formatter('%(name)s: %(levelname)s %(message)s')
     handler.setFormatter(log_formatter)
@@ -87,15 +96,16 @@ class Iplex(object):
 			self.log.debug("VF Config: %s", filename)
 			return filename
 		else:
-			self.log.info("File doesn't exist %s", filename)
-			return
+			self.log.info("ERROR: %s doesn't exist", filename)
+			sys.exit(1)
 
 	def __create_fifo(self):
 		resp_fifo = Iplex.PRIVATE_FIFO_PATH+str(os.getpid())
 		try:
 			os.mkfifo(resp_fifo)
 		except OSError, e:
-			self.log.info("Failed to create FIFO: %s", e)
+			self.log.info("ERROR: Failed to create FIFO: %s", e)
+			sys.exit(1)
 		self.log.debug("Successfully created FIFO: %s", resp_fifo)
 		return resp_fifo
 
@@ -127,18 +137,19 @@ class Iplex(object):
 			os.close(writeFd)
 			readFd = os.open(self.resp_fifo, os.O_RDONLY)
 			buf = self.__read_fd(readFd)
-			resp_data = json.dumps(buf.strip(' \n\t'), sort_keys=True, indent=4)
-			self.log.info("RESPONSE MSG: %s", resp_data)
+			resp_data = json.dumps(buf.strip(' \n\t'))
+			print(ast.literal_eval(resp_data))
 			os.close(readFd)
 			os.unlink(self.resp_fifo)
 		except OSError as e:
 			if errno.ENXIO:
-				self.log.info("VF-DAEMON does not seem to be running, please start the service")
+				self.log.info("VFD does not seem to be running, please start the service ")
 			else:
 				self.log.info("%s", e)
 			if not (readFd == None):
 				os.close(readFd)
 			os.unlink(self.resp_fifo)
+			sys.exit(1)
 
 
 if __name__ == '__main__':
