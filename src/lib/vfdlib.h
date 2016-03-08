@@ -61,3 +61,10 @@ extern void* rfifo_create( char* fname );
 extern void rfifo_close( void* vfifo );
 extern char* rfifo_read( void* vfifo );
 
+
+// --------------- list ----------------------------------------------------------------------------------
+#define LF_QUALIFED		1				// list_files should return qualified names
+#define LF_UNQUALIFIED	0
+
+extern char** list_files( char* dname, char* suffix, int qualify, int* len );
+extern void free_list( char** list, int size );
