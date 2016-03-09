@@ -166,9 +166,15 @@ void* parse_jobject( void* st, char *json, char* prefix ) {
 		return NULL;
 	}
 
+	/* DEBUG
+	for( i = 1; i < njtokens-1; i++ ) {					// we'll silently skip the last token if its "name" without a value
+		fprintf( stderr, ">>> %4d: size=%d start=%d end=%d %s\n", i, jtokens[i].size, jtokens[i].start, jtokens[i].end, extract( json, &jtokens[i] ) );
+	}
+	*/
+
 	for( i = 1; i < njtokens-1; i++ ) {					// we'll silently skip the last token if its "name" without a value
 		if( jtokens[i].type != JSMN_STRING ) {
-			fprintf( stderr, "warn: badly formed json; expected name (string)\n" );
+			fprintf( stderr, "warn: badly formed json [%d]; expected name (string) found type=%d %s\n", i, jtokens[i].type, extract( json, &jtokens[i] ) );
 			sym_free( st );
 			return NULL;
 		}
@@ -212,7 +218,7 @@ void* parse_jobject( void* st, char *json, char* prefix ) {
 				jarray = jtp->v.pv = (jsmntok_t *) malloc( sizeof( *jarray ) * size );		// allocate the array
 				jtp->nele = size;
 
-				for( n = 0; n < size; n++ ) {
+				for( n = 0; n < size; n++ ) {								// for each array element
 					switch( jtokens[i+n].type ) {
 						case JSMN_UNDEFINED:
 							fprintf( stderr, "warn: [%d] array element %d is not valid type (undefined) is not string or primative\n", i, n );
@@ -225,7 +231,7 @@ void* parse_jobject( void* st, char *json, char* prefix ) {
 
 						case JSMN_ARRAY:
 							fprintf( stderr, "warn: [%d] array element %d is not valid type (array) is not string or primative\n", i, n );
-							n += jtokens[i].size;			// this should skip the nested array
+							n += jtokens[i+n].size;			// this should skip the nested array
 							break;
 
 						case JSMN_STRING:

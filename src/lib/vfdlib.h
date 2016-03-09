@@ -68,3 +68,12 @@ extern char* rfifo_read( void* vfifo );
 
 extern char** list_files( char* dname, char* suffix, int qualify, int* len );
 extern void free_list( char** list, int size );
+
+// --------------- bleat ----------------------------------------------------------------------------------
+extern int bleat_set_lvl( int l );
+extern void bleat_push_lvl( int l );
+extern void bleat_pop_lvl( );
+extern int bleat_will_it( int l );
+extern int bleat_set_log( char* fname, int add_date );
+extern void bleat_printf( int level, char* fmt, ... );
+

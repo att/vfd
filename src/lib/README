@@ -21,3 +21,17 @@ Config
 		vf_config_test [config-file]
 		parm_file_test [config-file]
 
+list_files
+	Simple mechanism to open a directory and build a list of the files in 
+	the directory which have the supplied suffix (e.g. all .cfg files).
+	Optionally, the names returned can be qualified with the path given.
+	Unit test:
+
+		list_test dir-name suffix1 [suffix2...]
+
+fifo
+	Provides support for opening and reading to a fifo (named pipe). Reads
+	are _nonblocking_ (returning a zero byte buffer if nothing is available.
+	The reader is configured to return 'blocks' of data from the pipe where
+	a block is designated with two successive newline characters.  Unit test:
+		fifo_test pipe-name

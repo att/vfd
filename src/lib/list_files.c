@@ -45,6 +45,9 @@ extern void free_list( char** list, int size ) {
 	or glob string. The list is terminated with a nil pointer and 
 	length is set if the caller provides the len parm.
 
+	If the suffix is given as "", then all files which do NOT begin
+	with a dot (.) are returned. 
+
 	If qualifiy is set, then each file name in the list is appended
 	to the directory name with a slant inserted. 
 
@@ -103,7 +106,7 @@ extern char** list_files( char* dname, char* suffix, int qualify, int* len ) {
 		}
 
 		cp = strrchr( fentry.d_name, '.' );				// find last separator
-		if( cp  && strcmp( cp+1, suffix ) == 0 ) {		// match
+		if( (! *suffix && *fentry.d_name != '.' )  ||  ( *suffix &&  cp  && strcmp( cp+1, suffix ) == 0) ) {		// match or no suffix and not unimportant file
 			if( qualify ) {
 				snprintf( qbuf, qblen, "%s/%s", dname, fentry.d_name );
 				list[lidx] = strdup( qbuf );
