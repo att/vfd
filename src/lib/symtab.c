@@ -406,7 +406,7 @@ void sym_stats( void *vtable, int level )
 		fprintf( stderr, "\n" );
 	}
 
-	fprintf( stderr, "sym:%ld(size)  %ld(inhab) %ld(occupied) %ld(dead) %ld(maxch) %ld(>2per)\n", 
+	fprintf( stderr, "sym:%ld(size)  %ld(inhab) %ld(occupied) %ld(dead) %ld(maxch) %d(>2per)\n", 
 			table->size, table->inhabitants, table->size - empty, table->deaths, max_chain, twoper );
 }
 
