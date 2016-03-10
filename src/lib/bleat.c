@@ -142,7 +142,7 @@ extern int bleat_set_log( char* fname, int ad_flag ) {
 
 	(Shamelessly stolen from Ningaui, and then modified.)
 */
-void bleat_printf( int vlevel, char *fmt, ... )
+void bleat_printf( int vlevel, const char *fmt, ... )
 {
 	va_list	argp;			/* pointer at variable arguments */
 	char	obuf[8192];		/* final msg buf - allow ng_buffer to caller, 1k for header*/

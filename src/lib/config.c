@@ -130,7 +130,7 @@ extern parms_t* read_parms( char* fname ) {
 		if(  (stuff = jw_string( jblob, "log_dir" )) ) {
 			parms->log_dir = strdup( stuff );
 		} else {
-			parms->log_dir = strdup( "/var/log/vfd/" );
+			parms->log_dir = strdup( "/var/log/vfd" );
 		}
 	}
 
