@@ -17,12 +17,20 @@
 
 
 void pprint( parms_t* parms ) {
+	int  i;
+
 	fprintf( stderr, "  parms read:\n" );
 	fprintf( stderr, "\tlog dir: %s\n", parms->log_dir );
 	fprintf( stderr, "\tconfig_dir: %s\n", parms->config_dir );
 	fprintf( stderr, "\tlog_level: %d\n", parms->log_level );
 	fprintf( stderr, "\tlog_keep: %d\n", parms->log_keep );
 	fprintf( stderr, "\tfifo: %s\n", parms->fifo_path );
+	fprintf( stderr, "\tcpu_mask: %s\n", parms->cpu_mask );
+
+	fprintf( stderr, "\tnpciids: %d\n", parms->npciids );
+	for( i = 0; i < parms->npciids; i++ ) {
+		fprintf( stderr, "\tpciid[%d]: %s\n", i, parms->pciids[i] );
+	}
 }
 
 int main( int argc, char** argv ) {

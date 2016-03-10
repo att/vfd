@@ -95,6 +95,7 @@ extern parms_t* read_parms( char* fname ) {
 	char*		buf;			// buffer read from file (nil terminated)
 	char*		stuff;
 	int			val;
+	int			i;
 
 	if( (buf = file_into_buf( fname )) == NULL ) {
 		return NULL;
@@ -131,6 +132,21 @@ extern parms_t* read_parms( char* fname ) {
 			parms->log_dir = strdup( stuff );
 		} else {
 			parms->log_dir = strdup( "/var/log/vfd" );
+		}
+
+		if( (stuff = jw_string( jblob, "cpu_mask" )) ) {
+			parms->cpu_mask = strdup( stuff );
+		}
+
+		if( (parms->npciids = jw_array_len( jblob, "pciids" )) > 0 ) {			// pick up the list of pciids
+			parms->pciids = malloc( sizeof( *parms->pciids ) * parms->npciids );
+			if( parms->pciids != NULL ) {
+				for( i = 0; i < parms->npciids; i++ ) {
+					parms->pciids[i] = (char *) jw_string_ele( jblob, "pciids", i );
+				}
+			} else {
+				parms->npciids = 0;			// memory failure; return zip
+			}
 		}
 	}
 
