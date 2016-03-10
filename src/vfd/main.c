@@ -1,11 +1,19 @@
+// vi: sw=4 ts=4:
 /*
-**
-** az
-**
+	Mnemonic:	vfd -- VF daemon
+	Abstract: 	Daemon which manages the configuration and management of VF interfaces
+				on one or more NICs.
+				Original name was sriov daemon, so some references to that (sriov.h) remain.
+
+	Date:		February 2016
+	Authors:	Alex Zelezniak (original code)
+				E. Scott Daniels (extensions)
 */
 
 
+#include <strings.h>
 #include "sriov.h"
+#include "vfdlib.h"
 
 #define DEBUG
 
@@ -63,7 +71,7 @@ sig_usr(int sig)
     return; 
   else called = 1;
   
-  traceLog(TRACE_NORMAL, "Restarting sriovctl");
+  traceLog(TRACE_NORMAL, "Restarting vfd");
 }
 
 
@@ -609,15 +617,20 @@ allow_ucast: %d\nallow_mcast: %d\nallow_untagged: %d\nrate: %f\nlink: %d\num_vla
 int 
 main(int argc, char **argv)
 {
+	char*	parm_file = NULL;							// default in /etc, -p overrieds
+	parms_t*	parms = NULL;							// info read from the parm file
+	char	log_file[1024];				// buffer to build full log file in
+	
   int  opt;
-  opterr = 0;
+  //int	opterr = 0;
 
+  //"  sriovctl [options] -f <file_name>\n"
   const char * main_help =
-	"sriovctl\n"
+	"vfd\n"
 	"Usage:\n"
-  "  sriovctl [options] -f <file_name>\n"
 	"  Options:\n"
   "\t -c <mask> Processor affinity mask\n"
+  "\t -p <file> parmm file (/etc/vfd/vfd.cfg)\n"
   "\t -v <num>  Verbose (if num > 3 foreground) num - verbose level\n"
   "\t -s <num>  syslog facility 0-11 (log_kern - log_ftp) 16-23 (local0-local7) see /usr/include/sys/syslog.h\n"
 	"\t -h|?  Display this help screen\n";
@@ -637,11 +650,11 @@ main(int argc, char **argv)
 //	for( i = 0; i < argc; i++)
 //		printf("ARGV[%d] = %s\n", i, argv[i]);
 
-
+	parm_file = strdup( "/etc/vfd/vfd.cfg" );				// set default before command line parsing as -p overrides 
   fname = NULL;
   
   // Parse command line options
-  while ( (opt = getopt(argc, argv, "hv:c:s:f:")) != -1)
+  while ( (opt = getopt(argc, argv, "hv:c:p:s:")) != -1)			// f dropped
   {
     switch (opt)
     {
@@ -659,9 +672,15 @@ main(int argc, char **argv)
       }
      break;  
       
+	/* -- we read from the config directory now, not a single file
     case 'f':
       fname = strdup(optarg);
       break; 
+	*/
+
+	case 'p':
+		parm_file = strdup( optarg );
+		break;
 
     case 's':
       logFacility = (atoi(optarg) << 3);
@@ -674,16 +693,34 @@ main(int argc, char **argv)
       printf("%s\n", main_help);
       exit(EXIT_FAILURE);
       break;
+
+	default:
+		fprintf( stderr, "unknown commandline flag: %c\n", opt );
+		fprintf( stderr, "%s\n", main_help );
+		exit( 1 );
     }
   }
 
 
-  if(fname == NULL) {
-    printf("%s\n", main_help);
-    exit(EXIT_FAILURE);
-  }
+	/* --- we read from config directory now
+	if(fname == NULL) {
+		printf("%s\n", main_help);
+		exit(EXIT_FAILURE);
+	}
+	*/
   
+	if( (parms = read_parms( parm_file )) == NULL ) { 						// get overall configuration 
+		fprintf( stderr, "unable to read configuration from %s: %s\n", parm_file, strerror( errno ) );
+		exit( 1 );
+	} 
   
+	snprintf( log_file, sizeof( log_file ), "%s/vfd.log", parms->log_dir );
+	fprintf( stderr, "opening log file: %s level=%d\n", log_file, parms->log_level );
+	bleat_set_log( log_file, 1 );		// open bleat log with date suffix
+	bleat_set_lvl( parms->log_level );	// set default level
+	bleat_printf( 1, "VFD initialising" );
+
+exit( 0 );
   int res = readConfigFile(fname);
   
   if (res < 0)
