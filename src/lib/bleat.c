@@ -79,6 +79,17 @@ extern void bleat_push_lvl( int l ) {
 	}
 }
 
+
+/*
+	Pushes the current level, or l; which ever is greater. 
+*/
+extern void bleat_push_glvl( int l ) {
+	old_level = cur_level;
+	if( l > cur_level ) {
+		cur_level = l;
+	}
+}
+
 /*
 	Pop the old level; leaves old level set, so multiple pops
 	result in the same value until another push is called.
