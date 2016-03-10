@@ -10,10 +10,10 @@
 extern void sym_clear( void *s );
 extern void sym_dump( void *s );
 extern void *sym_alloc( int size );
-extern void sym_del( void *s, unsigned char *name, unsigned int class );
-extern void *sym_get( void *s, unsigned char *name, unsigned int class );
-extern int sym_put( void *s, unsigned char *name, unsigned int class, void *val );
-extern int sym_map( void *s, unsigned char *name, unsigned int class, void *val );
+extern void sym_del( void *s, char *name, unsigned int class );
+extern void *sym_get( void *s, char *name, unsigned int class );
+extern int sym_put( void *s, char *name, unsigned int class, void *val );
+extern int sym_map( void *s, char *name, unsigned int class, void *val );
 extern void sym_stats( void *s, int level );
 void sym_foreach_class( void *st, unsigned int class, void (* user_fun)(), void *user_data );
 
