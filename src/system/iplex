@@ -2,7 +2,7 @@
 # vi: sw=4 ts=4:
 """		Mnemonic:	iplex.py
 		Abstract:	iplex is a cli to VF Daemon, used by nova (compute) and operators
-					to manually add, delete, list VF's of a port.
+					to manually add, delete, list VF's to a port.
 		Date:		3 March 2016
 		Author:		Dhanunjaya Naidu Ravada (dr3662@att.com)
 		Mod:		2016 3 Mar - Created script
@@ -91,12 +91,14 @@ class Iplex(object):
 		return
 
 	def __validate_file(self, port_id):
+		filename = port_id
 		if os.path.isfile(os.path.join(self.config_data['config_dir'], self.options['<port-id>'])+'.json'):
 			filename = os.path.join(self.config_data['config_dir'], self.options['<port-id>'])+'.json'
 			self.log.debug("VF Config: %s", filename)
 			return filename
 		else:
-			self.log.info("ERROR: %s doesn't exist", filename)
+			self.__remove("VF config for the {} not found".format(port_id))
+			self.log.info("VF config for %s doesn't exist", filename)
 			sys.exit(1)
 
 	def __create_fifo(self):
@@ -129,25 +131,36 @@ class Iplex(object):
 			running = len(chunk) == chunksize
 		return ''.join(buffer).strip(' \n\t')
 
+	def __remove(self, msg=None):
+		data = {}
+		data['state'] = 'OK'
+		if msg is not None:
+			data['state'] = 'ERROR'
+			data['msg'] = msg
+		print data
+
 	def __write_read_fifo(self, msg):
-		readFd = None
+		#readFd = None
 		try:
 			writeFd = os.open(self.config_data['fifo'], os.O_WRONLY | os.O_NONBLOCK)
 			os.write(writeFd, str(msg)+'\n\n')
 			os.close(writeFd)
-			readFd = os.open(self.resp_fifo, os.O_RDONLY)
-			buf = self.__read_fd(readFd)
-			resp_data = json.dumps(buf.strip(' \n\t'))
-			print(ast.literal_eval(resp_data))
-			os.close(readFd)
+			#readFd = os.open(self.resp_fifo, os.O_RDONLY)
+			#buf = self.__read_fd(readFd)
+			#resp_data = json.dumps(buf.strip(' \n\t'))
+			self.__remove()
+			#print resp_data
+			#print(ast.literal_eval(resp_data))
+			#os.close(readFd)
 			os.unlink(self.resp_fifo)
 		except OSError as e:
 			if errno.ENXIO:
+				self.__remove("VFD is not running")
 				self.log.info("VFD does not seem to be running, please start the service ")
 			else:
 				self.log.info("%s", e)
-			if not (readFd == None):
-				os.close(readFd)
+			#if not (readFd == None):
+			#	os.close(readFd)
 			os.unlink(self.resp_fifo)
 			sys.exit(1)
 
