@@ -75,7 +75,7 @@ static jthing_t *mk_thing( void *st, char *name, int jsmn_type ) {
 	Find the named array. Returns a pointer to the jthing that represents
 	the array (type, size and pointer to actual array of jthings).
 */
-static jthing_t* suss_array( void* st, char* name ) {
+static jthing_t* suss_array( void* st, const char* name ) {
 	jthing_t* jtp;									// thing that is referenced by the symtab
 
 	if( st == NULL ) {
@@ -97,7 +97,7 @@ static jthing_t* suss_array( void* st, char* name ) {
 	Private function to suss an array from the hash and return the ith
 	element.
 */
-static jthing_t* suss_element( void* st, char* name, int idx ) {
+static jthing_t* suss_element( void* st, const char* name, int idx ) {
 	jthing_t* jtp;									// thing that is referenced by the symtab
 	jthing_t* jarray;
 
@@ -121,7 +121,7 @@ static jthing_t* suss_element( void* st, char* name, int idx ) {
 	Invoked for each thing in the symtab; we free the things that actually point to 
 	allocated data (e.g. arrays).
 */
-static void nix_things( void* st, void* se, char* name,  void* ele, void *data ) {
+static void nix_things( void* st, void* se, const char* name,  void* ele, void *data ) {
 	jthing_t* j;
 
 	j = (jthing_t *) ele;
@@ -371,21 +371,21 @@ extern void* jw_new( char* json ) {
 /*
 	Returns true (1) if the named field is missing. 
 */
-extern int jw_missing( void* st, char* name ) {
+extern int jw_missing( void* st, const char* name ) {
 	return sym_get( st, name, 0 ) == NULL;
 }
 
 /*
 	Returns true (1) if the named field is in the blob;
 */
-extern int jw_exists( void* st, char* name ) {
+extern int jw_exists( void* st, const char* name ) {
 	return sym_get( st, name, 0 ) != NULL;
 }
 
 /*
 	Look up the name in the symtab and return the string (data).
 */
-extern char* jw_string( void* st, char* name ) {
+extern char* jw_string( void* st, const char* name ) {
 	jthing_t* jtp;									// thing that is referenced by the symtab
 
 	jtp = (jthing_t *) sym_get( st, name, 0 );		// get it or NULL
@@ -404,7 +404,7 @@ extern char* jw_string( void* st, char* name ) {
 /*
 	Look up name and return the value.
 */
-extern float jw_value( void* st, char* name ) {
+extern float jw_value( void* st, const char* name ) {
 	jthing_t* jtp;									// thing that is referenced by the symtab
 
 	jtp = (jthing_t *) sym_get( st, name, 0 );		// get it or NULL
@@ -427,7 +427,7 @@ extern float jw_value( void* st, char* name ) {
 		index is out of range
 		element is not a string
 */
-extern char* jw_string_ele( void* st, char* name, int idx ) {
+extern char* jw_string_ele( void* st, const char* name, int idx ) {
 	jthing_t* jtp;									// thing that is referenced by the symtab entry
 
 	if( (jtp = suss_element( st, name, idx )) == NULL ) {
@@ -448,7 +448,7 @@ extern char* jw_string_ele( void* st, char* name, int idx ) {
 		index is out of range
 		element is not a value
 */
-extern float jw_value_ele( void* st, char* name, int idx ) {
+extern float jw_value_ele( void* st, const char* name, int idx ) {
 	jthing_t* jtp;									// thing that is referenced by the symtab entry
 
 	if( (jtp = suss_element( st, name, idx )) == NULL ) {
@@ -466,7 +466,7 @@ extern float jw_value_ele( void* st, char* name, int idx ) {
 	Return the size of the array named. Returns -1 if the thing isn't an array, 
 	and returns the number of elements otherwise.
 */
-extern int jw_array_len( void* st, char* name ) {
+extern int jw_array_len( void* st, const char* name ) {
 	jthing_t* jtp;									// thing that is referenced by the symtab entry
 
 	if( (jtp = suss_array( st, name )) == NULL ) {
