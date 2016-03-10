@@ -17,7 +17,6 @@
 #include <errno.h>
 #include <string.h>
 
-#include "jwrapper.h"
 #include "vfdlib.h"
 
 // -------------------------------------------------------------------------------------

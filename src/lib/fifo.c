@@ -15,7 +15,6 @@
 #include <errno.h>
 #include <string.h>
 
-#include "jwrapper.h"
 #include "vfdlib.h"
 
 #define RBUF_SIZE 8192		// our read buffer sizes
