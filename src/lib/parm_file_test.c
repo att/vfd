@@ -26,6 +26,7 @@ void pprint( parms_t* parms ) {
 	fprintf( stderr, "\tlog_keep: %d\n", parms->log_keep );
 	fprintf( stderr, "\tfifo: %s\n", parms->fifo_path );
 	fprintf( stderr, "\tcpu_mask: %s\n", parms->cpu_mask );
+	fprintf( stderr, "\tdpdk_log_level: %d\n", parms->dpdk_log_level );
 
 	fprintf( stderr, "\tnpciids: %d\n", parms->npciids );
 	for( i = 0; i < parms->npciids; i++ ) {

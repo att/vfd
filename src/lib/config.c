@@ -4,6 +4,8 @@
 	Abstract:	Functions to read and parse the various config files.
 	Author:		E. Scott Daniels
 	Date:		26 Feb 2016
+
+	Mods:		10 Mar 2016 : Added support for additional parm file values.
 */
 
 #include <fcntl.h>
@@ -113,8 +115,9 @@ extern parms_t* read_parms( char* fname ) {
 		}
 		memset( parms, 0, sizeof( *parms ) );					// probably not needed, but we don't do this frequently enough to worry
 
-		parms->log_level = (int) jw_value( jblob, "log_level" );
-		parms->log_keep = jw_missing( jblob, "log_keep" ) ? 30 : (int) jw_value( jblob, "allow_bcast" );
+		parms->dpdk_log_level = jw_missing( jblob, "dpdk_log_level" ) ? 0 : (int) jw_value( jblob, "dpdk_log_level" );
+		parms->log_level = jw_missing( jblob, "log_level" ) ? 0 : (int) jw_value( jblob, "log_level" );
+		parms->log_keep = jw_missing( jblob, "log_keep" ) ? 30 : (int) jw_value( jblob, "log_keep" );
 
 		if(  (stuff = jw_string( jblob, "config_dir" )) ) {
 			parms->config_dir = strdup( stuff );
