@@ -20,6 +20,108 @@
 struct rte_port *ports;
 
  
+// -------------------------------------------------------------------------------------------------------------
+
+/*
+	Test function to vet vfd_init_eal()
+*/
+static int dummy_rte_eal_init( int argc, char** argv ) {
+	int i;
+
+	fprintf( stderr, "dummy: %d parms\n", argc );
+	for( i = 0; i < argc; i++ ) {
+		fprintf( stderr, "[%d] = (%s)\n", i, argv[i] );
+	}
+
+	return 0;
+}
+    
+/*
+	Initialise the EAL.  We must dummy up what looks like a command line and pass it to the dpdk funciton.
+	This builds the base command, and then adds a -w option for each pciid/vf combination that we know 
+	about.
+
+	We strdup all of the arument strings that are eventually passed to dpdk as the man page indicates that
+	they might be altered, and that we should not fiddle with them after calling the init function. We give
+	them their own copy, and suffer a small leak.
+	
+	This function causes a process abort if any of the following are true:
+		- unable to alloc memory
+		- no vciids were listed in the config file
+		- dpdk eal initialisation fails
+*/
+static int vfd_eal_init( parms_t* parms ) {
+	int		argc;					// argc/v parms we dummy up
+	char** argv;
+	int		argc_idx = 12;			// insertion index into argc (initial value depends on static parms below)
+	int		i;
+	char	wbuf[128];				// scratch buffer
+
+	if( parms->npciids <= 0 ) {
+		bleat_printf( 0, "abort: no pciids were defined in the configuration file" );
+		exit( 1 );
+	}
+
+	argc = argc_idx + (parms->npciids * 2);											// 2 slots for each pcciid;  number to alloc is one larger to allow for ending nil
+	if( (argv = (char **) malloc( (argc + 1) * sizeof( char* ) )) == NULL ) {		// n static parms + 2 slots for each pciid + null
+		bleat_printf( 0, "abort: unable to alloc memory for eal initialisation" );
+		exit( 1 );
+	}
+	memset( argv, 0, argc +1 );
+
+	//sprintf(cli_argv[0], "sriovctl");
+	argv[0] = strdup(  "vfd" );						// dummy up a command line to pass to rte_eal_init() -- it expects that we got these on our command line (what a hack)
+
+	if( *parms->cpu_mask != '#' ) {
+		snprintf( wbuf, sizeof( wbuf ), "#%02x", atoi( parms->cpu_mask ) );				// assume integer as a string given; cvt to hex
+		free( parms->cpu_mask );
+		parms->cpu_mask = strdup( wbuf );
+	}
+	
+	argv[1] = strdup( "-c" );
+	argv[2] = strdup( parms->cpu_mask );
+
+	argv[3] = strdup( "-n" );
+	argv[4] = strdup( "4" );
+		
+	argv[5] = strdup( "–m" );
+	argv[6] = strdup( "50" );
+	
+	argv[7] = strdup( "--file-prefix" );
+	argv[8] = strdup( "vfd" ); 				//sprintf(argv[8], "%s", "sriovctl" );
+	
+	argv[9] = strdup( "--log-level" );
+	snprintf( wbuf, sizeof( wbuf ), "%d", parms->dpdk_log_level );
+	argv[10] = strdup( wbuf );
+	
+	argv[11] = strdup( "--no-huge" );
+  
+  
+	for( i = 0; i < parms->npciids && argc_idx < argc; i++ ) {			// add in the -w pciid values to the list
+		argv[argc_idx++] = strdup( "-w" );
+		argv[argc_idx++] = strdup( parms->pciids[i] );
+		bleat_printf( 1, "add pciid to configuration list: %s", parms->pciids[i] );
+	}
+
+/*
+  int y = 0;										// to that add n -w <pciid> options (these need to be defined in the parm file)
+  for(i = argc; i < argc_port; i+=2) {
+    sprintf(cli_argv[i], "-w");
+    sprintf(cli_argv[i + 1], "%s", sriov_config.ports[y].pciid);
+      
+    traceLog(TRACE_INFO, "PCI num: %d, PCIID: %s\n", y, sriov_config.ports[y].pciid);
+    y++;
+  }
+*/
+			
+	// http://dpdk.org/doc/api/rte__eal_8h.html
+	// init EAL 
+	//return rte_eal_init( argc, argv );
+	return dummy_rte_eal_init( argc, argv );
+}
+
+
+// -------------------------------------------------------------------------------------------------------------
 
 static inline uint64_t RDTSC(void)
 {
@@ -654,14 +756,16 @@ main(int argc, char **argv)
   fname = NULL;
   
   // Parse command line options
-  while ( (opt = getopt(argc, argv, "hv:c:p:s:")) != -1)			// f dropped
+  while ( (opt = getopt(argc, argv, "hv:p:s:")) != -1)			// f,c  dropped
   {
     switch (opt)
     {
 
+	/*		now from the parm file
     case 'c':
       cpu_mask = atoi(optarg);
       break;
+	*/
       
     case 'v':
       traceLevel = atoi(optarg);
@@ -715,16 +819,28 @@ main(int argc, char **argv)
 	} 
   
 	snprintf( log_file, sizeof( log_file ), "%s/vfd.log", parms->log_dir );
-	fprintf( stderr, "opening log file: %s level=%d\n", log_file, parms->log_level );
-	bleat_set_log( log_file, 1 );		// open bleat log with date suffix
-	bleat_set_lvl( parms->log_level );	// set default level
-	bleat_printf( 1, "VFD initialising" );
+	bleat_set_log( log_file, BLEAT_ADD_DATE );									// open bleat log with date suffix
+	bleat_set_lvl( parms->log_level );											// set default level
+	bleat_printf( 0, "VFD initialising" );
+	bleat_printf( 0, "config dir set to: %s", parms->config_dir );
 
-exit( 0 );
+	if( vfd_eal_init( parms ) != 0 ) {
+		bleat_printf( 0, "abort: unable to initialise dpdk eal environment" );
+		exit( 1 );
+	}
+
+bleat_printf( 0, "testing exit being taken" );
+exit( 0 ); // TESTING ---- 
+
+
+
+
+	/*
   int res = readConfigFile(fname);
   
   if (res < 0)
     rte_exit(EXIT_FAILURE, "Can not parse config file %s\n", fname);
+	*/
 
     
   argc -= optind;
@@ -748,22 +864,29 @@ exit( 0 );
     cli_argv[i] = (char*)malloc(20 * sizeof(char));
   }
 
-  sprintf(cli_argv[0], "sriovctl");
-  
+  //sprintf(cli_argv[0], "sriovctl");
+  sprintf(cli_argv[0], "vfd");						// dummy up a command line to pass to rte_eal_init() -- it expects that we got these on our command line (what a hack)
+
   sprintf(cli_argv[1], "-c");
   sprintf(cli_argv[2], "%#02x", cpu_mask);
+
   sprintf(cli_argv[3], "-n");
   sprintf(cli_argv[4], "4");
+
   sprintf(cli_argv[5], "–m");
   sprintf(cli_argv[6], "50");
+
   sprintf(cli_argv[7], "--file-prefix");
-  sprintf(cli_argv[8], "%s", "sriovctl");
+  //sprintf(cli_argv[8], "%s", "sriovctl");
+  sprintf(cli_argv[8], "%s", "vfd");
+
   sprintf(cli_argv[9], "--log-level");
   sprintf(cli_argv[10], "%d", 8);
+
   sprintf(cli_argv[11], "%s", "--no-huge");
   
   
-  int y = 0;
+  int y = 0;										// to that add n -w <pciid> options (these need to be defined in the parm file)
   for(i = argc; i < argc_port; i+=2) {
     sprintf(cli_argv[i], "-w");
     sprintf(cli_argv[i + 1], "%s", sriov_config.ports[y].pciid);
@@ -773,15 +896,18 @@ exit( 0 );
   }
   
   
-	if(!debug) daemonize();
+	//TESTING -- dont detach if(!debug) daemonize();
     
 			
+	// http://dpdk.org/doc/api/rte__eal_8h.html
 	// init EAL 
 	int ret = rte_eal_init(argc_port, cli_argv);
 
 		
-	if (ret < 0)
+	if (ret < 0) {
+		bleat_printf( 0, "abort: unable to initalise EAL" );			// is there an error we can log?
 		rte_exit(EXIT_FAILURE, "Error with EAL initialization\n");
+	}
 	
 	rte_set_log_type(RTE_LOGTYPE_PMD && RTE_LOGTYPE_PORT, 0);
 	
