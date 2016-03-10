@@ -52,7 +52,7 @@ typedef struct Sym_ele
 {
 	struct Sym_ele *next;          /* pointer at next element in list */
 	struct Sym_ele *prev;          /* larger table, easier deletes */
-	unsigned char *name;           /* symbol name */
+	char *name;			           /* symbol name */
 	void *val;                     /* user data associated with name */
 	unsigned long mcount;          /* modificaitons to value */
 	unsigned long rcount;          /* references to symbol */
@@ -68,9 +68,9 @@ typedef struct Sym_tab {
 } Sym_tab;
 
 /* ----- private functions ---- */
-static int sym_hash( unsigned char *n, long size )
+static int sym_hash( char *n, long size )
 {
-	unsigned char *p;
+	char *p;
 	unsigned long t = 0;
 	unsigned long tt = 0;
 	unsigned long x = 79;
@@ -266,7 +266,7 @@ void *sym_alloc( int size )
 }
 
 /* delete a named element */
-void sym_del( void *vtable, unsigned char *name, unsigned int class )
+void sym_del( void *vtable, char *name, unsigned int class )
 {
 	Sym_tab	*table;
 	Sym_ele **sym_tab;
@@ -284,7 +284,7 @@ void sym_del( void *vtable, unsigned char *name, unsigned int class )
 }
 
 
-void *sym_get( void *vtable, unsigned char *name, unsigned int class )
+void *sym_get( void *vtable, char *name, unsigned int class )
 {
 	Sym_tab	*table;
 	Sym_ele **sym_tab;
@@ -320,7 +320,7 @@ call, or delete the entry!
 /* put an element, replace if there */
 /* creates local copy of data (assumes string) */
 /* returns 1 if new, 0 if existed */
-int sym_put( void *vtable, unsigned char *name, unsigned int class, void *val )
+int sym_put( void *vtable, char *name, unsigned int class, void *val )
 {
 	Sym_tab	*table;
 
@@ -331,7 +331,7 @@ int sym_put( void *vtable, unsigned char *name, unsigned int class, void *val )
 /* add/replace an element, map directly to user data, dont copy */
 /* the data like sym_put does */
 /* returns 1 if new, 0 if existed */
-int sym_map( void *vtable, unsigned char *name, unsigned int class, void *val )
+int sym_map( void *vtable, char *name, unsigned int class, void *val )
 {
 	Sym_tab	*table;
 
@@ -342,7 +342,7 @@ int sym_map( void *vtable, unsigned char *name, unsigned int class, void *val )
 /* add/replace an element, map directly to user data, dont copy */
 /* the data like sym_put does, but sets the free on delete flag. */
 /* returns 1 if new, 0 if existed */
-int sym_fmap( void *vtable, unsigned char *name, unsigned int class, void *val )
+int sym_fmap( void *vtable, char *name, unsigned int class, void *val )
 {
 	Sym_tab	*table;
 
