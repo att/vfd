@@ -297,6 +297,7 @@ static void vfd_dummy_loop( parms_t *parms ) {
 				case RT_PING:
 					snprintf( mbuf, sizeof( mbuf ), "pong: %s", version );
 					vfd_response( req->resp_fifo, 0, mbuf );
+					break;
 
 				case RT_ADD:
 					vfd_response( req->resp_fifo, 0, "dummy request handler: got your ADD request and promptly ignored it." );
@@ -311,7 +312,6 @@ static void vfd_dummy_loop( parms_t *parms ) {
 					break;
 
 				case RT_VERBOSE:
-bleat_printf( 0, ">>>> setting log level" );
 					if( req->log_level >= 0 ) {
 						bleat_set_lvl( req->log_level );
 						bleat_push_lvl( req->log_level );			// save it so when we pop later it doesn't revert
