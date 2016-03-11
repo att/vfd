@@ -144,12 +144,14 @@ extern parms_t* read_parms( char* fname ) {
 			parms->pciids = malloc( sizeof( *parms->pciids ) * parms->npciids );
 			if( parms->pciids != NULL ) {
 				for( i = 0; i < parms->npciids; i++ ) {
-					parms->pciids[i] = (char *) jw_string_ele( jblob, "pciids", i );
+					parms->pciids[i] = strdup( (char *) jw_string_ele( jblob, "pciids", i ) );
 				}
 			} else {
 				parms->npciids = 0;			// memory failure; return zip
 			}
 		}
+
+		jw_nuke( jblob );
 	}
 
 	free( buf );
@@ -255,6 +257,8 @@ extern vf_config_t*	read_config( char* fname ) {
 		}
 		
 		// TODO -- add code which picks up mirror stuff (jwrapper must be enhanced first)
+
+		jw_nuke( jblob );
 	}
 
 	free( buf );
