@@ -27,12 +27,17 @@ struct rte_port *ports;
 #define RT_DEL	2
 #define RT_SHOW 3
 #define RT_PING 4
+#define RT_VERBOSE 5
+
 typedef struct request {
 	int		rtype;				// type: RT_ const 
 	char*	resource;			// parm file name, show target, etc.
 	char*	resp_fifo;			// name of the return pipe
+	int		log_level;			// for verbose
 } req_t;
 
+// ---------------------globals: bad form, but unavoidable -------------------------------------------------------
+const char* version = "v1.0/63116";
 
 /*
 	Test function to vet vfd_init_eal()
@@ -148,13 +153,12 @@ static int vfd_init_fifo( parms_t* parms ) {
 static void vfd_response( char* rpipe, int state, const char* msg ) {
 	int 	fd;
 	char	buf[1024];
-	int		len = 0;
+	unsigned int		len = 0;
 
 	if( rpipe == NULL ) {
 		return;
 	}
 
-return;
 	bleat_printf( 1, "sending response: %s [%d] %s", rpipe, state, msg );
 	if( (fd = open( rpipe, O_WRONLY, 0 )) < 0 ) {
 	 	bleat_printf( 0, "unable to deliver response: open failed: %s: %s", rpipe, strerror( errno ) );
@@ -164,14 +168,10 @@ return;
 	snprintf( buf, sizeof( buf ), "{ \"state\": \"%s\", \"msg\": \"%s\" }\n", state ? "ERROR" : "OK", msg == NULL ? "" : msg );
 	bleat_printf( 2, "response fd: %d", fd );
 	bleat_printf( 2, "response json: %s", buf );
-	//if( write( fd, buf, strlen( buf ) != strlen( buf ) ) ) {
-/*
-	len = write( fd, buf, strlen( buf ) );
+	if( (len = write( fd, buf, strlen( buf ) )) != strlen( buf ) ) {
 		bleat_printf( 0, "enum=%s", strerror( errno ) );
 		bleat_printf( 0, "warn: write of response to pipe failed: %s: state=%d msg=%s", rpipe, state, msg ? msg : "" );
 	}
-*/
-	bleat_printf( 0, "write %d bytes\n", len );
 
 	bleat_pop_lvl();			// we assume it was pushed when the request received; we pop it once we respond
 	close( fd );
@@ -227,6 +227,7 @@ static req_t* vfd_read_request( parms_t* parms ) {
 		jw_nuke( jblob );
 		return NULL;
 	}
+	memset( req, 0, sizeof( *req ) );
 
 	switch( *stuff ) {
 		case 'a':
@@ -248,6 +249,10 @@ static req_t* vfd_read_request( parms_t* parms ) {
 			req->rtype = RT_SHOW;
 			break;
 
+		case 'v':
+			req->rtype = RT_VERBOSE;
+			break;	
+
 		default:
 			bleat_printf( 0, "error: unrecognised action in request: %s", rbuf );
 			jw_nuke( jblob );
@@ -266,7 +271,7 @@ static req_t* vfd_read_request( parms_t* parms ) {
 		req->resp_fifo = strdup( stuff );
 	}
 	
-	lvl = jw_missing( jblob, "params.loglevel" ) ? 0 : (int) jw_value( jblob, "params.loglevel" );
+	req->log_level = lvl = jw_missing( jblob, "params.loglevel" ) ? 0 : (int) jw_value( jblob, "params.loglevel" );
 	bleat_push_glvl( lvl );					// push the level if greater, else push current so pop won't fail
 
 	free( rbuf );
@@ -279,15 +284,56 @@ static req_t* vfd_read_request( parms_t* parms ) {
 */
 static void vfd_dummy_loop( parms_t *parms ) {
 	req_t*	req;
+	char	mbuf[2048];
+	int		rc = 0;
 
+	*mbuf = 0;
 	while( 1 ) {
 		if( (req = vfd_read_request( parms )) != NULL ) {
 			bleat_printf( 1, "got request\n" );
 			bleat_printf( 2, "chatty to test temp log bump up" );
 
-			vfd_response( req->resp_fifo, 1, "dummy request handler: got your request and promptly ignored it." );
+			switch( req->rtype ) {
+				case RT_PING:
+					snprintf( mbuf, sizeof( mbuf ), "pong: %s", version );
+					vfd_response( req->resp_fifo, 0, mbuf );
+
+				case RT_ADD:
+					vfd_response( req->resp_fifo, 0, "dummy request handler: got your ADD request and promptly ignored it." );
+					break;
+
+				case RT_DEL:
+					vfd_response( req->resp_fifo, 0, "dummy request handler: got your DELETE request and promptly ignored it." );
+					break;
+
+				case RT_SHOW:
+					vfd_response( req->resp_fifo, 0, "dummy request handler: got your SHOW request and promptly ignored it." );
+					break;
+
+				case RT_VERBOSE:
+bleat_printf( 0, ">>>> setting log level" );
+					if( req->log_level >= 0 ) {
+						bleat_set_lvl( req->log_level );
+						bleat_push_lvl( req->log_level );			// save it so when we pop later it doesn't revert
+
+						bleat_printf( 0, "verbose level changed to %d", req->log_level );
+						snprintf( mbuf, sizeof( mbuf ), "verbose level changed to: %d", req->log_level );
+					} else {
+						rc = 1;
+						snprintf( mbuf, sizeof( mbuf ), "loglevel out of range: %d", req->log_level );
+					}
+
+					vfd_response( req->resp_fifo, rc, mbuf );
+					break;
+					
+
+				default:
+					vfd_response( req->resp_fifo, 1, "dummy request handler: urrecognised request." );
+					break;
+			}
+
 			
-			bleat_printf( 2, "chatty shouldn't show as tmp log bump pops in response gen" );
+			bleat_printf( 2, "chatty shouldn't show as tmp log bump pops in response gen (unless verbose increased to >= 2" );
 			vfd_free_request( req );
 		}
 		
