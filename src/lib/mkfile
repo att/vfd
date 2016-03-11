@@ -5,7 +5,7 @@ jsmn_lib = -L jsmn -ljsmn
 cc = gcc
 cflags = -I jsmn -g
 
-binaries = jwrapper_test
+binaries = jwrapper_test parm_file_test list_test fifo_test bleat_test
 
 %.o: %.c
 	$cc $cflags -c $prereq

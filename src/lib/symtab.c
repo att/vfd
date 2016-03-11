@@ -52,7 +52,7 @@ typedef struct Sym_ele
 {
 	struct Sym_ele *next;          /* pointer at next element in list */
 	struct Sym_ele *prev;          /* larger table, easier deletes */
-	char *name;			           /* symbol name */
+	const char *name;			           /* symbol name */
 	void *val;                     /* user data associated with name */
 	unsigned long mcount;          /* modificaitons to value */
 	unsigned long rcount;          /* references to symbol */
@@ -68,9 +68,9 @@ typedef struct Sym_tab {
 } Sym_tab;
 
 /* ----- private functions ---- */
-static int sym_hash( char *n, long size )
+static int sym_hash( const char *n, long size )
 {
-	char *p;
+	const char *p;
 	unsigned long t = 0;
 	unsigned long tt = 0;
 	unsigned long x = 79;
@@ -104,7 +104,7 @@ static void del_ele( Sym_tab *table, int hv, Sym_ele *eptr )
 		if( eptr->val && eptr->flags & UT_FL_FREE )
 			free( eptr->val );
 		if( eptr->name )
-			free( eptr->name );
+			free( (void *) eptr->name );			// and if free fails, what?  panic? 
 		free( eptr );
 
 		table->deaths++;
@@ -112,7 +112,7 @@ static void del_ele( Sym_tab *table, int hv, Sym_ele *eptr )
 	}
 }
 
-static int same( unsigned int c1, unsigned int c2, char *s1, char* s2 )
+static int same( unsigned int c1, unsigned int c2, const char *s1, const char* s2 )
 {
 	if( c1 != c2 )
 		return 0;		/* different class - not the same */
@@ -124,7 +124,7 @@ static int same( unsigned int c1, unsigned int c2, char *s1, char* s2 )
 
 /* generic rtn to put something into the table */
 /* called by sym_map or sym_put, but not by the user! */
-static int putin( Sym_tab *table, char *name, unsigned int class, void *val, int flags )
+static int putin( Sym_tab *table, const char *name, unsigned int class, void *val, int flags )
 {
 	Sym_ele *eptr;    	/* pointer into hash table */ 
 	Sym_ele **sym_tab;    	/* pointer into hash table */ 
@@ -266,7 +266,7 @@ void *sym_alloc( int size )
 }
 
 /* delete a named element */
-void sym_del( void *vtable, char *name, unsigned int class )
+void sym_del( void *vtable, const char *name, unsigned int class )
 {
 	Sym_tab	*table;
 	Sym_ele **sym_tab;
@@ -284,7 +284,7 @@ void sym_del( void *vtable, char *name, unsigned int class )
 }
 
 
-void *sym_get( void *vtable, char *name, unsigned int class )
+void *sym_get( void *vtable, const char *name, unsigned int class )
 {
 	Sym_tab	*table;
 	Sym_ele **sym_tab;
@@ -320,7 +320,7 @@ call, or delete the entry!
 /* put an element, replace if there */
 /* creates local copy of data (assumes string) */
 /* returns 1 if new, 0 if existed */
-int sym_put( void *vtable, char *name, unsigned int class, void *val )
+int sym_put( void *vtable, const char *name, unsigned int class, void *val )
 {
 	Sym_tab	*table;
 
@@ -331,7 +331,7 @@ int sym_put( void *vtable, char *name, unsigned int class, void *val )
 /* add/replace an element, map directly to user data, dont copy */
 /* the data like sym_put does */
 /* returns 1 if new, 0 if existed */
-int sym_map( void *vtable, char *name, unsigned int class, void *val )
+int sym_map( void *vtable, const char *name, unsigned int class, void *val )
 {
 	Sym_tab	*table;
 
@@ -342,7 +342,7 @@ int sym_map( void *vtable, char *name, unsigned int class, void *val )
 /* add/replace an element, map directly to user data, dont copy */
 /* the data like sym_put does, but sets the free on delete flag. */
 /* returns 1 if new, 0 if existed */
-int sym_fmap( void *vtable, char *name, unsigned int class, void *val )
+int sym_fmap( void *vtable, const char *name, unsigned int class, void *val )
 {
 	Sym_tab	*table;
 
@@ -410,7 +410,7 @@ void sym_stats( void *vtable, int level )
 			table->size, table->inhabitants, table->size - empty, table->deaths, max_chain, twoper );
 }
 
-void sym_foreach_class( void *vst, unsigned int class, void (* user_fun)( void*, void*, char*, void*, void* ), void *user_data )
+void sym_foreach_class( void *vst, unsigned int class, void (* user_fun)( void*, void*, const char*, void*, void* ), void *user_data )
 {
 	Sym_tab	*st;
 	Sym_ele **list;
