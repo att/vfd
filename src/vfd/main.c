@@ -1,17 +1,347 @@
+// vi: sw=4 ts=4:
 /*
-**
-** az
-**
+	Mnemonic:	vfd -- VF daemon
+	Abstract: 	Daemon which manages the configuration and management of VF interfaces
+				on one or more NICs.
+				Original name was sriov daemon, so some references to that (sriov.h) remain.
+
+	Date:		February 2016
+	Authors:	Alex Zelezniak (original code)
+				E. Scott Daniels (extensions)
 */
 
 
+#include <strings.h>
 #include "sriov.h"
+#include "vfdlib.h"
 
 #define DEBUG
 
 struct rte_port *ports;
 
  
+// -------------------------------------------------------------------------------------------------------------
+
+#define RT_NOP	0				// request types
+#define RT_ADD	1
+#define RT_DEL	2
+#define RT_SHOW 3
+#define RT_PING 4
+#define RT_VERBOSE 5
+
+typedef struct request {
+	int		rtype;				// type: RT_ const 
+	char*	resource;			// parm file name, show target, etc.
+	char*	resp_fifo;			// name of the return pipe
+	int		log_level;			// for verbose
+} req_t;
+
+// ---------------------globals: bad form, but unavoidable -------------------------------------------------------
+const char* version = "v1.0/63116";
+
+/*
+	Test function to vet vfd_init_eal()
+*/
+static int dummy_rte_eal_init( int argc, char** argv ) {
+	int i;
+
+	fprintf( stderr, "dummy: %d parms\n", argc );
+	for( i = 0; i < argc; i++ ) {
+		fprintf( stderr, "[%d] = (%s)\n", i, argv[i] );
+	}
+
+	if( argv[argc] != NULL ) {
+		fprintf( stderr, "ERROR:  the last element of argc wasn't nil\n" );
+	}
+
+	return 0;
+}
+    
+/*
+	Initialise the EAL.  We must dummy up what looks like a command line and pass it to the dpdk funciton.
+	This builds the base command, and then adds a -w option for each pciid/vf combination that we know 
+	about.
+
+	We strdup all of the arument strings that are eventually passed to dpdk as the man page indicates that
+	they might be altered, and that we should not fiddle with them after calling the init function. We give
+	them their own copy, and suffer a small leak.
+	
+	This function causes a process abort if any of the following are true:
+		- unable to alloc memory
+		- no vciids were listed in the config file
+		- dpdk eal initialisation fails
+*/
+static int vfd_eal_init( parms_t* parms ) {
+	int		argc;					// argc/v parms we dummy up
+	char** argv;
+	int		argc_idx = 12;			// insertion index into argc (initial value depends on static parms below)
+	int		i;
+	char	wbuf[128];				// scratch buffer
+
+	if( parms->npciids <= 0 ) {
+		bleat_printf( 0, "abort: no pciids were defined in the configuration file" );
+		exit( 1 );
+	}
+
+	argc = argc_idx + (parms->npciids * 2);											// 2 slots for each pcciid;  number to alloc is one larger to allow for ending nil
+	if( (argv = (char **) malloc( (argc + 1) * sizeof( char* ) )) == NULL ) {		// n static parms + 2 slots for each pciid + null
+		bleat_printf( 0, "abort: unable to alloc memory for eal initialisation" );
+		exit( 1 );
+	}
+	memset( argv, 0, sizeof( char* ) * (argc + 1) );
+
+	argv[0] = strdup(  "vfd" );						// dummy up a command line to pass to rte_eal_init() -- it expects that we got these on our command line (what a hack)
+
+	if( *parms->cpu_mask != '#' ) {
+		snprintf( wbuf, sizeof( wbuf ), "#%02x", atoi( parms->cpu_mask ) );				// assume integer as a string given; cvt to hex
+		free( parms->cpu_mask );
+		parms->cpu_mask = strdup( wbuf );
+	}
+	
+	argv[1] = strdup( "-c" );
+	argv[2] = strdup( parms->cpu_mask );
+
+	argv[3] = strdup( "-n" );
+	argv[4] = strdup( "4" );
+		
+	argv[5] = strdup( "–m" );
+	argv[6] = strdup( "50" );
+	
+	argv[7] = strdup( "--file-prefix" );
+	argv[8] = strdup( "vfd" ); 				//sprintf(argv[8], "%s", "sriovctl" );
+	
+	argv[9] = strdup( "--log-level" );
+	snprintf( wbuf, sizeof( wbuf ), "%d", parms->dpdk_log_level );
+	argv[10] = strdup( wbuf );
+	
+	argv[11] = strdup( "--no-huge" );
+  
+  
+	for( i = 0; i < parms->npciids && argc_idx < argc; i++ ) {			// add in the -w pciid values to the list
+		argv[argc_idx++] = strdup( "-w" );
+		argv[argc_idx++] = strdup( parms->pciids[i] );
+		bleat_printf( 1, "add pciid to configuration list: %s", parms->pciids[i] );
+	}
+
+	//return rte_eal_init( argc, argv ); 			// http://dpdk.org/doc/api/rte__eal_8h.html
+	return dummy_rte_eal_init( argc, argv );
+}
+
+/*
+	Create our fifo and tuck the handle into the parm struct. Returns 0 on 
+	success and <0 on failure. 
+*/
+static int vfd_init_fifo( parms_t* parms ) {
+	if( !parms ) {
+		return 1;
+	}
+
+	parms->rfifo = rfifo_create( parms->fifo_path );
+	if( parms->rfifo == NULL ) {
+		bleat_printf( 0, "error: unable to create request fifo (%s): %s", parms->fifo_path, strerror( errno ) );
+		return -1;
+	} else {
+		bleat_printf( 0, "listening for requests via pipe: %s", parms->fifo_path );
+	}
+
+	return 0;
+}
+
+/*
+	Construct json to write onto the response pipe. 
+*/
+static void vfd_response( char* rpipe, int state, const char* msg ) {
+	int 	fd;
+	char	buf[1024];
+	unsigned int		len = 0;
+
+	if( rpipe == NULL ) {
+		return;
+	}
+
+	bleat_printf( 1, "sending response: %s [%d] %s", rpipe, state, msg );
+	if( (fd = open( rpipe, O_WRONLY, 0 )) < 0 ) {
+	 	bleat_printf( 0, "unable to deliver response: open failed: %s: %s", rpipe, strerror( errno ) );
+		return;
+	}
+
+	snprintf( buf, sizeof( buf ), "{ \"state\": \"%s\", \"msg\": \"%s\" }\n", state ? "ERROR" : "OK", msg == NULL ? "" : msg );
+	bleat_printf( 2, "response fd: %d", fd );
+	bleat_printf( 2, "response json: %s", buf );
+	if( (len = write( fd, buf, strlen( buf ) )) != strlen( buf ) ) {
+		bleat_printf( 0, "enum=%s", strerror( errno ) );
+		bleat_printf( 0, "warn: write of response to pipe failed: %s: state=%d msg=%s", rpipe, state, msg ? msg : "" );
+	}
+
+	bleat_pop_lvl();			// we assume it was pushed when the request received; we pop it once we respond
+	close( fd );
+}
+
+/*
+	Cleanup a request.
+*/
+static void vfd_free_request( req_t* req ) {
+	if( req->resource != NULL ) {
+		free( req->resource );
+	}
+	if( req->resp_fifo != NULL ) {
+		free( req->resp_fifo );
+	}
+
+	free( req );
+}
+
+/*
+	Read a request from the fifo, and format it into a request block
+*/
+static req_t* vfd_read_request( parms_t* parms ) {
+	void*	jblob;				// json parsing stuff
+	char*	rbuf;				// raw request buffer from the pipe
+	char*	stuff;				// stuff teased out of the json blob
+	req_t*	req = NULL;
+	int		lvl;				// log level supplied
+
+	rbuf = rfifo_read( parms->rfifo );
+	if( ! *rbuf ) {				// empty, nothing to do 
+		free( rbuf );
+		return NULL;
+	}
+
+	if( (jblob = jw_new( rbuf )) == NULL ) {
+		bleat_printf( 0, "error: failed to create a json paring object for: %s\n", rbuf );
+		free( rbuf );
+		return NULL;
+	}
+
+	if( (stuff = jw_string( jblob, "action" )) == NULL ) {
+		bleat_printf( 0, "error: request received without action: %s", rbuf );
+		free( rbuf );
+		jw_nuke( jblob );
+		return NULL;
+	}
+
+	
+	if( (req = (req_t *) malloc( sizeof( *req ) )) == NULL ) {
+		bleat_printf( 0, "error: memory allocation error tying to alloc request for: %s", rbuf );
+		free( rbuf );
+		jw_nuke( jblob );
+		return NULL;
+	}
+	memset( req, 0, sizeof( *req ) );
+
+	switch( *stuff ) {
+		case 'a':
+		case 'A':					// assume add until something else starts with a
+			req->rtype = RT_ADD;
+			break;
+
+		case 'd':
+		case 'D':					// assume delete until something else with d comes along
+			req->rtype = RT_DEL;
+			break;
+
+		case 'p':					// ping
+			req->rtype = RT_PING;
+			break;
+
+		case 's':
+		case 'S':					// assume show
+			req->rtype = RT_SHOW;
+			break;
+
+		case 'v':
+			req->rtype = RT_VERBOSE;
+			break;	
+
+		default:
+			bleat_printf( 0, "error: unrecognised action in request: %s", rbuf );
+			jw_nuke( jblob );
+			return NULL;
+			break;
+	}
+
+	if( (stuff = jw_string( jblob, "params.filename")) != NULL ) {
+		req->resource = strdup( stuff );
+	} else {
+		if( (stuff = jw_string( jblob, "params.resource")) != NULL ) {
+			req->resource = strdup( stuff );
+		}
+	}
+	if( (stuff = jw_string( jblob, "params.r_fifo")) != NULL ) {
+		req->resp_fifo = strdup( stuff );
+	}
+	
+	req->log_level = lvl = jw_missing( jblob, "params.loglevel" ) ? 0 : (int) jw_value( jblob, "params.loglevel" );
+	bleat_push_glvl( lvl );					// push the level if greater, else push current so pop won't fail
+
+	free( rbuf );
+	jw_nuke( jblob );
+	return req;
+}
+
+/*
+	Testing loop for now. This is a black hole -- we never come out.
+*/
+static void vfd_dummy_loop( parms_t *parms ) {
+	req_t*	req;
+	char	mbuf[2048];
+	int		rc = 0;
+
+	*mbuf = 0;
+	while( 1 ) {
+		if( (req = vfd_read_request( parms )) != NULL ) {
+			bleat_printf( 1, "got request\n" );
+			bleat_printf( 2, "chatty to test temp log bump up" );
+
+			switch( req->rtype ) {
+				case RT_PING:
+					snprintf( mbuf, sizeof( mbuf ), "pong: %s", version );
+					vfd_response( req->resp_fifo, 0, mbuf );
+					break;
+
+				case RT_ADD:
+					vfd_response( req->resp_fifo, 0, "dummy request handler: got your ADD request and promptly ignored it." );
+					break;
+
+				case RT_DEL:
+					vfd_response( req->resp_fifo, 0, "dummy request handler: got your DELETE request and promptly ignored it." );
+					break;
+
+				case RT_SHOW:
+					vfd_response( req->resp_fifo, 0, "dummy request handler: got your SHOW request and promptly ignored it." );
+					break;
+
+				case RT_VERBOSE:
+					if( req->log_level >= 0 ) {
+						bleat_set_lvl( req->log_level );
+						bleat_push_lvl( req->log_level );			// save it so when we pop later it doesn't revert
+
+						bleat_printf( 0, "verbose level changed to %d", req->log_level );
+						snprintf( mbuf, sizeof( mbuf ), "verbose level changed to: %d", req->log_level );
+					} else {
+						rc = 1;
+						snprintf( mbuf, sizeof( mbuf ), "loglevel out of range: %d", req->log_level );
+					}
+
+					vfd_response( req->resp_fifo, rc, mbuf );
+					break;
+					
+
+				default:
+					vfd_response( req->resp_fifo, 1, "dummy request handler: urrecognised request." );
+					break;
+			}
+
+			
+			bleat_printf( 2, "chatty shouldn't show as tmp log bump pops in response gen (unless verbose increased to >= 2" );
+			vfd_free_request( req );
+		}
+		
+		sleep( 1 );
+	}
+}
+
+// -------------------------------------------------------------------------------------------------------------
 
 static inline uint64_t RDTSC(void)
 {
@@ -63,7 +393,7 @@ sig_usr(int sig)
     return; 
   else called = 1;
   
-  traceLog(TRACE_NORMAL, "Restarting sriovctl");
+  traceLog(TRACE_NORMAL, "Restarting vfd");
 }
 
 
@@ -609,15 +939,20 @@ allow_ucast: %d\nallow_mcast: %d\nallow_untagged: %d\nrate: %f\nlink: %d\num_vla
 int 
 main(int argc, char **argv)
 {
+	char*	parm_file = NULL;							// default in /etc, -p overrieds
+	parms_t*	parms = NULL;							// info read from the parm file
+	char	log_file[1024];				// buffer to build full log file in
+	
   int  opt;
-  opterr = 0;
+  //int	opterr = 0;
 
+  //"  sriovctl [options] -f <file_name>\n"
   const char * main_help =
-	"sriovctl\n"
+	"vfd\n"
 	"Usage:\n"
-  "  sriovctl [options] -f <file_name>\n"
 	"  Options:\n"
   "\t -c <mask> Processor affinity mask\n"
+  "\t -p <file> parmm file (/etc/vfd/vfd.cfg)\n"
   "\t -v <num>  Verbose (if num > 3 foreground) num - verbose level\n"
   "\t -s <num>  syslog facility 0-11 (log_kern - log_ftp) 16-23 (local0-local7) see /usr/include/sys/syslog.h\n"
 	"\t -h|?  Display this help screen\n";
@@ -637,18 +972,20 @@ main(int argc, char **argv)
 //	for( i = 0; i < argc; i++)
 //		printf("ARGV[%d] = %s\n", i, argv[i]);
 
-
+	parm_file = strdup( "/etc/vfd/vfd.cfg" );				// set default before command line parsing as -p overrides 
   fname = NULL;
   
   // Parse command line options
-  while ( (opt = getopt(argc, argv, "hv:c:s:f:")) != -1)
+  while ( (opt = getopt(argc, argv, "hv:p:s:")) != -1)			// f,c  dropped
   {
     switch (opt)
     {
 
+	/*		now from the parm file
     case 'c':
       cpu_mask = atoi(optarg);
       break;
+	*/
       
     case 'v':
       traceLevel = atoi(optarg);
@@ -659,9 +996,15 @@ main(int argc, char **argv)
       }
      break;  
       
+	/* -- we read from the config directory now, not a single file
     case 'f':
       fname = strdup(optarg);
       break; 
+	*/
+
+	case 'p':
+		parm_file = strdup( optarg );
+		break;
 
     case 's':
       logFacility = (atoi(optarg) << 3);
@@ -674,20 +1017,56 @@ main(int argc, char **argv)
       printf("%s\n", main_help);
       exit(EXIT_FAILURE);
       break;
+
+	default:
+		fprintf( stderr, "unknown commandline flag: %c\n", opt );
+		fprintf( stderr, "%s\n", main_help );
+		exit( 1 );
     }
   }
 
 
-  if(fname == NULL) {
-    printf("%s\n", main_help);
-    exit(EXIT_FAILURE);
-  }
+	/* --- we read from config directory now
+	if(fname == NULL) {
+		printf("%s\n", main_help);
+		exit(EXIT_FAILURE);
+	}
+	*/
   
+	if( (parms = read_parms( parm_file )) == NULL ) { 						// get overall configuration 
+		fprintf( stderr, "unable to read configuration from %s: %s\n", parm_file, strerror( errno ) );
+		exit( 1 );
+	} 
   
+	snprintf( log_file, sizeof( log_file ), "%s/vfd.log", parms->log_dir );
+	//bleat_set_log( log_file, BLEAT_ADD_DATE );									// open bleat log with date suffix
+	bleat_set_lvl( parms->log_level );											// set default level
+	bleat_printf( 0, "VFD initialising" );
+	bleat_printf( 0, "config dir set to: %s", parms->config_dir );
+
+	if( vfd_init_fifo( parms ) < 0 ) {
+		bleat_printf( 0, "abort: unable to initialise request fifo" );
+		exit( 1 );
+	}
+
+	if( vfd_eal_init( parms ) < 0 ) {												// dpdk function returns -1 on error
+		bleat_printf( 0, "abort: unable to initialise dpdk eal environment" );
+		exit( 1 );
+	}
+
+	vfd_dummy_loop( parms );
+bleat_printf( 0, "testing exit being taken" );
+exit( 0 ); // TESTING ---- 
+
+
+
+
+	/*
   int res = readConfigFile(fname);
   
   if (res < 0)
     rte_exit(EXIT_FAILURE, "Can not parse config file %s\n", fname);
+	*/
 
     
   argc -= optind;
@@ -711,22 +1090,29 @@ main(int argc, char **argv)
     cli_argv[i] = (char*)malloc(20 * sizeof(char));
   }
 
-  sprintf(cli_argv[0], "sriovctl");
-  
+  //sprintf(cli_argv[0], "sriovctl");
+  sprintf(cli_argv[0], "vfd");						// dummy up a command line to pass to rte_eal_init() -- it expects that we got these on our command line (what a hack)
+
   sprintf(cli_argv[1], "-c");
   sprintf(cli_argv[2], "%#02x", cpu_mask);
+
   sprintf(cli_argv[3], "-n");
   sprintf(cli_argv[4], "4");
+
   sprintf(cli_argv[5], "–m");
   sprintf(cli_argv[6], "50");
+
   sprintf(cli_argv[7], "--file-prefix");
-  sprintf(cli_argv[8], "%s", "sriovctl");
+  //sprintf(cli_argv[8], "%s", "sriovctl");
+  sprintf(cli_argv[8], "%s", "vfd");
+
   sprintf(cli_argv[9], "--log-level");
   sprintf(cli_argv[10], "%d", 8);
+
   sprintf(cli_argv[11], "%s", "--no-huge");
   
   
-  int y = 0;
+  int y = 0;										// to that add n -w <pciid> options (these need to be defined in the parm file)
   for(i = argc; i < argc_port; i+=2) {
     sprintf(cli_argv[i], "-w");
     sprintf(cli_argv[i + 1], "%s", sriov_config.ports[y].pciid);
@@ -736,15 +1122,18 @@ main(int argc, char **argv)
   }
   
   
-	if(!debug) daemonize();
+	//TESTING -- dont detach if(!debug) daemonize();
     
 			
+	// http://dpdk.org/doc/api/rte__eal_8h.html
 	// init EAL 
 	int ret = rte_eal_init(argc_port, cli_argv);
 
 		
-	if (ret < 0)
+	if (ret < 0) {
+		bleat_printf( 0, "abort: unable to initalise EAL" );			// is there an error we can log?
 		rte_exit(EXIT_FAILURE, "Error with EAL initialization\n");
+	}
 	
 	rte_set_log_type(RTE_LOGTYPE_PMD && RTE_LOGTYPE_PORT, 0);
 	

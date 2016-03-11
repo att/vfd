@@ -4,6 +4,8 @@
 	Abstract:	Functions to read and parse the various config files.
 	Author:		E. Scott Daniels
 	Date:		26 Feb 2016
+
+	Mods:		10 Mar 2016 : Added support for additional parm file values.
 */
 
 #include <fcntl.h>
@@ -15,7 +17,6 @@
 #include <errno.h>
 #include <string.h>
 
-#include "jwrapper.h"
 #include "vfdlib.h"
 
 // -------------------------------------------------------------------------------------
@@ -95,6 +96,7 @@ extern parms_t* read_parms( char* fname ) {
 	char*		buf;			// buffer read from file (nil terminated)
 	char*		stuff;
 	int			val;
+	int			i;
 
 	if( (buf = file_into_buf( fname )) == NULL ) {
 		return NULL;
@@ -112,8 +114,9 @@ extern parms_t* read_parms( char* fname ) {
 		}
 		memset( parms, 0, sizeof( *parms ) );					// probably not needed, but we don't do this frequently enough to worry
 
-		parms->log_level = (int) jw_value( jblob, "log_level" );
-		parms->log_keep = jw_missing( jblob, "log_keep" ) ? 30 : (int) jw_value( jblob, "allow_bcast" );
+		parms->dpdk_log_level = jw_missing( jblob, "dpdk_log_level" ) ? 0 : (int) jw_value( jblob, "dpdk_log_level" );
+		parms->log_level = jw_missing( jblob, "log_level" ) ? 0 : (int) jw_value( jblob, "log_level" );
+		parms->log_keep = jw_missing( jblob, "log_keep" ) ? 30 : (int) jw_value( jblob, "log_keep" );
 
 		if(  (stuff = jw_string( jblob, "config_dir" )) ) {
 			parms->config_dir = strdup( stuff );
@@ -130,7 +133,22 @@ extern parms_t* read_parms( char* fname ) {
 		if(  (stuff = jw_string( jblob, "log_dir" )) ) {
 			parms->log_dir = strdup( stuff );
 		} else {
-			parms->log_dir = strdup( "/var/log/vfd/" );
+			parms->log_dir = strdup( "/var/log/vfd" );
+		}
+
+		if( (stuff = jw_string( jblob, "cpu_mask" )) ) {
+			parms->cpu_mask = strdup( stuff );
+		}
+
+		if( (parms->npciids = jw_array_len( jblob, "pciids" )) > 0 ) {			// pick up the list of pciids
+			parms->pciids = malloc( sizeof( *parms->pciids ) * parms->npciids );
+			if( parms->pciids != NULL ) {
+				for( i = 0; i < parms->npciids; i++ ) {
+					parms->pciids[i] = (char *) jw_string_ele( jblob, "pciids", i );
+				}
+			} else {
+				parms->npciids = 0;			// memory failure; return zip
+			}
 		}
 	}
 

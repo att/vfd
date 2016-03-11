@@ -24,6 +24,14 @@ json='{
     }
 }'
 
+
+#	"comment": "array with objects", 
+#	"ob_array": [ 
+#			{ "a": 1, "x": 2, "y": 3 },
+#			{ "x": 3, "y": 4, "z": 5 },
+#			{ "x": 4, "y": 5, "k": 6, "j": 7 },
+#			{ "x": 5, "y": 6 } ]
+#
 jwrapper_test "$json" "patient_info.dob" "patient_info.drug_alergies" 1
 jwrapper_test "$json" "last_visit"
 jwrapper_test "$json" "patient_info.weight_kilo"

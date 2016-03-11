@@ -40,7 +40,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "jwrapper.h"
+#include "vfdlib.h"
 
 
 int main( int argc, char **argv ) {

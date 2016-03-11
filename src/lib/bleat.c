@@ -79,6 +79,17 @@ extern void bleat_push_lvl( int l ) {
 	}
 }
 
+
+/*
+	Pushes the current level, or l; which ever is greater. 
+*/
+extern void bleat_push_glvl( int l ) {
+	old_level = cur_level;
+	if( l > cur_level ) {
+		cur_level = l;
+	}
+}
+
 /*
 	Pop the old level; leaves old level set, so multiple pops
 	result in the same value until another push is called.
@@ -142,7 +153,7 @@ extern int bleat_set_log( char* fname, int ad_flag ) {
 
 	(Shamelessly stolen from Ningaui, and then modified.)
 */
-void bleat_printf( int vlevel, char *fmt, ... )
+void bleat_printf( int vlevel, const char *fmt, ... )
 {
 	va_list	argp;			/* pointer at variable arguments */
 	char	obuf[8192];		/* final msg buf - allow ng_buffer to caller, 1k for header*/

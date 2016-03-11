@@ -23,8 +23,9 @@ $lib:   ${lib_src:%=$lib(%.o)}
     ranlib $lib ||true
     )'
 
-jwrapper.h:	jwrapper.c
-	grep "^extern.*{$" jwrapper.c | sed 's/ {$/;/' >jwrapper.h
+# deprecated; now in main .h
+#jwrapper.h:	jwrapper.c
+#	grep "^extern.*{$" jwrapper.c | sed 's/ {$/;/' >jwrapper.h
 
 # --------- tests ----------------------------------------------------
 jwrapper_test:: jwrapper_test.c jwrapper.h jwrapper.o symtab.o

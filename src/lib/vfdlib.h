@@ -10,11 +10,21 @@
         Parameter file contents parsed from json
 */
 typedef struct {
-	char*	log_dir;                                // directory where log files should be written
-	int		log_level;                              // current log level
-	char*	fifo_path;                              // path to fifo that cli will write to
-	int		log_keep;                               // number of days of logs to keep (do we need this?)
-	char*	config_dir;                             // directory where nova writes pf config files
+	char*	log_dir;        // directory where log files should be written
+	int		log_level;      // verbose (bleat) log level
+	int		dpdk_log_level;	// log level passed to dpdk; allow it to be different than verbose level
+	char*	fifo_path;      // path to fifo that cli will write to
+	int		log_keep;       // number of days of logs to keep (do we need this?)
+	char*	config_dir;     // directory where nova writes pf config files
+
+							// these things have no defaults
+	int		npciids;		// number of pciids specified for us to configure
+	char**	pciids;			// array of pciids that we are to configure (no default)
+	char*	cpu_mask;		// should be something like #ab, but could be decimal.  string so it can have lead#
+
+
+							// these are NOT populated from the file, but are added so the struct can be the one stop shopping place for info
+	void*	rfifo;			// the read fifo 'handle' where we 'listen' for requests
 } parms_t;
 
 /*
@@ -37,8 +47,8 @@ typedef struct {
 	int		nmacs;			// number of mac addresses
 	// ignoring mirrors right now
 	/*
-    "mirror":           [ { "vlan": 100; "vf": 3 },
-                          { "vlan": 430; "vf": 6 } ]
+    "mirror":           [ { "vlan": 100; "vfid": 3 },
+                          { "vlan": 430; "vfid": 6 } ]
 	*/
 } vf_config_t;
 
@@ -70,10 +80,24 @@ extern char** list_files( char* dname, char* suffix, int qualify, int* len );
 extern void free_list( char** list, int size );
 
 // --------------- bleat ----------------------------------------------------------------------------------
+#define BLEAT_ADD_DATE	1
+#define BLEAT_NO_DATE	0
+
 extern int bleat_set_lvl( int l );
 extern void bleat_push_lvl( int l );
-extern void bleat_pop_lvl( );
+extern void bleat_push_glvl( int l );
+extern void bleat_pop_lvl( void );
 extern int bleat_will_it( int l );
 extern int bleat_set_log( char* fname, int add_date );
-extern void bleat_printf( int level, char* fmt, ... );
+extern void bleat_printf( int level, const char* fmt, ... );
 
+//---------------- jwrapper -------------------------------------------------------------------------------
+extern void jw_nuke( void* st );
+extern void* jw_new( char* json );
+extern int jw_missing( void* st, const char* name );
+extern int jw_exists( void* st, const char* name );
+extern char* jw_string( void* st, const char* name );
+extern float jw_value( void* st, const char* name );
+extern char* jw_string_ele( void* st, const char* name, int idx );
+extern float jw_value_ele( void* st, const char* name, int idx );
+extern int jw_array_len( void* st, const char* name );
