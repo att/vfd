@@ -22,6 +22,18 @@ struct rte_port *ports;
  
 // -------------------------------------------------------------------------------------------------------------
 
+#define RT_NOP	0				// request types
+#define RT_ADD	1
+#define RT_DEL	2
+#define RT_SHOW 3
+#define RT_PING 4
+typedef struct request {
+	int		rtype;				// type: RT_ const 
+	char*	resource;			// parm file name, show target, etc.
+	char*	resp_fifo;			// name of the return pipe
+} req_t;
+
+
 /*
 	Test function to vet vfd_init_eal()
 */
@@ -31,6 +43,10 @@ static int dummy_rte_eal_init( int argc, char** argv ) {
 	fprintf( stderr, "dummy: %d parms\n", argc );
 	for( i = 0; i < argc; i++ ) {
 		fprintf( stderr, "[%d] = (%s)\n", i, argv[i] );
+	}
+
+	if( argv[argc] != NULL ) {
+		fprintf( stderr, "ERROR:  the last element of argc wasn't nil\n" );
 	}
 
 	return 0;
@@ -67,9 +83,8 @@ static int vfd_eal_init( parms_t* parms ) {
 		bleat_printf( 0, "abort: unable to alloc memory for eal initialisation" );
 		exit( 1 );
 	}
-	memset( argv, 0, argc +1 );
+	memset( argv, 0, sizeof( char* ) * (argc + 1) );
 
-	//sprintf(cli_argv[0], "sriovctl");
 	argv[0] = strdup(  "vfd" );						// dummy up a command line to pass to rte_eal_init() -- it expects that we got these on our command line (what a hack)
 
 	if( *parms->cpu_mask != '#' ) {
@@ -103,23 +118,182 @@ static int vfd_eal_init( parms_t* parms ) {
 		bleat_printf( 1, "add pciid to configuration list: %s", parms->pciids[i] );
 	}
 
-/*
-  int y = 0;										// to that add n -w <pciid> options (these need to be defined in the parm file)
-  for(i = argc; i < argc_port; i+=2) {
-    sprintf(cli_argv[i], "-w");
-    sprintf(cli_argv[i + 1], "%s", sriov_config.ports[y].pciid);
-      
-    traceLog(TRACE_INFO, "PCI num: %d, PCIID: %s\n", y, sriov_config.ports[y].pciid);
-    y++;
-  }
-*/
-			
-	// http://dpdk.org/doc/api/rte__eal_8h.html
-	// init EAL 
-	//return rte_eal_init( argc, argv );
+	//return rte_eal_init( argc, argv ); 			// http://dpdk.org/doc/api/rte__eal_8h.html
 	return dummy_rte_eal_init( argc, argv );
 }
 
+/*
+	Create our fifo and tuck the handle into the parm struct. Returns 0 on 
+	success and <0 on failure. 
+*/
+static int vfd_init_fifo( parms_t* parms ) {
+	if( !parms ) {
+		return 1;
+	}
+
+	parms->rfifo = rfifo_create( parms->fifo_path );
+	if( parms->rfifo == NULL ) {
+		bleat_printf( 0, "error: unable to create request fifo (%s): %s", parms->fifo_path, strerror( errno ) );
+		return -1;
+	} else {
+		bleat_printf( 0, "listening for requests via pipe: %s", parms->fifo_path );
+	}
+
+	return 0;
+}
+
+/*
+	Construct json to write onto the response pipe. 
+*/
+static void vfd_response( char* rpipe, int state, const char* msg ) {
+	int 	fd;
+	char	buf[1024];
+	int		len = 0;
+
+	if( rpipe == NULL ) {
+		return;
+	}
+
+return;
+	bleat_printf( 1, "sending response: %s [%d] %s", rpipe, state, msg );
+	if( (fd = open( rpipe, O_WRONLY, 0 )) < 0 ) {
+	 	bleat_printf( 0, "unable to deliver response: open failed: %s: %s", rpipe, strerror( errno ) );
+		return;
+	}
+
+	snprintf( buf, sizeof( buf ), "{ \"state\": \"%s\", \"msg\": \"%s\" }\n", state ? "ERROR" : "OK", msg == NULL ? "" : msg );
+	bleat_printf( 2, "response fd: %d", fd );
+	bleat_printf( 2, "response json: %s", buf );
+	//if( write( fd, buf, strlen( buf ) != strlen( buf ) ) ) {
+/*
+	len = write( fd, buf, strlen( buf ) );
+		bleat_printf( 0, "enum=%s", strerror( errno ) );
+		bleat_printf( 0, "warn: write of response to pipe failed: %s: state=%d msg=%s", rpipe, state, msg ? msg : "" );
+	}
+*/
+	bleat_printf( 0, "write %d bytes\n", len );
+
+	bleat_pop_lvl();			// we assume it was pushed when the request received; we pop it once we respond
+	close( fd );
+}
+
+/*
+	Cleanup a request.
+*/
+static void vfd_free_request( req_t* req ) {
+	if( req->resource != NULL ) {
+		free( req->resource );
+	}
+	if( req->resp_fifo != NULL ) {
+		free( req->resp_fifo );
+	}
+
+	free( req );
+}
+
+/*
+	Read a request from the fifo, and format it into a request block
+*/
+static req_t* vfd_read_request( parms_t* parms ) {
+	void*	jblob;				// json parsing stuff
+	char*	rbuf;				// raw request buffer from the pipe
+	char*	stuff;				// stuff teased out of the json blob
+	req_t*	req = NULL;
+	int		lvl;				// log level supplied
+
+	rbuf = rfifo_read( parms->rfifo );
+	if( ! *rbuf ) {				// empty, nothing to do 
+		free( rbuf );
+		return NULL;
+	}
+
+	if( (jblob = jw_new( rbuf )) == NULL ) {
+		bleat_printf( 0, "error: failed to create a json paring object for: %s\n", rbuf );
+		free( rbuf );
+		return NULL;
+	}
+
+	if( (stuff = jw_string( jblob, "action" )) == NULL ) {
+		bleat_printf( 0, "error: request received without action: %s", rbuf );
+		free( rbuf );
+		jw_nuke( jblob );
+		return NULL;
+	}
+
+	
+	if( (req = (req_t *) malloc( sizeof( *req ) )) == NULL ) {
+		bleat_printf( 0, "error: memory allocation error tying to alloc request for: %s", rbuf );
+		free( rbuf );
+		jw_nuke( jblob );
+		return NULL;
+	}
+
+	switch( *stuff ) {
+		case 'a':
+		case 'A':					// assume add until something else starts with a
+			req->rtype = RT_ADD;
+			break;
+
+		case 'd':
+		case 'D':					// assume delete until something else with d comes along
+			req->rtype = RT_DEL;
+			break;
+
+		case 'p':					// ping
+			req->rtype = RT_PING;
+			break;
+
+		case 's':
+		case 'S':					// assume show
+			req->rtype = RT_SHOW;
+			break;
+
+		default:
+			bleat_printf( 0, "error: unrecognised action in request: %s", rbuf );
+			jw_nuke( jblob );
+			return NULL;
+			break;
+	}
+
+	if( (stuff = jw_string( jblob, "params.filename")) != NULL ) {
+		req->resource = strdup( stuff );
+	} else {
+		if( (stuff = jw_string( jblob, "params.resource")) != NULL ) {
+			req->resource = strdup( stuff );
+		}
+	}
+	if( (stuff = jw_string( jblob, "params.r_fifo")) != NULL ) {
+		req->resp_fifo = strdup( stuff );
+	}
+	
+	lvl = jw_missing( jblob, "params.loglevel" ) ? 0 : (int) jw_value( jblob, "params.loglevel" );
+	bleat_push_glvl( lvl );					// push the level if greater, else push current so pop won't fail
+
+	free( rbuf );
+	jw_nuke( jblob );
+	return req;
+}
+
+/*
+	Testing loop for now. This is a black hole -- we never come out.
+*/
+static void vfd_dummy_loop( parms_t *parms ) {
+	req_t*	req;
+
+	while( 1 ) {
+		if( (req = vfd_read_request( parms )) != NULL ) {
+			bleat_printf( 1, "got request\n" );
+			bleat_printf( 2, "chatty to test temp log bump up" );
+
+			vfd_response( req->resp_fifo, 1, "dummy request handler: got your request and promptly ignored it." );
+			
+			bleat_printf( 2, "chatty shouldn't show as tmp log bump pops in response gen" );
+			vfd_free_request( req );
+		}
+		
+		sleep( 1 );
+	}
+}
 
 // -------------------------------------------------------------------------------------------------------------
 
@@ -819,16 +993,22 @@ main(int argc, char **argv)
 	} 
   
 	snprintf( log_file, sizeof( log_file ), "%s/vfd.log", parms->log_dir );
-	bleat_set_log( log_file, BLEAT_ADD_DATE );									// open bleat log with date suffix
+	//bleat_set_log( log_file, BLEAT_ADD_DATE );									// open bleat log with date suffix
 	bleat_set_lvl( parms->log_level );											// set default level
 	bleat_printf( 0, "VFD initialising" );
 	bleat_printf( 0, "config dir set to: %s", parms->config_dir );
 
-	if( vfd_eal_init( parms ) != 0 ) {
+	if( vfd_init_fifo( parms ) < 0 ) {
+		bleat_printf( 0, "abort: unable to initialise request fifo" );
+		exit( 1 );
+	}
+
+	if( vfd_eal_init( parms ) < 0 ) {												// dpdk function returns -1 on error
 		bleat_printf( 0, "abort: unable to initialise dpdk eal environment" );
 		exit( 1 );
 	}
 
+	vfd_dummy_loop( parms );
 bleat_printf( 0, "testing exit being taken" );
 exit( 0 ); // TESTING ---- 
 
