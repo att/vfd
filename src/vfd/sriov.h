@@ -37,6 +37,7 @@
 // apt-get install libbsd-dev needed
 //#include <sys/queue.h>
 
+#include <rte_alarm.h>
 #include <rte_common.h>
 #include <rte_byteorder.h>
 #include <rte_debug.h>
@@ -73,7 +74,7 @@
 #define BURST_SIZE 32
 #define MAX_VFS    254
 #define MAX_PORTS  16
-
+#define RESTORE_DELAY 2
 
 
 #define RTE_PORT_ALL            (~(portid_t)0x0)
@@ -246,6 +247,12 @@ struct sriov_conf_c
 } sriov_config;
 
 
+struct reset_param_c
+{
+  uint32_t  port;
+  uint32_t  vf;
+};
+
 
 struct sriov_conf_c running_config;
 
@@ -350,6 +357,7 @@ void nic_stats_clear(portid_t port_id);
 //void nic_stats_display(uint8_t port_id);
 void nic_stats_display(uint8_t port_id, char * buff);
 int port_init(uint8_t port, struct rte_mempool *mbuf_pool);
+void restore_vf_setings_cb(__rte_unused void *param);
 
 
 int terminated;
@@ -381,9 +389,6 @@ struct pstat
 };
 
 struct pstat st;
-
-
-uint32_t param;
 
 struct timeval startTime;
 struct timeval endTime;

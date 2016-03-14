@@ -443,11 +443,20 @@ timeDelta(struct timeval * now, struct timeval * before)
 }
 
 
+void 
+restore_vf_setings_cb(void *param){
+	struct reset_param_c *p_reset = (struct reset_param_c *) param;
+
+	traceLog(TRACE_DEBUG, "Restoring Settings, Port: %d, VF: %d", p_reset->port, p_reset->vf);
+	restore_vf_setings(p_reset->port, p_reset->vf);
+
+	free(param);
+}
+
 
 void
 restore_vf_setings(uint8_t port_id, int vf_id)
 {
-  
   dump_sriov_config(running_config);
   int i;
   int on = 1;
@@ -487,22 +496,13 @@ restore_vf_setings(uint8_t port_id, int vf_id)
             traceLog(TRACE_DEBUG, "------------------ ADDIND VLAN: %d, VF: %d --------------------\n", vlan, vf->num );
             set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, on);
           }
-          
-          // set VLAN anti spoofing when VLAN filter is used
-          set_vf_vlan_anti_spoofing(port->rte_port_number, vf->num, vf->vlan_anti_spoof);         
-          set_vf_mac_anti_spoofing(port->rte_port_number, vf->num, vf->mac_anti_spoof);
-
-                 
-          rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag);         
-          rx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->insert_stag);
-                 
-          
-         
+                                   
           traceLog(TRACE_DEBUG, "------------------ DELETING MACs, VF: %d --------------------\n", vf->num);
           
           int m;
           for(m = 0; m < vf->num_macs; ++m) {
-            __attribute__((__unused__)) char *mac = vf->macs[m];
+            char *mac = vf->macs[m];
+						traceLog(TRACE_DEBUG, "------------------ DELETING MAC: %s, VF: %d --------------------\n", mac, vf->num );
             set_vf_rx_mac(port->rte_port_number, mac, vf->num, 0);
           }
 
@@ -510,18 +510,49 @@ restore_vf_setings(uint8_t port_id, int vf_id)
 
           // iterate through all macs
           for(m = 0; m < vf->num_macs; ++m) {
-            __attribute__((__unused__)) char *mac = vf->macs[m];
+            //__attribute__((__unused__)) char *mac = vf->macs[m];
+						char *mac = vf->macs[m];
+						traceLog(TRACE_DEBUG, "------------------ ADDING MAC: %s, VF: %d --------------------\n", mac, vf->num );
             set_vf_rx_mac(port->rte_port_number, mac, vf->num, 1);
           }
+					
+					
+					// set VLAN anti spoofing when VLAN filter is used
+					
+					traceLog(TRACE_DEBUG, "------------------ SETTING VLAN ANTI SPOOFING: %d, VF: %d --------------------\n", vf->vlan_anti_spoof, vf->num);
+          set_vf_vlan_anti_spoofing(port->rte_port_number, vf->num, vf->vlan_anti_spoof);   
+
+					traceLog(TRACE_DEBUG, "------------------ SETTING MAC ANTISPOOFING: %d, VF: %d --------------------\n", vf->mac_anti_spoof, vf->num);					
+          set_vf_mac_anti_spoofing(port->rte_port_number, vf->num, vf->mac_anti_spoof);
+
+          traceLog(TRACE_DEBUG, "------------------ STRIP TAG: %d, VF: %d -------------------\n", vf->strip_stag, vf->num);	    
+          rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag); 
+
+					traceLog(TRACE_DEBUG, "------------------ INSERT TAG: %d, VF: %d --------------------\n", vf->insert_stag, vf->num);					
+          rx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->insert_stag);
+ 
                  
+					traceLog(TRACE_DEBUG, "------------------ SET PROMISCUOUS: %d, VF: %d --------------------\n", port->rte_port_number, vf->num);			 
           set_vf_allow_bcast(port->rte_port_number, vf->num, vf->allow_bcast);
           set_vf_allow_mcast(port->rte_port_number, vf->num, vf->allow_mcast);
-          set_vf_allow_un_ucast(port->rte_port_number, vf->num, vf->allow_un_ucast);            
-        }
+          set_vf_allow_un_ucast(port->rte_port_number, vf->num, vf->allow_un_ucast);         
+      
+					rte_eth_promiscuous_enable(port->rte_port_number);
+					rte_eth_allmulticast_enable(port->rte_port_number);  
+					int ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
+			
+					// don't accept untagged frames
+					uint16_t rx_mode = 0;
+					rx_mode |= ETH_VMDQ_ACCEPT_UNTAG; 
+					ret = rte_eth_dev_set_vf_rxmode(port->rte_port_number, vf->num, rx_mode, !on);
+	
+					if (ret < 0)
+						traceLog(TRACE_DEBUG, "set_vf_allow_untagged(): bad VF receive mode parameter, return code = %d \n", ret);    					
+ 
+			 }
       }
     }      
-  }
-     
+  }   
 }
 
 
@@ -588,6 +619,7 @@ update_ports_config(void)
         
         for(v = 0; v < r_vf->num_vlans; ++v) {
           int vlan = r_vf->vlans[v];
+					traceLog(TRACE_DEBUG, "------------------ DELETING VLAN: %d, VF: %d --------------------\n", vlan, vf->num );
           set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, 0);
         }
       
@@ -597,6 +629,7 @@ update_ports_config(void)
         int v;
         for(v = 0; v < vf->num_vlans; ++v) {
           int vlan = vf->vlans[v];
+					traceLog(TRACE_DEBUG, "------------------ ADDIND VLAN: %d, VF: %d --------------------\n", vlan, vf->num );
           set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, on);
           
           // update running config
@@ -610,7 +643,8 @@ update_ports_config(void)
         
         int m;
         for(m = 0; m < r_vf->num_macs; ++m) {
-          __attribute__((__unused__)) char *mac = vf->macs[m];
+          char *mac = vf->macs[m];
+					traceLog(TRACE_DEBUG, "------------------ DELETING MAC: %s, VF: %d --------------------\n", mac, vf->num );
           set_vf_rx_mac(port->rte_port_number, mac, vf->num, 0);
         }
 
@@ -618,19 +652,27 @@ update_ports_config(void)
 
         // iterate through all macs
         for(m = 0; m < vf->num_macs; ++m) {
-          __attribute__((__unused__)) char *mac = vf->macs[m];
+          char *mac = vf->macs[m];
+					traceLog(TRACE_DEBUG, "------------------ ADDING MAC: %s, VF: %d --------------------\n", mac, vf->num );
           set_vf_rx_mac(port->rte_port_number, mac, vf->num, 1);
+
+					strcpy(r_vf->macs[m], mac);
         }
+				r_vf->num_macs = vf->num_macs;
         
-        
- 
 
         // set VLAN anti spoofing when VLAN filter is used
-        set_vf_vlan_anti_spoofing(port->rte_port_number, vf->num, vf->vlan_anti_spoof);         
+				
+				traceLog(TRACE_DEBUG, "------------------ SETTING VLAN ANTI SPOOFING: %d, VF: %d --------------------\n", vf->vlan_anti_spoof, vf->num);
+        set_vf_vlan_anti_spoofing(port->rte_port_number, vf->num, vf->vlan_anti_spoof);  
+
+				traceLog(TRACE_DEBUG, "------------------ SETTING MAC ANTISPOOFING: %d, VF: %d --------------------\n", vf->mac_anti_spoof, vf->num);					
         set_vf_mac_anti_spoofing(port->rte_port_number, vf->num, vf->mac_anti_spoof);
 
-               
-        rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag);       
+        traceLog(TRACE_DEBUG, "------------------ STRIP TAG: %d, VF: %d -------------------\n", vf->strip_stag, vf->num);	
+        rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag);   
+
+				traceLog(TRACE_DEBUG, "------------------ INSERT TAG: %d, VF: %d --------------------\n", vf->insert_stag, vf->num);				
         rx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->insert_stag);
         
         set_vf_allow_bcast(port->rte_port_number, vf->num, vf->allow_bcast);
@@ -649,16 +691,8 @@ update_ports_config(void)
         r_vf->last_updated = vf->last_updated;
       }
       
+			traceLog(TRACE_DEBUG, "------------------ SET PROMISCUOUS: %d, VF: %d --------------------\n", port->rte_port_number, vf->num);
       uint16_t rx_mode = 0;
-
-/*      
-      if (vf->allow_bcast)
-        rx_mode |= ETH_VMDQ_ACCEPT_BROADCAST;
-      if (vf->allow_un_ucast)
-        rx_mode |= ETH_VMDQ_ACCEPT_HASH_UC;
-      if (vf->allow_mcast)
-        rx_mode |= ETH_VMDQ_ACCEPT_MULTICAST;
-*/      
 
       // figure this out if we have to update it every time we change VLANS/MACS 
       // or once when update ports config
@@ -666,21 +700,8 @@ update_ports_config(void)
       rte_eth_allmulticast_enable(port->rte_port_number);  
       ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
       
-      
-/*
-      rx_mode |= ETH_VMDQ_ACCEPT_BROADCAST;
-      rx_mode |= ETH_VMDQ_ACCEPT_HASH_UC;
-      rx_mode |= ETH_VMDQ_ACCEPT_HASH_MC;
-      rx_mode |= ETH_VMDQ_ACCEPT_MULTICAST;
-      
-      ret = rte_eth_dev_set_vf_rxmode(port->rte_port_number, vf->num, rx_mode,(uint8_t)on);
-	
-      if (ret < 0)
-        traceLog(TRACE_INFO, "rte_eth_dev_set_vf_rxmode(): Bad VF receive mode parameter, return code = %d \n", ret);
-*/      
- 
+
       // don't accept untagged frames
-      rx_mode = 0;
       rx_mode |= ETH_VMDQ_ACCEPT_UNTAG; 
       ret = rte_eth_dev_set_vf_rxmode(port->rte_port_number, vf->num, rx_mode, !on);
 	
@@ -694,6 +715,7 @@ update_ports_config(void)
   
   return 0;
 }
+
 
 
 

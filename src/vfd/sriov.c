@@ -521,19 +521,26 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
   uint32_t *p = (uint32_t*) param;
   uint16_t vf = p[0] & 0xffff;
   uint16_t mbox_type = (p[0] >> 16) & 0xffff;
-  
-  traceLog(TRACE_DEBUG, "Event type: %s\n", type == RTE_ETH_EVENT_VF_MBOX ? "MBOX interrupt" : "unknown event");
+	
+  struct reset_param_c *p_reset = malloc(sizeof(struct reset_param_c));
+	if(p_reset == NULL)
+		rte_exit(EXIT_FAILURE, "vf_msb_event_callback(): Can not allocate memory\n");
  
   /* check & process VF to PF mailbox message */
   switch (mbox_type) {
   case IXGBE_VF_RESET:
-    restore_vf_setings(port_id, vf);
+    p_reset->port = port_id;
+    p_reset->vf = vf;
+		
+		rte_eal_alarm_set(RESTORE_DELAY * US_PER_S, restore_vf_setings_cb, (void *)p_reset);
+		
     *(int*) param = RTE_ETH_MB_EVENT_NOOP_ACK;     /* noop & ack */     
     traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", 
       type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_RESET");
     break;
   case IXGBE_VF_SET_MAC_ADDR:
     *(int*) param = RTE_ETH_MB_EVENT_PROCEED;    /* do what's needed */
+		//*(int*) param = RTE_ETH_MB_EVENT_NOOP_ACK;     /* noop & ack */  
     traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", 
       type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_MAC_ADDR");
 
@@ -550,6 +557,7 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
     break;
   case IXGBE_VF_SET_MULTICAST:
     *(int*) param = RTE_ETH_MB_EVENT_PROCEED;    /* do what's needed */
+		//*(int*) param = RTE_ETH_MB_EVENT_NOOP_ACK;     /* noop & ack */  
     traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", 
       type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_MULTICAST");
       
@@ -566,12 +574,15 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
     break;    
   case IXGBE_VF_SET_VLAN:
     *(int*) param = RTE_ETH_MB_EVENT_NOOP_NACK;     /* noop & nack */
+		/* FIX ME ckeck if VLAN belongs to VF, NOOP_ACK if yes, NACK if not */
+    //*(int*) param = RTE_ETH_MB_EVENT_PROCEED; 
     traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", 
       type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_VLAN");
     traceLog(TRACE_DEBUG, "SETTING VLAN ID = %d\n", p[1]);
     break;  
   case IXGBE_VF_SET_LPE:
     *(int*) param = RTE_ETH_MB_EVENT_PROCEED;    /* do what's needed */
+		/* FIX ME check if requested MTU <= ports MTU then allow */  
     traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", 
     type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_LPE");
     traceLog(TRACE_DEBUG, "SETTING MTU = %d\n", p[1]);
@@ -601,7 +612,6 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
   
   traceLog(TRACE_DEBUG, "--------------------\n Type: %d, Port: %d, VF: %d, OUT: %d, _T: %d\n---------------\n", 
       type, port_id, vf, *(uint32_t*) param, mbox_type);
-  
   /*
   struct rte_eth_dev_info dev_info;
   rte_eth_dev_info_get(port_id, &dev_info);
