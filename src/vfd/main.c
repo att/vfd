@@ -148,7 +148,11 @@ static int vfd_init_fifo( parms_t* parms ) {
 }
 
 /*
-	Construct json to write onto the response pipe. 
+	Construct json to write onto the response pipe.  The response pipe is opened in non-block mode
+	so that it will fail immiediately if there isn't a reader or the pipe doesn't exist. We assume
+	that the requestor opens the pipe before sending the request so that if it is delayed after
+	sending the request it does not prevent us from writing to the pipe.  If we don't open in 	
+	blocked mode we could hang foever if the requestor dies/aborts. 
 */
 static void vfd_response( char* rpipe, int state, const char* msg ) {
 	int 	fd;
@@ -159,11 +163,11 @@ static void vfd_response( char* rpipe, int state, const char* msg ) {
 		return;
 	}
 
-	bleat_printf( 1, "sending response: %s [%d] %s", rpipe, state, msg );
-	if( (fd = open( rpipe, O_WRONLY, 0 )) < 0 ) {
+	if( (fd = open( rpipe, O_WRONLY | O_NONBLOCK, 0 )) < 0 ) {
 	 	bleat_printf( 0, "unable to deliver response: open failed: %s: %s", rpipe, strerror( errno ) );
 		return;
 	}
+	bleat_printf( 1, "sending response: %s [%d] %s", rpipe, state, msg );
 
 	snprintf( buf, sizeof( buf ), "{ \"state\": \"%s\", \"msg\": \"%s\" }\n", state ? "ERROR" : "OK", msg == NULL ? "" : msg );
 	bleat_printf( 2, "response fd: %d", fd );
@@ -173,6 +177,7 @@ static void vfd_response( char* rpipe, int state, const char* msg ) {
 		bleat_printf( 0, "warn: write of response to pipe failed: %s: state=%d msg=%s", rpipe, state, msg ? msg : "" );
 	}
 
+	bleat_printf( 2, "response written to pipe" );
 	bleat_pop_lvl();			// we assume it was pushed when the request received; we pop it once we respond
 	close( fd );
 }
@@ -228,6 +233,8 @@ static req_t* vfd_read_request( parms_t* parms ) {
 		return NULL;
 	}
 	memset( req, 0, sizeof( *req ) );
+
+	bleat_printf( 1, "raw message: (%s)", rbuf );
 
 	switch( *stuff ) {
 		case 'a':
@@ -349,9 +356,6 @@ static inline uint64_t RDTSC(void)
   __asm__ volatile("rdtsc" : "=a" (lo), "=d" (hi));
   return ((uint64_t)hi << 32) | lo;
 }
-
-
-
 
 static void 
 sig_int(int sig)
