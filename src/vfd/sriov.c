@@ -4,6 +4,7 @@
 **
 */
 
+#include "vfdlib.h"
 #include "sriov.h"
 
 
@@ -666,6 +667,8 @@ traceLog(int eventTraceLevel, const char * file, int line, const char * format, 
       snprintf(out_buf, sizeof(out_buf), "%s%s", extra_msg, buf);
 
 
+	bleat_printf( 0, "%s", out_buf );
+	/*
     if(useSyslog){
 	    openlog(prog_name, LOG_PID, logFacility);
       syslog(eventTraceLevel, "%s", out_buf);
@@ -673,10 +676,12 @@ traceLog(int eventTraceLevel, const char * file, int line, const char * format, 
     else {
       printf("%s\n", out_buf);
     }
+	*/
+
+  	va_end(va_ap);
   }
 
-  fflush(stdout);
-  va_end(va_ap);
+  //fflush(stdout);
 }
 
 

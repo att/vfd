@@ -120,7 +120,7 @@ static int vfd_eal_init( parms_t* parms ) {
 	for( i = 0; i < parms->npciids && argc_idx < argc; i++ ) {			// add in the -w pciid values to the list
 		argv[argc_idx++] = strdup( "-w" );
 		argv[argc_idx++] = strdup( parms->pciids[i] );
-		bleat_printf( 1, "add pciid to configuration list: %s", parms->pciids[i] );
+		bleat_printf( 1, "add pciid to dpdk dummy command line -w %s", parms->pciids[i] );
 	}
 
 	//return rte_eal_init( argc, argv ); 			// http://dpdk.org/doc/api/rte__eal_8h.html
@@ -133,7 +133,7 @@ static int vfd_eal_init( parms_t* parms ) {
 */
 static int vfd_init_fifo( parms_t* parms ) {
 	if( !parms ) {
-		return 1;
+		return -1;
 	}
 
 	parms->rfifo = rfifo_create( parms->fifo_path );
@@ -345,6 +345,35 @@ static void vfd_dummy_loop( parms_t *parms ) {
 		}
 		
 		sleep( 1 );
+	}
+}
+
+//  --------------------- global config management ------------------------------------------------------------
+
+/*
+	Pull the list of pciids from the parms and set into the in memory configuration that
+	is maintained. If this is called more than once, it will refuse to do anything.
+*/
+static void vfd_add_ports( parms_t* parms, struct sriov_conf_c* conf ) {
+	static int called = 0;
+	int i;
+	int pidx = 0;			// port idx in conf list
+	struct sriov_port_s* port;
+
+bleat_printf( 1, "setting up incore config" );
+	if( called ) 
+		return;
+	called = 1;
+	
+	for( i = 0; pidx < MAX_PORTS  && i < parms->npciids; i++, pidx++ ) {
+		port = &conf->ports[pidx];
+		snprintf( port->name, sizeof( port->name ), "port-%d",  i);				// TODO--- support getting a name from the config
+		snprintf( port->pciid, sizeof( port->pciid ), "%s", parms->pciids[i] );
+		port->mtu = 9000;														// TODO -- support getting mtu from config
+		port->num_mirros = 0;
+		port->num_vfs = 0;
+		
+		bleat_printf( 1, "add pciid to in memory config: %s", parms->pciids[i] );
 	}
 }
 
@@ -1037,7 +1066,7 @@ main(int argc, char **argv)
 	}
 	*/
   
-	if( (parms = read_parms( parm_file )) == NULL ) { 						// get overall configuration 
+	if( (parms = read_parms( parm_file )) == NULL ) { 						// get overall configuration (includes list of pciids we manage)
 		fprintf( stderr, "unable to read configuration from %s: %s\n", parm_file, strerror( errno ) );
 		exit( 1 );
 	} 
@@ -1047,6 +1076,8 @@ main(int argc, char **argv)
 	bleat_set_lvl( parms->log_level );											// set default level
 	bleat_printf( 0, "VFD initialising" );
 	bleat_printf( 0, "config dir set to: %s", parms->config_dir );
+
+	vfd_add_ports( parms, &running_config );										// add the pciid info from parms to the ports list
 
 	if( vfd_init_fifo( parms ) < 0 ) {
 		bleat_printf( 0, "abort: unable to initialise request fifo" );
