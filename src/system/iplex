@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 # vi: sw=4 ts=4:
-"""		Mnemonic:	iplex.py
-		Abstract:	iplex is a cli to VF Daemon, used by nova (compute) and operators
-					to manually add, delete, list VF's to a port.
-		Date:		3 March 2016
-		Author:		Dhanunjaya Naidu Ravada (dr3662@att.com)
-		Mod:		2016 3 Mar - Created script
+"""             Mnemonic:       iplex.py
+                Abstract:       iplex is a cli to VF Daemon, used by nova (compute) and operators
+                                        to manually add, delete, list VF's to a port.
+                Date:           3 March 2016
+                Author:         Dhanunjaya Naidu Ravada (dr3662@att.com)
+                Mod:            2016 3 Mar - Created script
+								2016 11 Mar - Add ping, verbose functionality
 """
 
 __doc__ = """ iplex
@@ -13,6 +14,8 @@ __doc__ = """ iplex
         Usage:
         iplex (add | delete) <port-id> [--loglevel=<value>] [--debug]
         iplex show (all | <port-id>) [--loglevel=<value>] [--debug]
+        iplex verbose [--loglevel=<value>]
+        iplex ping
         iplex -h | --help
         iplex --version
 
@@ -53,129 +56,147 @@ def setup_logging(args, filename='iplex.log'):
     return log
 
 def read_config():
-	with open(VFD_CONFIG) as data_file:
-		data = json.load(data_file)
-	return data
+        with open(VFD_CONFIG) as data_file:
+                data = json.load(data_file)
+        return data
 
 class Iplex(object):
 
-	PRIVATE_FIFO_PATH = "/tmp/IPLEX_"
+        PRIVATE_FIFO_PATH = "/tmp/IPLEX_"
 
-	def __init__(self, config_data=None, options=None, log=None):
-		self.options = options
-		self.config_data = config_data
-		self.log = log
+        def __init__(self, config_data=None, options=None, log=None):
+                self.options = options
+                self.config_data = config_data
+                self.log = log
 
-	def add(self, port_id):
-		self.filename = self.__validate_file(port_id)
-		self.resp_fifo = self.__create_fifo()
-		msg = self.__request_message('add', self.filename, self.resp_fifo)
-		self.__write_read_fifo(msg)
-		return
+        def add(self, port_id):
+                self.filename = self.__validate_file(port_id)
+                self.resp_fifo = self.__create_fifo()
+                msg = self.__request_message('add', self.filename, self.resp_fifo)
+                self.__write_read_fifo(msg)
+                return
 
-	def delete(self, port_id):
-		self.filename = self.__validate_file(port_id)
-		self.resp_fifo = self.__create_fifo()
-		msg = self.__request_message('delete', self.filename, self.resp_fifo)
-		self.__write_read_fifo(msg)
-		return
+        def delete(self, port_id):
+                self.filename = self.__validate_file(port_id)
+                self.resp_fifo = self.__create_fifo()
+                msg = self.__request_message('delete', self.filename, self.resp_fifo)
+                self.__write_read_fifo(msg)
+                return
 
-	def show(self, port_id=None, all_list=False):
-		if all_list:
-			self.filename = None
-		else:
-			self.filename = self.__validate_file(port_id)
-		self.resp_fifo = self.__create_fifo()
-		msg = self.__request_message('show', self.filename, self.resp_fifo)
-		self.__write_read_fifo(msg)
-		return
+        def show(self, port_id=None, all_list=False):
+                if all_list:
+                        self.filename = None
+                else:
+                        self.filename = self.__validate_file(port_id)
+                self.resp_fifo = self.__create_fifo()
+                msg = self.__request_message('show', self.filename, self.resp_fifo)
+                self.__write_read_fifo(msg)
+                return
 
-	def __validate_file(self, port_id):
-		filename = port_id
-		if os.path.isfile(os.path.join(self.config_data['config_dir'], self.options['<port-id>'])+'.json'):
-			filename = os.path.join(self.config_data['config_dir'], self.options['<port-id>'])+'.json'
-			self.log.debug("VF Config: %s", filename)
-			return filename
-		else:
-			self.__remove("VF config for the {} not found".format(port_id))
-			self.log.info("VF config for %s doesn't exist", filename)
-			sys.exit(1)
+        def verbose(self):
+                self.filename=None
+                self.resp_fifo = self.__create_fifo()
+                msg = self.__request_message('verbose', self.filename, self.resp_fifo)
+                self.__write_read_fifo(msg)
+                return
 
-	def __create_fifo(self):
-		resp_fifo = Iplex.PRIVATE_FIFO_PATH+str(os.getpid())
-		try:
-			os.mkfifo(resp_fifo)
-		except OSError, e:
-			self.log.info("ERROR: Failed to create FIFO: %s", e)
-			sys.exit(1)
-		self.log.debug("Successfully created FIFO: %s", resp_fifo)
-		return resp_fifo
+        def ping(self):
+                self.filename = None
+                self.resp_fifo = self.__create_fifo()
+                msg = self.__request_message('ping', self.filename, self.resp_fifo)
+                self.__write_read_fifo(msg)
+                return
 
-	def __request_message(self, action, filename, resp_fifo):
-		msg = {}
-		msg['action'] = action
-		msg['params'] = {}
-		if filename is not None:
-			msg['params']['filename'] = filename
-		msg['params']['loglevel'] = self.options['--loglevel']
-		msg['params']['resp_fifo'] = resp_fifo
-		self.log.debug("REQUEST MESSAGE: %s", msg)
-		return msg
+        def __errMsg(self, msg=None):
+                data = {}
+                data['state'] = 'OK'
+                if msg is not None:
+                        data['state'] = 'ERROR'
+                        data['msg'] = msg
+                print data
 
-	def __read_fd(self, fd, chunksize=1024):
-		buffer = []
-		running = True
-		while running:
-			chunk = os.read(fd, chunksize)
-			buffer.append(chunk)
-			running = len(chunk) == chunksize
-		return ''.join(buffer).strip(' \n\t')
+        def __validate_file(self, port_id):
+                filename = port_id
+                if os.path.isfile(os.path.join(self.config_data['config_dir'], self.options['<port-id>'])+'.json'):
+                        filename = os.path.join(self.config_data['config_dir'], self.options['<port-id>'])+'.json'
+                        self.log.debug("VF Config: %s", filename)
+                        return filename
+                else:
+                        self.__errMsg("VF config for the {} not found".format(port_id))
+                        self.log.info("VF config for %s doesn't exist", filename)
+                        sys.exit(1)
 
-	def __remove(self, msg=None):
-		data = {}
-		data['state'] = 'OK'
-		if msg is not None:
-			data['state'] = 'ERROR'
-			data['msg'] = msg
-		print data
+        def __create_fifo(self):
+                resp_fifo = Iplex.PRIVATE_FIFO_PATH+str(os.getpid())
+                try:
+                        os.mkfifo(resp_fifo)
+                except OSError, e:
+                        self.log.info("ERROR: Failed to create FIFO: %s", e)
+                        sys.exit(1)
+                self.log.debug("Successfully created FIFO: %s", resp_fifo)
+                return resp_fifo
 
-	def __write_read_fifo(self, msg):
-		#readFd = None
-		try:
-			writeFd = os.open(self.config_data['fifo'], os.O_WRONLY | os.O_NONBLOCK)
-			os.write(writeFd, str(msg)+'\n\n')
-			os.close(writeFd)
-			#readFd = os.open(self.resp_fifo, os.O_RDONLY)
-			#buf = self.__read_fd(readFd)
-			#resp_data = json.dumps(buf.strip(' \n\t'))
-			self.__remove()
-			#print resp_data
-			#print(ast.literal_eval(resp_data))
-			#os.close(readFd)
-			os.unlink(self.resp_fifo)
-		except OSError as e:
-			if errno.ENXIO:
-				self.__remove("VFD is not running")
-				self.log.info("VFD does not seem to be running, please start the service ")
-			else:
-				self.log.info("%s", e)
-			#if not (readFd == None):
-			#	os.close(readFd)
-			os.unlink(self.resp_fifo)
-			sys.exit(1)
+        def __request_message(self, action, filename, resp_fifo):
+                msg = {}
+                msg["action"] = action
+                msg["params"] = {}
+                if filename is not None:
+                        msg["params"]["filename"] = filename
+                #if action != "ping":
+                msg["params"]["loglevel"] = int(self.options["--loglevel"])
+                msg["params"]["r_fifo"] = resp_fifo
+                self.log.debug("REQUEST MESSAGE: %s", msg)
+                return json.dumps(msg)
+
+        def __read_fd(self, fd, chunksize=2048):
+                buffer = []
+                running = True
+                while running:
+                        time.sleep(2)
+                        chunk = os.read(fd, chunksize)
+                        buffer.append(chunk)
+                        running = len(chunk) == chunksize
+                return ''.join(buffer).strip(' \n\t')
+
+        def __write_read_fifo(self, msg):
+                readFd = None
+                try:
+                        writeFd = os.open(self.config_data['fifo'], os.O_WRONLY | os.O_NONBLOCK)
+                        os.write(writeFd, str(msg)+'\n\n')
+                        os.close(writeFd)
+                        readFd = os.open(self.resp_fifo, os.O_RDONLY)
+                        buf = self.__read_fd(readFd)
+                        resp_data = json.dumps(buf.strip(' \n\t'))
+                        print(ast.literal_eval(resp_data))
+                        os.close(readFd)
+                        os.unlink(self.resp_fifo)
+                except OSError as e:
+                        if errno.ENXIO:
+                                self.__errMsg("VFD is not running")
+                                self.log.info("VFD does not seem to be running, please start the service ")
+                        else:
+                                self.log.info("%s", e)
+                        if not (readFd == None):
+                                os.close(readFd)
+                        os.unlink(self.resp_fifo)
+                        sys.exit(1)
 
 
 if __name__ == '__main__':
-	options = docopt(__doc__, version='1.0')
-	log = setup_logging(options)
-	log.debug("cli info : %s", options)
-	config_data = read_config()
-	log.debug("VFD config: %s", config_data)
-	iplex = Iplex(config_data, options, log)
-	if options['add']:
-		iplex.add(options['<port-id>'])
-	elif options['delete']:
-		iplex.delete(options['<port-id>'])
-	else:
-		if options['show']:
-			iplex.show(options['<port-id>'], options['all'])
+        options = docopt(__doc__, version='1.1')
+        log = setup_logging(options)
+        log.debug("cli info : %s", options)
+        config_data = read_config()
+        log.debug("VFD config: %s", config_data)
+        iplex = Iplex(config_data, options, log)
+        if options['add']:
+                iplex.add(options['<port-id>'])
+        elif options['delete']:
+                iplex.delete(options['<port-id>'])
+        elif options['ping']:
+                iplex.ping()
+        elif options['verbose']:
+                iplex.verbose()
+        else:
+                if options['show']:
+                        iplex.show(options['<port-id>'], options['all'])
