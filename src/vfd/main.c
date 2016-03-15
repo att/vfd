@@ -221,9 +221,9 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 		return 0;
 	}
 
-	bleat_printf( 2, "config data: name: %s", vfc->name );
-	bleat_printf( 2, "config data: pciid: %s", vfc->pciid );
-	bleat_printf( 2, "config data: vfid: %d", vfc->vfid );
+	bleat_printf( 2, "add: config data: name: %s", vfc->name );
+	bleat_printf( 2, "add: config data: pciid: %s", vfc->pciid );
+	bleat_printf( 2, "add: config data: vfid: %d", vfc->vfid );
 
 	if( vfc->pciid == NULL || vfc->vfid < 0 ) {
 		snprintf( mbuf, sizeof( mbuf ), "unable to read config file: %s", fname );
@@ -337,6 +337,7 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 	vf = &port->vfs[vidx];						// copy from config data doing any translation needed
 	memset( vf, 0, sizeof( *vf ) );				// assume zeroing everything is good
 	vf->num = vfc->vfid;
+	port->vfs[vidx].last_updated = 1;			// signal main code to configure the buggger
 	vf->strip_stag = vfc->strip_stag;
 	vf->allow_bcast = vfc->allow_bcast;
 	vf->allow_mcast = vfc->allow_mcast;
@@ -417,6 +418,103 @@ static void vfd_add_all_vfs(  parms_t* parms, struct sriov_conf_c* conf ) {
 	}
 	
 	free_list( flist, llen );
+}
+
+/*
+	Delete a VF from a port.  We expect the name of a file which we can read the 
+	parms from and suss out the pciid and the vfid.  Those are used to find the 
+	info in the global config and render it useless. The first thing we attempt 
+	to do is to remove or rename the config file.  If we can't do that we 
+	don't do anything else because we'd give the false sense that it was deleted
+	but on restart we'd recreate it, or worse have a conflict with something that
+	was added. 
+*/
+static int vfd_del_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
+	vf_config_t* vfc;					// raw vf config file contents	
+	int	i;
+	int vidx;							// index into the vf array
+	struct sriov_port_s* port = NULL;	// reference to a single port in the config
+	char mbuf[1024];					// message buffer if we fail
+	
+	if( conf == NULL || fname == NULL ) {
+		bleat_printf( 0, "vfd_del_vf called with nil config or filename pointer" );
+		if( reason ) {
+			snprintf( mbuf, sizeof( mbuf), "internal mishap: config ptr was nil" );
+			*reason = strdup( mbuf );
+		}
+		return 0;
+	}
+
+	if( (vfc = read_config( fname )) == NULL ) {
+		snprintf( mbuf, sizeof( mbuf ), "unable to read config file: %s: %s", fname, errno > 0 ? strerror( errno ) : "unknown sub-reason" );
+		bleat_printf( 1, "vfd_del_vf failed: %s", mbuf );
+		if( reason ) {
+			*reason = strdup( mbuf );
+		}
+		return 0;
+	}
+
+	snprintf( mbuf, sizeof( mbuf ), "%s-", fname );						// for now we move it aside; may want to delete it later
+	if( rename( fname, mbuf ) < 0 ) {
+		snprintf( mbuf, sizeof( mbuf ), "unable to delete config file: %s: %s", fname, strerror( errno ) );
+		bleat_printf( 1, "vfd_del_vf failed: %s", mbuf );
+		if( reason ) {
+			*reason = strdup( mbuf );
+		}
+		free_config( vfc );
+		return 0;
+	}
+
+	bleat_printf( 2, "del: config data: name: %s", vfc->name );
+	bleat_printf( 2, "del: config data: pciid: %s", vfc->pciid );
+	bleat_printf( 2, "del: config data: vfid: %d", vfc->vfid );
+
+	if( vfc->pciid == NULL || vfc->vfid < 0 ) {
+		snprintf( mbuf, sizeof( mbuf ), "unable to read config file: %s", fname );
+		bleat_printf( 1, "vfd_del_vf failed: %s", mbuf );
+		if( reason ) {
+			*reason = strdup( mbuf );
+		}
+		free_config( vfc );
+		return 0;
+	}
+
+	for( i = 0; i < conf->num_ports; i++ ) {						// find the port that this vf is attached to
+		if( strcmp( conf->ports[i].pciid, vfc->pciid ) == 0 ) {	// match
+			port = &conf->ports[i];
+			break;
+		}
+	}
+
+	if( port == NULL ) {
+		snprintf( mbuf, sizeof( mbuf ), "%s: could not find port %s in the config", vfc->name, vfc->pciid );
+		bleat_printf( 1, "vf not added: %s", mbuf );
+		free_config( vfc );
+		if( reason ) {
+			*reason = strdup( mbuf );
+		}
+		return 0;
+	}
+
+	vidx = -1;
+	for( i = 0; i < port->num_vfs; i++ ) {				// suss out the id that is listed
+		if( port->vfs[i].num == vfc->vfid ) {			// this is it.
+			vidx = i;
+			break;
+		}
+	}
+
+	if( vidx >= 0 ) {									//  it's there -- take down in the config
+		port->vfs[vidx].last_updated = -1;				// signal main code to nuke the puppy (vfid stays set so we don't see it as a hole until it's gone)
+	} else {
+		bleat_printf( 1, "warning: del didn't find the pciid/vf combination in the active config: %s/%d", vfc->pciid, vfc->vfid );
+	}
+	
+	if( reason ) {
+		*reason = NULL;
+	}
+	bleat_printf( 2, "VF was deleted: %s %s id=%d", vfc->name, vfc->pciid, vfc->vfid );
+	return 1;
 }
 
 // ---- request/response functions -----------------------------------------------------------------------------
@@ -591,7 +689,7 @@ static void vfd_dummy_loop( parms_t *parms, struct sriov_conf_c* conf ) {
 					bleat_printf( 2, "adding vf from file: %s", mbuf );
 					if( vfd_add_vf( conf, req->resource, &reason ) ) {
 						bleat_printf( 1, "vf added: %s", mbuf );
-						snprintf( mbuf, sizeof( mbuf ), "VF added successfully: %s", req->resource );
+						snprintf( mbuf, sizeof( mbuf ), "vf added successfully: %s", req->resource );
 						vfd_response( req->resp_fifo, 0, mbuf );
 					} else {
 						snprintf( mbuf, sizeof( mbuf ), "unable to add vf: %s: %s", req->resource, reason );
@@ -601,7 +699,22 @@ static void vfd_dummy_loop( parms_t *parms, struct sriov_conf_c* conf ) {
 					break;
 
 				case RT_DEL:
-					vfd_response( req->resp_fifo, 0, "dummy request handler: got your DELETE request and promptly ignored it." );
+					if( strchr( req->resource, '/' ) != NULL ) {									// assume fully qualified if it has a slant
+						strcpy( mbuf, req->resource );
+					} else {
+						snprintf( mbuf, sizeof( mbuf ), "%s/%s", parms->config_dir, req->resource );
+					}
+
+					bleat_printf( 2, "deleting vf from file: %s", mbuf );
+					if( vfd_del_vf( conf, req->resource, &reason ) ) {
+						bleat_printf( 1, "vf deleted: %s", mbuf );
+						snprintf( mbuf, sizeof( mbuf ), "vf deleted successfully: %s", req->resource );
+						vfd_response( req->resp_fifo, 0, mbuf );
+					} else {
+						snprintf( mbuf, sizeof( mbuf ), "unable to delete vf: %s: %s", req->resource, reason );
+						vfd_response( req->resp_fifo, 1, mbuf );
+						free( reason );
+					}
 					break;
 
 				case RT_SHOW:
