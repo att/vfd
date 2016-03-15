@@ -147,207 +147,6 @@ static int vfd_init_fifo( parms_t* parms ) {
 	return 0;
 }
 
-/*
-	Construct json to write onto the response pipe.  The response pipe is opened in non-block mode
-	so that it will fail immiediately if there isn't a reader or the pipe doesn't exist. We assume
-	that the requestor opens the pipe before sending the request so that if it is delayed after
-	sending the request it does not prevent us from writing to the pipe.  If we don't open in 	
-	blocked mode we could hang foever if the requestor dies/aborts. 
-*/
-static void vfd_response( char* rpipe, int state, const char* msg ) {
-	int 	fd;
-	char	buf[1024];
-	unsigned int		len = 0;
-
-	if( rpipe == NULL ) {
-		return;
-	}
-
-	if( (fd = open( rpipe, O_WRONLY | O_NONBLOCK, 0 )) < 0 ) {
-	 	bleat_printf( 0, "unable to deliver response: open failed: %s: %s", rpipe, strerror( errno ) );
-		return;
-	}
-	bleat_printf( 1, "sending response: %s [%d] %s", rpipe, state, msg );
-
-	snprintf( buf, sizeof( buf ), "{ \"state\": \"%s\", \"msg\": \"%s\" }\n", state ? "ERROR" : "OK", msg == NULL ? "" : msg );
-	bleat_printf( 2, "response fd: %d", fd );
-	bleat_printf( 2, "response json: %s", buf );
-	if( (len = write( fd, buf, strlen( buf ) )) != strlen( buf ) ) {
-		bleat_printf( 0, "enum=%s", strerror( errno ) );
-		bleat_printf( 0, "warn: write of response to pipe failed: %s: state=%d msg=%s", rpipe, state, msg ? msg : "" );
-	}
-
-	bleat_printf( 2, "response written to pipe" );
-	bleat_pop_lvl();			// we assume it was pushed when the request received; we pop it once we respond
-	close( fd );
-}
-
-/*
-	Cleanup a request.
-*/
-static void vfd_free_request( req_t* req ) {
-	if( req->resource != NULL ) {
-		free( req->resource );
-	}
-	if( req->resp_fifo != NULL ) {
-		free( req->resp_fifo );
-	}
-
-	free( req );
-}
-
-/*
-	Read a request from the fifo, and format it into a request block
-*/
-static req_t* vfd_read_request( parms_t* parms ) {
-	void*	jblob;				// json parsing stuff
-	char*	rbuf;				// raw request buffer from the pipe
-	char*	stuff;				// stuff teased out of the json blob
-	req_t*	req = NULL;
-	int		lvl;				// log level supplied
-
-	rbuf = rfifo_read( parms->rfifo );
-	if( ! *rbuf ) {				// empty, nothing to do 
-		free( rbuf );
-		return NULL;
-	}
-
-	if( (jblob = jw_new( rbuf )) == NULL ) {
-		bleat_printf( 0, "error: failed to create a json paring object for: %s\n", rbuf );
-		free( rbuf );
-		return NULL;
-	}
-
-	if( (stuff = jw_string( jblob, "action" )) == NULL ) {
-		bleat_printf( 0, "error: request received without action: %s", rbuf );
-		free( rbuf );
-		jw_nuke( jblob );
-		return NULL;
-	}
-
-	
-	if( (req = (req_t *) malloc( sizeof( *req ) )) == NULL ) {
-		bleat_printf( 0, "error: memory allocation error tying to alloc request for: %s", rbuf );
-		free( rbuf );
-		jw_nuke( jblob );
-		return NULL;
-	}
-	memset( req, 0, sizeof( *req ) );
-
-	bleat_printf( 1, "raw message: (%s)", rbuf );
-
-	switch( *stuff ) {
-		case 'a':
-		case 'A':					// assume add until something else starts with a
-			req->rtype = RT_ADD;
-			break;
-
-		case 'd':
-		case 'D':					// assume delete until something else with d comes along
-			req->rtype = RT_DEL;
-			break;
-
-		case 'p':					// ping
-			req->rtype = RT_PING;
-			break;
-
-		case 's':
-		case 'S':					// assume show
-			req->rtype = RT_SHOW;
-			break;
-
-		case 'v':
-			req->rtype = RT_VERBOSE;
-			break;	
-
-		default:
-			bleat_printf( 0, "error: unrecognised action in request: %s", rbuf );
-			jw_nuke( jblob );
-			return NULL;
-			break;
-	}
-
-	if( (stuff = jw_string( jblob, "params.filename")) != NULL ) {
-		req->resource = strdup( stuff );
-	} else {
-		if( (stuff = jw_string( jblob, "params.resource")) != NULL ) {
-			req->resource = strdup( stuff );
-		}
-	}
-	if( (stuff = jw_string( jblob, "params.r_fifo")) != NULL ) {
-		req->resp_fifo = strdup( stuff );
-	}
-	
-	req->log_level = lvl = jw_missing( jblob, "params.loglevel" ) ? 0 : (int) jw_value( jblob, "params.loglevel" );
-	bleat_push_glvl( lvl );					// push the level if greater, else push current so pop won't fail
-
-	free( rbuf );
-	jw_nuke( jblob );
-	return req;
-}
-
-/*
-	Testing loop for now. This is a black hole -- we never come out.
-*/
-static void vfd_dummy_loop( parms_t *parms ) {
-	req_t*	req;
-	char	mbuf[2048];
-	int		rc = 0;
-
-	*mbuf = 0;
-	while( 1 ) {
-		if( (req = vfd_read_request( parms )) != NULL ) {
-			bleat_printf( 1, "got request\n" );
-			bleat_printf( 2, "chatty to test temp log bump up" );
-
-			switch( req->rtype ) {
-				case RT_PING:
-					snprintf( mbuf, sizeof( mbuf ), "pong: %s", version );
-					vfd_response( req->resp_fifo, 0, mbuf );
-					break;
-
-				case RT_ADD:
-					vfd_response( req->resp_fifo, 0, "dummy request handler: got your ADD request and promptly ignored it." );
-					break;
-
-				case RT_DEL:
-					vfd_response( req->resp_fifo, 0, "dummy request handler: got your DELETE request and promptly ignored it." );
-					break;
-
-				case RT_SHOW:
-					vfd_response( req->resp_fifo, 0, "dummy request handler: got your SHOW request and promptly ignored it." );
-					break;
-
-				case RT_VERBOSE:
-					if( req->log_level >= 0 ) {
-						bleat_set_lvl( req->log_level );
-						bleat_push_lvl( req->log_level );			// save it so when we pop later it doesn't revert
-
-						bleat_printf( 0, "verbose level changed to %d", req->log_level );
-						snprintf( mbuf, sizeof( mbuf ), "verbose level changed to: %d", req->log_level );
-					} else {
-						rc = 1;
-						snprintf( mbuf, sizeof( mbuf ), "loglevel out of range: %d", req->log_level );
-					}
-
-					vfd_response( req->resp_fifo, rc, mbuf );
-					break;
-					
-
-				default:
-					vfd_response( req->resp_fifo, 1, "dummy request handler: urrecognised request." );
-					break;
-			}
-
-			
-			bleat_printf( 2, "chatty shouldn't show as tmp log bump pops in response gen (unless verbose increased to >= 2" );
-			vfd_free_request( req );
-		}
-		
-		sleep( 1 );
-	}
-}
-
 //  --------------------- global config management ------------------------------------------------------------
 
 /*
@@ -425,6 +224,16 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 	bleat_printf( 2, "config data: name: %s", vfc->name );
 	bleat_printf( 2, "config data: pciid: %s", vfc->pciid );
 	bleat_printf( 2, "config data: vfid: %d", vfc->vfid );
+
+	if( vfc->pciid == NULL || vfc->vfid < 0 ) {
+		snprintf( mbuf, sizeof( mbuf ), "unable to read config file: %s", fname );
+		bleat_printf( 1, "vfd_add_vf failed: %s", mbuf );
+		if( reason ) {
+			*reason = strdup( mbuf );
+		}
+		free_config( vfc );
+		return 0;
+	}
 
 	for( i = 0; i < conf->num_ports; i++ ) {						// find the port that this vf is attached to
 		if( strcmp( conf->ports[i].pciid, vfc->pciid ) == 0 ) {	// match
@@ -608,6 +417,225 @@ static void vfd_add_all_vfs(  parms_t* parms, struct sriov_conf_c* conf ) {
 	}
 	
 	free_list( flist, llen );
+}
+
+// ---- request/response functions -----------------------------------------------------------------------------
+
+/*
+	Construct json to write onto the response pipe.  The response pipe is opened in non-block mode
+	so that it will fail immiediately if there isn't a reader or the pipe doesn't exist. We assume
+	that the requestor opens the pipe before sending the request so that if it is delayed after
+	sending the request it does not prevent us from writing to the pipe.  If we don't open in 	
+	blocked mode we could hang foever if the requestor dies/aborts. 
+*/
+static void vfd_response( char* rpipe, int state, const char* msg ) {
+	int 	fd;
+	char	buf[1024];
+	unsigned int		len = 0;
+
+	if( rpipe == NULL ) {
+		return;
+	}
+
+	if( (fd = open( rpipe, O_WRONLY | O_NONBLOCK, 0 )) < 0 ) {
+	 	bleat_printf( 0, "unable to deliver response: open failed: %s: %s", rpipe, strerror( errno ) );
+		return;
+	}
+	bleat_printf( 1, "sending response: %s [%d] %s", rpipe, state, msg );
+
+	snprintf( buf, sizeof( buf ), "{ \"state\": \"%s\", \"msg\": \"%s\" }\n", state ? "ERROR" : "OK", msg == NULL ? "" : msg );
+	bleat_printf( 2, "response fd: %d", fd );
+	bleat_printf( 2, "response json: %s", buf );
+	if( (len = write( fd, buf, strlen( buf ) )) != strlen( buf ) ) {
+		bleat_printf( 0, "enum=%s", strerror( errno ) );
+		bleat_printf( 0, "warn: write of response to pipe failed: %s: state=%d msg=%s", rpipe, state, msg ? msg : "" );
+	}
+
+	bleat_printf( 2, "response written to pipe" );
+	bleat_pop_lvl();			// we assume it was pushed when the request received; we pop it once we respond
+	close( fd );
+}
+
+/*
+	Cleanup a request.
+*/
+static void vfd_free_request( req_t* req ) {
+	if( req->resource != NULL ) {
+		free( req->resource );
+	}
+	if( req->resp_fifo != NULL ) {
+		free( req->resp_fifo );
+	}
+
+	free( req );
+}
+
+/*
+	Read a request from the fifo, and format it into a request block
+*/
+static req_t* vfd_read_request( parms_t* parms ) {
+	void*	jblob;				// json parsing stuff
+	char*	rbuf;				// raw request buffer from the pipe
+	char*	stuff;				// stuff teased out of the json blob
+	req_t*	req = NULL;
+	int		lvl;				// log level supplied
+
+	rbuf = rfifo_read( parms->rfifo );
+	if( ! *rbuf ) {				// empty, nothing to do 
+		free( rbuf );
+		return NULL;
+	}
+
+	if( (jblob = jw_new( rbuf )) == NULL ) {
+		bleat_printf( 0, "error: failed to create a json paring object for: %s\n", rbuf );
+		free( rbuf );
+		return NULL;
+	}
+
+	if( (stuff = jw_string( jblob, "action" )) == NULL ) {
+		bleat_printf( 0, "error: request received without action: %s", rbuf );
+		free( rbuf );
+		jw_nuke( jblob );
+		return NULL;
+	}
+
+	
+	if( (req = (req_t *) malloc( sizeof( *req ) )) == NULL ) {
+		bleat_printf( 0, "error: memory allocation error tying to alloc request for: %s", rbuf );
+		free( rbuf );
+		jw_nuke( jblob );
+		return NULL;
+	}
+	memset( req, 0, sizeof( *req ) );
+
+	bleat_printf( 1, "raw message: (%s)", rbuf );
+
+	switch( *stuff ) {
+		case 'a':
+		case 'A':					// assume add until something else starts with a
+			req->rtype = RT_ADD;
+			break;
+
+		case 'd':
+		case 'D':					// assume delete until something else with d comes along
+			req->rtype = RT_DEL;
+			break;
+
+		case 'p':					// ping
+			req->rtype = RT_PING;
+			break;
+
+		case 's':
+		case 'S':					// assume show
+			req->rtype = RT_SHOW;
+			break;
+
+		case 'v':
+			req->rtype = RT_VERBOSE;
+			break;	
+
+		default:
+			bleat_printf( 0, "error: unrecognised action in request: %s", rbuf );
+			jw_nuke( jblob );
+			return NULL;
+			break;
+	}
+
+	if( (stuff = jw_string( jblob, "params.filename")) != NULL ) {
+		req->resource = strdup( stuff );
+	} else {
+		if( (stuff = jw_string( jblob, "params.resource")) != NULL ) {
+			req->resource = strdup( stuff );
+		}
+	}
+	if( (stuff = jw_string( jblob, "params.r_fifo")) != NULL ) {
+		req->resp_fifo = strdup( stuff );
+	}
+	
+	req->log_level = lvl = jw_missing( jblob, "params.loglevel" ) ? 0 : (int) jw_value( jblob, "params.loglevel" );
+	bleat_push_glvl( lvl );					// push the level if greater, else push current so pop won't fail
+
+	free( rbuf );
+	jw_nuke( jblob );
+	return req;
+}
+
+/*
+	Testing loop for now. This is a black hole -- we never come out.
+*/
+static void vfd_dummy_loop( parms_t *parms, struct sriov_conf_c* conf ) {
+	req_t*	req;
+	char	mbuf[2048];			// message and work buffer
+	int		rc = 0;
+	char*	reason;
+
+	*mbuf = 0;
+	while( 1 ) {
+		if( (req = vfd_read_request( parms )) != NULL ) {
+			bleat_printf( 1, "got request\n" );
+			bleat_printf( 2, "chatty to test temp log bump up" );
+
+			switch( req->rtype ) {
+				case RT_PING:
+					snprintf( mbuf, sizeof( mbuf ), "pong: %s", version );
+					vfd_response( req->resp_fifo, 0, mbuf );
+					break;
+
+				case RT_ADD:
+					if( strchr( req->resource, '/' ) != NULL ) {									// assume fully qualified if it has a slant
+						strcpy( mbuf, req->resource );
+					} else {
+						snprintf( mbuf, sizeof( mbuf ), "%s/%s", parms->config_dir, req->resource );
+					}
+
+					bleat_printf( 2, "adding vf from file: %s", mbuf );
+					if( vfd_add_vf( conf, req->resource, &reason ) ) {
+						bleat_printf( 1, "vf added: %s", mbuf );
+						snprintf( mbuf, sizeof( mbuf ), "VF added successfully: %s", req->resource );
+						vfd_response( req->resp_fifo, 0, mbuf );
+					} else {
+						snprintf( mbuf, sizeof( mbuf ), "unable to add vf: %s: %s", req->resource, reason );
+						vfd_response( req->resp_fifo, 1, mbuf );
+						free( reason );
+					}
+					break;
+
+				case RT_DEL:
+					vfd_response( req->resp_fifo, 0, "dummy request handler: got your DELETE request and promptly ignored it." );
+					break;
+
+				case RT_SHOW:
+					vfd_response( req->resp_fifo, 0, "dummy request handler: got your SHOW request and promptly ignored it." );
+					break;
+
+				case RT_VERBOSE:
+					if( req->log_level >= 0 ) {
+						bleat_set_lvl( req->log_level );
+						bleat_push_lvl( req->log_level );			// save it so when we pop later it doesn't revert
+
+						bleat_printf( 0, "verbose level changed to %d", req->log_level );
+						snprintf( mbuf, sizeof( mbuf ), "verbose level changed to: %d", req->log_level );
+					} else {
+						rc = 1;
+						snprintf( mbuf, sizeof( mbuf ), "loglevel out of range: %d", req->log_level );
+					}
+
+					vfd_response( req->resp_fifo, rc, mbuf );
+					break;
+					
+
+				default:
+					vfd_response( req->resp_fifo, 1, "dummy request handler: urrecognised request." );
+					break;
+			}
+
+			
+			bleat_printf( 2, "chatty shouldn't show as tmp log bump pops in response gen (unless verbose increased to >= 2" );
+			vfd_free_request( req );
+		}
+		
+		sleep( 1 );
+	}
 }
 
 // -------------------------------------------------------------------------------------------------------------
@@ -1353,7 +1381,7 @@ main(int argc, char **argv)
 		exit( 1 );
 	}
 
-	vfd_dummy_loop( parms );
+	vfd_dummy_loop( parms, &running_config );
 bleat_printf( 0, "testing exit being taken" );
 exit( 0 ); // TESTING ---- 
 
