@@ -360,7 +360,6 @@ static void vfd_add_ports( parms_t* parms, struct sriov_conf_c* conf ) {
 	int pidx = 0;			// port idx in conf list
 	struct sriov_port_s* port;
 
-bleat_printf( 1, "setting up incore config" );
 	if( called ) 
 		return;
 	called = 1;
@@ -375,6 +374,181 @@ bleat_printf( 1, "setting up incore config" );
 		
 		bleat_printf( 1, "add pciid to in memory config: %s", parms->pciids[i] );
 	}
+}
+
+/*
+	Add one of the nova generated configuration files to a global config struct passed in.
+	A small amount of error checking (vf id dup, etc) is done, so the return is either
+	1 for success or 0 for failure. Errno is set only if we can't open the file.
+	If reason is not NULL we'll create a message buffer and drop the address there
+	(caller must free).
+
+	Future:
+	It would make more sense for the config reader in lib to actually populate the 
+	actual vf struct rather than having to copy it, but because the port struct 
+	doesn't have dynamic VF structs (has a hard array), we need to read it into
+	a separate location and copy it anyway, so the manual copy, rathter than a
+	memcpy() is a minor annoyance.  Ultimately, the port should reference an
+	array of pointers, and config should pull directly into a vf_s and if the
+	parms are valid, then the pointer added to the list. 
+*/
+static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
+	vf_config_t* vfc;					// raw vf config file contents	
+	int	i;
+	int vidx;							// index into the vf array
+	int	hole = -1;						// first hole in the list;
+	struct sriov_port_s* port = NULL;	// reference to a single port in the config
+	struct vf_s*	vf;		// point at the vf we need to fill in
+	char mbuf[1024];					// message buffer if we fail
+	
+
+	if( conf == NULL || fname == NULL ) {
+		bleat_printf( 0, "vfd_add_vf called with nil config or filename pointer" );
+		if( reason ) {
+			snprintf( mbuf, sizeof( mbuf), "internal mishap: config ptr was nil" );
+			*reason = strdup( mbuf );
+		}
+		return 0;
+	}
+
+	if( (vfc = read_config( fname )) == NULL ) {
+		snprintf( mbuf, sizeof( mbuf ), "unable to read config file: %s: %s", fname, errno > 0 ? strerror( errno ) : "unknown sub-reason" );
+		bleat_printf( 1, "vfd_add_vf failed: %s", mbuf );
+		if( reason ) {
+			*reason = strdup( mbuf );
+		}
+		return 0;
+	}
+
+	for( i = 0; i < conf->num_ports; i++ ) {						// find the port that this vf is attached to
+		if( strcmp( conf->ports[i].name, vfc->pciid ) == 0 ) {	// match
+			port = &conf->ports[i];
+			break;
+		}
+	}
+
+	if( port == NULL ) {
+		snprintf( mbuf, sizeof( mbuf ), "%s: could not find port %s in the config", vfc->name, vfc->pciid );
+		bleat_printf( 1, "vf not added: %s", mbuf );
+		free_config( vfc );
+		if( reason ) {
+			*reason = strdup( mbuf );
+		}
+		return 0;
+	}
+
+	for( i = 0; i < port->num_vfs; i++ ) {				// ensure ID is not already defined
+		if( port->vfs[i].num < 0 ) {					// this is a hole
+			if( hole < 0 ) {
+				hole = i;								// we'll insert here
+			}
+		} else {
+			if( port->vfs[i].num == vfc->vfid ) {			// dup, fail
+				snprintf( mbuf, sizeof( mbuf ), "vfid %d already exists on port %s", vfc->vfid, vfc->pciid );
+				bleat_printf( 1, "vf not added: %s", mbuf );
+				if( reason ) {
+					*reason = strdup( mbuf );
+				}
+				free_config( vfc );
+				return 0;
+			}
+		}
+	}
+
+	if( hole >= 0 ) {			// set the index into the vf array based on first hole found, or no holes
+		vidx = hole;
+	} else {
+		vidx = i;
+	}
+
+	if( vidx >= MAX_VFS || vfc->vfid < 1 || vfc->vfid > 32) {							// something is out of range
+		snprintf( mbuf, sizeof( mbuf ), "max VFs already defined or vfid %d is out of range", vfc->vfid );
+		bleat_printf( 1, "vf not added: %s", mbuf );
+		if( reason ) {
+			*reason = strdup( mbuf );
+		}
+
+		free_config( vfc );
+		return 0;
+	}
+
+	if( vfc->nvlans > MAX_VF_VLANS ) {
+		snprintf( mbuf, sizeof( mbuf ), "number of vlans supplied (%d) exceeds the maximum (%d)", vfc->nvlans, MAX_VF_VLANS );
+		bleat_printf( 1, "vf not added: %s", mbuf );
+		if( reason ) {
+			*reason = strdup( mbuf );
+		}
+	}
+
+	if( vfc->nmacs > MAX_VF_MACS ) {
+		snprintf( mbuf, sizeof( mbuf ), "number of vlans supplied (%d) exceeds the maximum (%d)", vfc->nvlans, MAX_VF_MACS );
+		bleat_printf( 1, "vf not added: %s", mbuf );
+		if( reason ) {
+			*reason = strdup( mbuf );
+		}
+	}
+
+	for( i = 0; i < vfc->nmacs; i++ ) {					// do we need to vet the address is plausable x:x:x form?
+		if( strlen( vfc->macs[i] ) > 17 ) {
+			snprintf( mbuf, sizeof( mbuf ), "invalid mac address: %s", vfc->macs[i] );
+			bleat_printf( 1, "vf not added: %s", mbuf );
+			if( reason ) {
+				*reason = strdup( mbuf );
+			}
+		}
+	}
+
+	//TODO -- add checks for conflicting parms
+
+	// CAUTION: if we fail because of a parm error it MUST happen before here!
+	if( i == port->num_vfs ) {		// inserting at end, bump the num we have used
+		port->num_vfs++;
+	}
+	
+	vf = &port->vfs[vidx];						// copy from config data doing any translation needed
+	vf->num = vfc->vfid;
+	vf->strip_stag = vfc->strip_stag;
+	vf->allow_bcast = vfc->allow_bcast;
+	vf->allow_mcast = vfc->allow_mcast;
+	vf->allow_un_ucast = vfc->allow_un_ucast;
+
+	vf->allow_untagged = 0;					// for now these cannot be set by the config file data
+	vf->vlan_anti_spoof = 1;
+	vf->mac_anti_spoof = 1;
+	vf->rate = 0.0;							// best effort :)
+	
+	vf->link = 0;							// default if parm missing or mis-set (not fatal)
+	switch( *vfc->link_status ) {			// down, up or auto are allowed in config file
+		case 'a':
+		case 'A':
+			vf->link = 0;					// auto is really: use what is configured in the PF	
+			break;
+		case 'd':
+		case 'D':
+			vf->link = -1;
+			break;
+		case 'u':
+		case 'U':
+			vf->link = 1;
+			break;
+
+		
+		default:
+			bleat_printf( 1, "link_status not recognised in config: %s", vfc->link_status );
+			break;
+	}
+	
+	for( i = 0; i < vfc->nvlans; i++ ) {
+		vf->vlans[i] = vfc->vlans[i];
+	}
+	vf->num_vlans = vfc->nvlans;
+
+	for( i = 0; i < vfc->nmacs; i++ ) {
+		strcpy( vf->macs[i], vfc->macs[i] );		// we vet for length earlier, so this is safe.
+	}
+	vf->num_macs = vfc->nmacs;
+
+	return 1;
 }
 
 // -------------------------------------------------------------------------------------------------------------
