@@ -57,6 +57,7 @@ typedef struct {
 */
 extern parms_t* read_parms( char* fname );
 extern vf_config_t*	read_config( char* fname );
+extern void free_config( vf_config_t* );
 
 //------------------ ng_flowmgr --------------------------------------------------------------------------
 void ng_flow_close( void *vf );
@@ -76,7 +77,7 @@ extern char* rfifo_read( void* vfifo );
 #define LF_QUALIFED		1				// list_files should return qualified names
 #define LF_UNQUALIFIED	0
 
-extern char** list_files( char* dname, char* suffix, int qualify, int* len );
+extern char** list_files( char* dname, const char* suffix, int qualify, int* len );
 extern void free_list( char** list, int size );
 
 // --------------- bleat ----------------------------------------------------------------------------------

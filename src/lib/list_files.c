@@ -57,7 +57,7 @@ extern void free_list( char** list, int size ) {
 		will be a need for more than this, so I didn't bother with
 		expansion logic if we encounter more.
 */
-extern char** list_files( char* dname, char* suffix, int qualify, int* len ) {
+extern char** list_files( char* dname, const char* suffix, int qualify, int* len ) {
 	char**	list = NULL;
 	int		lidx = 0;			// current index into the list
 	struct dirent fentry;		// file entry filled in by dirread()
