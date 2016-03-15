@@ -374,6 +374,8 @@ static void vfd_add_ports( parms_t* parms, struct sriov_conf_c* conf ) {
 		
 		bleat_printf( 1, "add pciid to in memory config: %s", parms->pciids[i] );
 	}
+
+	conf->num_ports = pidx;
 }
 
 /*
@@ -420,8 +422,12 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 		return 0;
 	}
 
+	bleat_printf( 2, "config data: name: %s", vfc->name );
+	bleat_printf( 2, "config data: pciid: %s", vfc->pciid );
+	bleat_printf( 2, "config data: vfid: %d", vfc->vfid );
+
 	for( i = 0; i < conf->num_ports; i++ ) {						// find the port that this vf is attached to
-		if( strcmp( conf->ports[i].name, vfc->pciid ) == 0 ) {	// match
+		if( strcmp( conf->ports[i].pciid, vfc->pciid ) == 0 ) {	// match
 			port = &conf->ports[i];
 			break;
 		}
@@ -478,6 +484,8 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 		if( reason ) {
 			*reason = strdup( mbuf );
 		}
+		free_config( vfc );
+		return 0;
 	}
 
 	if( vfc->nmacs > MAX_VF_MACS ) {
@@ -486,6 +494,8 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 		if( reason ) {
 			*reason = strdup( mbuf );
 		}
+		free_config( vfc );
+		return 0;
 	}
 
 	for( i = 0; i < vfc->nmacs; i++ ) {					// do we need to vet the address is plausable x:x:x form?
@@ -495,17 +505,28 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 			if( reason ) {
 				*reason = strdup( mbuf );
 			}
+			free_config( vfc );
+			return 0;
 		}
 	}
 
-	//TODO -- add checks for conflicting parms
+	if( vfc->strip_stag  &&  vfc->nvlans > 0 ) {
+		snprintf( mbuf, sizeof( mbuf ), "conflicting options: strip_stag may not be supplied with a list of vlan ids" );
+		bleat_printf( 1, "vf not added: %s", mbuf );
+		if( reason ) {
+			*reason = strdup( mbuf );
+		}
+		free_config( vfc );
+		return 0;
+	}
 
 	// CAUTION: if we fail because of a parm error it MUST happen before here!
-	if( i == port->num_vfs ) {		// inserting at end, bump the num we have used
+	if( vidx == port->num_vfs ) {		// inserting at end, bump the num we have used
 		port->num_vfs++;
 	}
 	
 	vf = &port->vfs[vidx];						// copy from config data doing any translation needed
+	memset( vf, 0, sizeof( *vf ) );				// assume zeroing everything is good
 	vf->num = vfc->vfid;
 	vf->strip_stag = vfc->strip_stag;
 	vf->allow_bcast = vfc->allow_bcast;
@@ -548,7 +569,45 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 	}
 	vf->num_macs = vfc->nmacs;
 
+	if( reason ) {
+		*reason = NULL;
+	}
+
+	bleat_printf( 2, "VF was added: %s %s id=%d", vfc->name, vfc->pciid, vfc->vfid );
 	return 1;
+}
+
+/*
+	Get a list of all config files and add each one to the current config.
+	If one fails, we will generate an error and ignore it.
+*/
+static void vfd_add_all_vfs(  parms_t* parms, struct sriov_conf_c* conf ) {
+	char** flist; 					// list of files to pull in
+	int		llen;					// list length
+	int		i;
+
+	if( parms == NULL || conf == NULL ) {
+		bleat_printf( 0, "internal mishap: NULL conf or parms pointer passed to add_all_vfs" );
+		return;
+	}
+
+	flist = list_files( parms->config_dir, "json", 1, &llen );
+	if( flist == NULL || llen <= 0 ) {
+		bleat_printf( 1, "no vf configuration files (*.json) found in %s", parms->config_dir );
+		return;
+	}
+
+	bleat_printf( 1, "adding %d existing vf configuration files to the mix", llen );
+
+	
+	for( i = 0; i < llen; i++ ) {
+		bleat_printf( 2, "parsing %s", flist[i] );
+		if( ! vfd_add_vf( conf, flist[i], NULL ) ) {
+			bleat_printf( 0, "add_all_vfs: could not add %s", flist[i] );
+		}
+	}
+	
+	free_list( flist, llen );
 }
 
 // -------------------------------------------------------------------------------------------------------------
@@ -1171,6 +1230,7 @@ main(int argc, char **argv)
 	char*	parm_file = NULL;							// default in /etc, -p overrieds
 	parms_t*	parms = NULL;							// info read from the parm file
 	char	log_file[1024];				// buffer to build full log file in
+	char	run_asynch = 1;				// -f sets off to keep attached to tty
 	
   int  opt;
   //int	opterr = 0;
@@ -1181,6 +1241,7 @@ main(int argc, char **argv)
 	"Usage:\n"
 	"  Options:\n"
   "\t -c <mask> Processor affinity mask\n"
+  "\t -f 		keep in 'foreground'\n"
   "\t -p <file> parmm file (/etc/vfd/vfd.cfg)\n"
   "\t -v <num>  Verbose (if num > 3 foreground) num - verbose level\n"
   "\t -s <num>  syslog facility 0-11 (log_kern - log_ftp) 16-23 (local0-local7) see /usr/include/sys/syslog.h\n"
@@ -1205,7 +1266,7 @@ main(int argc, char **argv)
   fname = NULL;
   
   // Parse command line options
-  while ( (opt = getopt(argc, argv, "hv:p:s:")) != -1)			// f,c  dropped
+  while ( (opt = getopt(argc, argv, "fhv:p:s:")) != -1)			// f,c  dropped
   {
     switch (opt)
     {
@@ -1215,6 +1276,10 @@ main(int argc, char **argv)
       cpu_mask = atoi(optarg);
       break;
 	*/
+
+	case 'f':
+		run_asynch = 0;
+		break;
       
     case 'v':
       traceLevel = atoi(optarg);
@@ -1268,12 +1333,15 @@ main(int argc, char **argv)
 	} 
   
 	snprintf( log_file, sizeof( log_file ), "%s/vfd.log", parms->log_dir );
-	//bleat_set_log( log_file, BLEAT_ADD_DATE );									// open bleat log with date suffix
-	bleat_set_lvl( parms->log_level );											// set default level
+	if(  run_asynch ) {
+		bleat_set_log( log_file, BLEAT_ADD_DATE );									// open bleat log with date suffix
+	}
+	bleat_set_lvl( parms->log_level );												// set default level
 	bleat_printf( 0, "VFD initialising" );
 	bleat_printf( 0, "config dir set to: %s", parms->config_dir );
 
 	vfd_add_ports( parms, &running_config );										// add the pciid info from parms to the ports list
+	vfd_add_all_vfs( parms, &running_config );										// read all config files and add the VFs to the config
 
 	if( vfd_init_fifo( parms ) < 0 ) {
 		bleat_printf( 0, "abort: unable to initialise request fifo" );
