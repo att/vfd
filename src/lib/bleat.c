@@ -186,6 +186,7 @@ void bleat_printf( int vlevel, const char *fmt, ... )
 	va_end( argp );                             /* cleanup of variable arg stuff */
 
 	fprintf(  log, "%s\n", obuf );
+	fflush( log );
 }
 
 

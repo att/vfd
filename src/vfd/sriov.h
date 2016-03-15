@@ -1,7 +1,11 @@
+// vi: sw=4 ts=4:
 /*
-**
-** az
-** some stuff is taken from DPDK
+	Mnemonic:	sriov.h 
+	Abstract: 	Main header file for vfd.
+				Original name was sriov daemon, so some references to that remain.
+
+	Date:		February 2016
+	Authors:	Alex Zelezniak (original code)
 */
 
 #ifndef _SRIOV_H_
@@ -229,8 +233,8 @@ struct mirror_s
 struct sriov_port_s
 {
   int     rte_port_number;
-  char    name[16];
-	char    pciid[15];
+  char    name[64];
+	char    pciid[64];
   int     last_updated;
   int     mtu;
   int     num_mirros;

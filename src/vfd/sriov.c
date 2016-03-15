@@ -4,6 +4,7 @@
 **
 */
 
+#include "vfdlib.h"
 #include "sriov.h"
 
 
@@ -435,7 +436,7 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 
   rte_eth_dev_callback_register(port, RTE_ETH_EVENT_INTR_LSC, lsi_event_callback, NULL);
   
-  rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vf_msb_event_callback, (void *) &param);   
+  rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vf_msb_event_callback, NULL);
 
 
 	// Allocate and set up 1 RX queue per Ethernet port. 
@@ -676,6 +677,8 @@ traceLog(int eventTraceLevel, const char * file, int line, const char * format, 
       snprintf(out_buf, sizeof(out_buf), "%s%s", extra_msg, buf);
 
 
+	bleat_printf( 0, "%s", out_buf );
+	/*
     if(useSyslog){
 	    openlog(prog_name, LOG_PID, logFacility);
       syslog(eventTraceLevel, "%s", out_buf);
@@ -683,10 +686,12 @@ traceLog(int eventTraceLevel, const char * file, int line, const char * format, 
     else {
       printf("%s\n", out_buf);
     }
+	*/
+
+  	va_end(va_ap);
   }
 
-  fflush(stdout);
-  va_end(va_ap);
+  //fflush(stdout);
 }
 
 

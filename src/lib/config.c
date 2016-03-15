@@ -82,6 +82,8 @@ static char* file_into_buf( char* fname ) {
 		return NULL;
 	}
 
+	buf[nread] = 0;
+
 	close( fd );
 	return buf;
 }
