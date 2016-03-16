@@ -36,6 +36,10 @@ typedef struct request {
 	int		log_level;			// for verbose
 } req_t;
 
+// ---------------------------------------------------------------------------------------------------------------
+
+static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
+
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
 const char* version = "v1.0/63116";
 
@@ -555,7 +559,7 @@ static void vfd_response( char* rpipe, int state, const char* msg ) {
 }
 
 /*
-	Cleanup a request.
+	Cleanup a request and free the memory.
 */
 static void vfd_free_request( req_t* req ) {
 	if( req->resource != NULL ) {
@@ -569,7 +573,9 @@ static void vfd_free_request( req_t* req ) {
 }
 
 /*
-	Read a request from the fifo, and format it into a request block
+	Read an iplx request from the fifo, and format it into a request block.
+	A pointer to the struct is returned; the caller must use vfd_free_request() to 
+	properly free it.
 */
 static req_t* vfd_read_request( parms_t* parms ) {
 	void*	jblob;				// json parsing stuff
@@ -659,16 +665,18 @@ static req_t* vfd_read_request( parms_t* parms ) {
 }
 
 /*
-	Testing loop for now. This is a black hole -- we never come out.
+	Request loop. Waits for an iplex request and then processes it.
+	Black hole -- we never come out of here if forever is true. If it's
+	false, then we execute once and return.
 */
-static void vfd_dummy_loop( parms_t *parms, struct sriov_conf_c* conf ) {
+static void vfd_dummy_loop( parms_t *parms, struct sriov_conf_c* conf, int forever ) {
 	req_t*	req;
 	char	mbuf[2048];			// message and work buffer
 	int		rc = 0;
 	char*	reason;
 
 	*mbuf = 0;
-	while( 1 ) {
+	do {
 		if( (req = vfd_read_request( parms )) != NULL ) {
 			bleat_printf( 1, "got request\n" );
 			bleat_printf( 2, "chatty to test temp log bump up" );
@@ -688,9 +696,16 @@ static void vfd_dummy_loop( parms_t *parms, struct sriov_conf_c* conf ) {
 
 					bleat_printf( 2, "adding vf from file: %s", mbuf );
 					if( vfd_add_vf( conf, req->resource, &reason ) ) {
-						bleat_printf( 1, "vf added: %s", mbuf );
-						snprintf( mbuf, sizeof( mbuf ), "vf added successfully: %s", req->resource );
-						vfd_response( req->resp_fifo, 0, mbuf );
+
+						if( vfd_update_nic( parms, conf ) == 0 ) {			// added to config was ok, drive the nic update
+							snprintf( mbuf, sizeof( mbuf ), "vf added successfully: %s", req->resource );
+							vfd_response( req->resp_fifo, 0, mbuf );
+						} else {
+							// TODO -- must turn the vf off so that another add can be sent without forcing a delete
+							snprintf( mbuf, sizeof( mbuf ), "vf add failed: unable to configure the vf for: %s", req->resource );
+							bleat_printf( 1, "vf added: %s", mbuf );
+							vfd_response( req->resp_fifo, 0, mbuf );
+						}
 					} else {
 						snprintf( mbuf, sizeof( mbuf ), "unable to add vf: %s: %s", req->resource, reason );
 						vfd_response( req->resp_fifo, 1, mbuf );
@@ -747,9 +762,176 @@ static void vfd_dummy_loop( parms_t *parms, struct sriov_conf_c* conf ) {
 			vfd_free_request( req );
 		}
 		
-		sleep( 1 );
-	}
+		if( forever ) 
+			sleep( 1 );
+	} while( forever );
 }
+
+// ----------------- actual nic management ------------------------------------------------------------------------------------
+
+/*
+	Runs through the configuration and makes adjustments.  This is 
+	a tweak of the original code (update_ports_config) inasmuch as the dynamic 
+	changes to the configuration based on nova add/del requests are made to the 
+	"running config" -- there is no longer a new/old config to compare with.  This
+	function will update a port/vf based on the last_updated flag:
+		-1 delete (remove macs and vlans)
+		0  no change, no action 
+		1  add (add macs  and vlans)
+
+	Bleat messages have been added so that dynamically adjusted verbosity is
+	available.
+
+	Conf is the configuration to check. If parms->forreal is set, then we actually
+	make the dpdk calls to do the work.
+
+
+	TODO:  the original, and thus this, function always return 0 (good); we need to
+		figure out how to handle errors back from the rte_ calls.
+*/
+static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
+	int i;
+	int on = 1;
+    uint32_t vf_mask;
+    int y;
+
+	for (i = 0; i < conf->num_ports; ++i){							// run each port we know about
+		int ret;
+		struct sriov_port_s *port = &conf->ports[i];
+
+		if( port->last_updated == 1 ) {								// updated since last call, reconfigure
+			traceLog(TRACE_DEBUG, "------------------ UPDADING PORT: %d, port time: %d, c_port time: %d, --------------------\n", i, port->last_updated, port->last_updated);
+
+			if( parms->forreal ) {
+				bleat_printf( 1, "port updated: %s/%s",  port->name, port->pciid );
+				rte_eth_promiscuous_enable(port->rte_port_number);
+				rte_eth_allmulticast_enable(port->rte_port_number);
+	
+				ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
+				if (ret < 0)
+					traceLog(TRACE_ERROR, "bad unicast hash table parameter, return code = %d \n", ret);
+	
+			} else {
+				bleat_printf( 1, "port update commands not sent (forreal is off): %s/%s",  port->name, port->pciid );
+			}
+		} else {
+
+			bleat_printf( 2, "update configs: skipped port, not changed: %s/%s", port->name, port->pciid );
+		}
+
+	    for(y = 0; y < port->num_vfs; ++y){ 							/* go through all VF's and (un)set VLAN's/macs for any vf that has changed */
+			int v;
+			int m;
+			char *mac;
+			struct vf_s *vf = &port->vfs[y];   			// at the VF to work on
+
+			vf_mask = VFN2MASK(vf->num);
+
+			if( vf->last_updated != 0) {					// this vf was changed (add/del), reconfigure it
+				bleat_printf( 1, "reconfigure vf for %s: %s vf=%d", vf->last_updated == 1 ? "add" : "delete", port->pciid, vf->num );
+				//traceLog(TRACE_DEBUG, "HERE WE ARE = %d, vf->num %d, vf->num: %d, vf->last_updated: %d, vf->last_updated: %d\n", y, vf->num, vf->num, vf->last_updated, vf->last_updated);      
+
+
+				if( vf->last_updated == -1 ) { 							// delete vlans
+					traceLog(TRACE_DEBUG, "------------------ DELETING VLANS, VF: %d --------------------\n", vf->num);
+					for(v = 0; v < vf->num_vlans; ++v) {
+						int vlan = vf->vlans[v];
+						bleat_printf( 2, "delete vlan: %s vf=%s vlan=%s", port->pciid, vf->num, vlan );
+						//traceLog(TRACE_DEBUG, "------------------ DELETING VLAN: %d, VF: %d --------------------\n", vlan, vf->num );
+						if( parms->forreal )
+							set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, 0);
+					}
+				} else {
+					traceLog(TRACE_DEBUG, "------------------ ADDING VLANS, VF: %d --------------------\n", vf->num);
+					int v;
+					for(v = 0; v < vf->num_vlans; ++v) {
+						int vlan = vf->vlans[v];
+						bleat_printf( 2, "add vlan: %s vf=%s vlan=%s", port->pciid, vf->num, vlan );
+						traceLog(TRACE_DEBUG, "------------------ ADDIND VLAN: %d, VF: %d --------------------\n", vlan, vf->num );
+						if( parms->forreal )
+							set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, on);
+					}
+				}
+
+				if( vf->last_updated == -1 ) {				// delete the macs
+					traceLog(TRACE_DEBUG, "------------------ DELETING MACs, VF: %d --------------------\n", vf->num);
+					for(m = 0; m < vf->num_macs; ++m) {
+						mac = vf->macs[m];
+						traceLog(TRACE_DEBUG, "------------------ DELETING MAC: %s, VF: %d --------------------\n", mac, vf->num );
+						bleat_printf( 2, "delete mac: %s vf=%s vlan=%s", port->pciid, vf->num, mac );
+		
+						if( parms->forreal )
+							set_vf_rx_mac(port->rte_port_number, mac, vf->num, 0);
+					}
+				} else {
+					traceLog(TRACE_DEBUG, "------------------ ADDING MACs, VF: %d --------------------\n", vf->num);
+
+					for(m = 0; m < vf->num_macs; ++m) {
+						mac = vf->macs[m];
+						bleat_printf( 2, "adding mac: %s vf=%s vlan=%s", port->pciid, vf->num, mac );
+						traceLog(TRACE_DEBUG, "------------------ ADDING MAC: %s, VF: %d --------------------\n", mac, vf->num );
+
+						if( parms->forreal )
+							set_vf_rx_mac(port->rte_port_number, mac, vf->num, 1);
+					}
+				}
+
+				// set VLAN anti spoofing when VLAN filter is used
+						
+				if( parms->forreal ) {
+					traceLog(TRACE_DEBUG, "------------------ SETTING VLAN ANTI SPOOFING: %d, VF: %d --------------------\n", vf->vlan_anti_spoof, vf->num);
+					set_vf_vlan_anti_spoofing(port->rte_port_number, vf->num, vf->vlan_anti_spoof);  
+
+					traceLog(TRACE_DEBUG, "------------------ SETTING MAC ANTISPOOFING: %d, VF: %d --------------------\n", vf->mac_anti_spoof, vf->num);					
+					set_vf_mac_anti_spoofing(port->rte_port_number, vf->num, vf->mac_anti_spoof);
+
+					traceLog(TRACE_DEBUG, "------------------ STRIP TAG: %d, VF: %d -------------------\n", vf->strip_stag, vf->num);	
+					rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag);   
+
+					/*
+					CAUTION: ==== per call on 3/2/2016 we aren't allowing nova to set strip stag, so not setting here
+					traceLog(TRACE_DEBUG, "------------------ INSERT TAG: %d, VF: %d --------------------\n", vf->insert_stag, vf->num);				
+					rx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->insert_stag);
+					*/
+
+					set_vf_allow_bcast(port->rte_port_number, vf->num, vf->allow_bcast);
+					set_vf_allow_mcast(port->rte_port_number, vf->num, vf->allow_mcast);
+					set_vf_allow_un_ucast(port->rte_port_number, vf->num, vf->allow_un_ucast); 
+				} else {
+					bleat_printf( 1, "update vf skipping setup for spoofing, bcast, mcast, etc; forreal is off: %s vf=%d", port->pciid, vf->num );
+				}
+
+				vf->last_updated = 0;				// mark processed
+			}
+		  
+			if( parms->forreal ) {
+				traceLog(TRACE_DEBUG, "------------------ SET PROMISCUOUS: %d, VF: %d --------------------\n", port->rte_port_number, vf->num);
+				uint16_t rx_mode = 0;
+		
+		
+				// figure this out if we have to update it every time we change VLANS/MACS 
+				// or once when update ports config
+				rte_eth_promiscuous_enable(port->rte_port_number);
+				rte_eth_allmulticast_enable(port->rte_port_number);  
+				ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
+		
+		
+				// don't accept untagged frames
+				rx_mode |= ETH_VMDQ_ACCEPT_UNTAG; 
+				ret = rte_eth_dev_set_vf_rxmode(port->rte_port_number, vf->num, rx_mode, !on);
+		
+				if (ret < 0)
+					traceLog(TRACE_DEBUG, "set_vf_allow_untagged(): bad VF receive mode parameter, return code = %d \n", ret);    
+			} else {
+				bleat_printf( 1, "skipped end round updates to port: %s", port->pciid );
+			}
+		}				// end for each vf on this port
+
+    }     // end for each port
+
+	return 0;
+}
+
 
 // -------------------------------------------------------------------------------------------------------------
 
@@ -823,7 +1005,6 @@ sig_hup(int __attribute__((__unused__)) sig)
 }
 
 
-
 // Time difference in millisecond
 
 double 
@@ -855,6 +1036,7 @@ restore_vf_setings_cb(void *param){
 
 	free(param);
 }
+
 
 
 void
@@ -958,13 +1140,16 @@ restore_vf_setings(uint8_t port_id, int vf_id)
   }   
 }
 
-
+/*
+	### deprecated #### replaced by vfd_update_nic
+*/
 int
 update_ports_config(void)
 {
   int i;
   int on = 1;
  
+	return 0;
   for (i = 0; i < sriov_config.num_ports; ++i){
     
     int ret;
@@ -1494,7 +1679,7 @@ main(int argc, char **argv)
 		exit( 1 );
 	}
 
-	vfd_dummy_loop( parms, &running_config );
+	vfd_dummy_loop( parms, &running_config, 1 );		// looop foerver
 bleat_printf( 0, "testing exit being taken" );
 exit( 0 ); // TESTING ---- 
 
