@@ -11,7 +11,8 @@
 */
 typedef struct {
 	char*	log_dir;        // directory where log files should be written
-	int		log_level;      // verbose (bleat) log level
+	int		log_level;      // verbose (bleat) log level (set after initialisation)
+	int		init_log_level; // vlog level used during initialisation
 	int		dpdk_log_level;	// log level passed to dpdk; allow it to be different than verbose level
 	char*	fifo_path;      // path to fifo that cli will write to
 	int		log_keep;       // number of days of logs to keep (do we need this?)
@@ -25,6 +26,7 @@ typedef struct {
 
 							// these are NOT populated from the file, but are added so the struct can be the one stop shopping place for info
 	void*	rfifo;			// the read fifo 'handle' where we 'listen' for requests
+	int		forreal;		// if not set we don't execute any dpdk calls
 } parms_t;
 
 /*

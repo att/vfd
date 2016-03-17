@@ -104,7 +104,7 @@ extern void bleat_pop_lvl( ) {
 	without the small overhead of checking the level for each write).
 */
 extern int bleat_will_it( int l ) {
-	return l >= cur_level;
+	return l <= cur_level;
 }
 
 /*

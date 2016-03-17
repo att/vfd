@@ -118,6 +118,7 @@ extern parms_t* read_parms( char* fname ) {
 
 		parms->dpdk_log_level = jw_missing( jblob, "dpdk_log_level" ) ? 0 : (int) jw_value( jblob, "dpdk_log_level" );
 		parms->log_level = jw_missing( jblob, "log_level" ) ? 0 : (int) jw_value( jblob, "log_level" );
+		parms->init_log_level = jw_missing( jblob, "init_log_level" ) ? 1 : (int) jw_value( jblob, "init_log_level" );
 		parms->log_keep = jw_missing( jblob, "log_keep" ) ? 30 : (int) jw_value( jblob, "log_keep" );
 
 		if(  (stuff = jw_string( jblob, "config_dir" )) ) {
