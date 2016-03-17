@@ -7,6 +7,7 @@
                 Author:         Dhanunjaya Naidu Ravada (dr3662@att.com)
                 Mod:            2016 3 Mar - Created script
 								2016 11 Mar - Add ping, verbose functionality
+								2016 17 Mar - Add logging functionality
 """
 
 __doc__ = """ iplex
@@ -36,12 +37,9 @@ import ast
 import time
 from logging.handlers import RotatingFileHandler
 
-#LOG_FORMAT = '%(asctime)s %(name)-12s %(levelname)-8s %(message)s'
-#LOG_DATE = '%m-%d-%Y %H:%M:%S'
 LOG_DIR = '/var/log/vfd'
 
 VFD_CONFIG = '/etc/vfd/vfd.cfg'
-
 
 def setup_logging(args, filename='iplex.log'):
     level = logging.INFO
@@ -49,7 +47,7 @@ def setup_logging(args, filename='iplex.log'):
         level = logging.DEBUG
     logging.basicConfig(level=level, format='%(name)s: [%(levelname)s] %(message)s')
     handler = RotatingFileHandler(os.path.join(LOG_DIR, filename), maxBytes=200000, backupCount=20)
-    log_formatter = logging.Formatter('%(name)s: %(levelname)s %(message)s')
+    log_formatter = logging.Formatter('%(asctime)s  %(process)s %(levelname)s %(name)s [-] %(message)s')
     handler.setFormatter(log_formatter)
     log = logging.getLogger('iplex')
     log.addHandler(handler)
@@ -200,3 +198,4 @@ if __name__ == '__main__':
         else:
                 if options['show']:
                         iplex.show(options['<port-id>'], options['all'])
+
