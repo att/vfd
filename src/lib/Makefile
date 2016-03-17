@@ -50,11 +50,11 @@ nuke:
 
 # ------ clone (if needed) and update and build jsmn -------
 jsmn:
-	if [[ ! -d jsmn ]] ;\
+	@if [ ! -d jsmn ] ;\
 	then \
 		git clone https://github.com/zserge/jsmn ;\
-	fi ;\
-	cd jsmn ;\
-	git pull ;\
+	fi 
+	cd jsmn ;
+	git pull ;
 	make
 
