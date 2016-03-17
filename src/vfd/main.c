@@ -24,7 +24,7 @@ struct rte_port *ports;				/// ??????
 
 // TODO - these need to move to header file
 #define ADDED	1				// updated states
-#define DELETED -1
+#define DELETED (-1)
 #define UNCHANGED 0
 
 #define RT_NOP	0				// request types
@@ -714,12 +714,13 @@ static void vfd_dummy_loop( parms_t *parms, struct sriov_conf_c* conf, int forev
 						if( vfd_update_nic( parms, conf ) == 0 ) {			// added to config was good, drive the nic update
 							snprintf( mbuf, sizeof( mbuf ), "vf added successfully: %s", req->resource );
 							vfd_response( req->resp_fifo, 0, mbuf );
+							bleat_printf( 1, "vf added: %s", mbuf );
 						} else {
 							// TODO -- must turn the vf off so that another add can be sent without forcing a delete
 							// 		update_nic always returns good now, so this waits until it catches errors and returns bad
 							snprintf( mbuf, sizeof( mbuf ), "vf add failed: unable to configure the vf for: %s", req->resource );
-							bleat_printf( 1, "vf added: %s", mbuf );
 							vfd_response( req->resp_fifo, 0, mbuf );
+							bleat_printf( 1, "vf add failed nic update error" );
 						}
 					} else {
 						snprintf( mbuf, sizeof( mbuf ), "unable to add vf: %s: %s", req->resource, reason );
@@ -739,10 +740,12 @@ static void vfd_dummy_loop( parms_t *parms, struct sriov_conf_c* conf, int forev
 					}
 
 					bleat_printf( 2, "deleting vf from file: %s", mbuf );
-					if( vfd_del_vf( conf, req->resource, &reason ) ) {
-						bleat_printf( 1, "vf deleted: %s", mbuf );
-						snprintf( mbuf, sizeof( mbuf ), "vf deleted successfully: %s", req->resource );
-						vfd_response( req->resp_fifo, 0, mbuf );
+					if( vfd_del_vf( conf, req->resource, &reason ) ) {		// successfully updated internal struct
+						if( vfd_update_nic( parms, conf ) == 0 ) {			// nic update was good too
+							snprintf( mbuf, sizeof( mbuf ), "vf deleted successfully: %s", req->resource );
+							vfd_response( req->resp_fifo, 0, mbuf );
+							bleat_printf( 1, "vf deleted: %s", mbuf );
+						} // TODO need else -- see above
 					} else {
 						snprintf( mbuf, sizeof( mbuf ), "unable to delete vf: %s: %s", req->resource, reason );
 						vfd_response( req->resp_fifo, 1, mbuf );
