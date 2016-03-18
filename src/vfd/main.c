@@ -102,8 +102,8 @@ static int vfd_eal_init( parms_t* parms ) {
 
 	argv[0] = strdup(  "vfd" );						// dummy up a command line to pass to rte_eal_init() -- it expects that we got these on our command line (what a hack)
 
-	if( *parms->cpu_mask != '#' ) {
-		snprintf( wbuf, sizeof( wbuf ), "#%02x", atoi( parms->cpu_mask ) );				// assume integer as a string given; cvt to hex
+	if( *(parms->cpu_mask+1) != 'x' ) {
+		snprintf( wbuf, sizeof( wbuf ), "0x%02x", atoi( parms->cpu_mask ) );				// assume integer as a string given; cvt to hex
 		free( parms->cpu_mask );
 		parms->cpu_mask = strdup( wbuf );
 	}
@@ -133,8 +133,11 @@ static int vfd_eal_init( parms_t* parms ) {
 		bleat_printf( 1, "add pciid to dpdk dummy command line -w %s", parms->pciids[i] );
 	}
 
-	//return rte_eal_init( argc, argv ); 			// http://dpdk.org/doc/api/rte__eal_8h.html
-	return dummy_rte_eal_init( argc, argv );
+	dummy_rte_eal_init( argc, argv );			// print out parms
+	bleat_printf( 1, "invoking real rte initialisation argc=%d", argc );
+	i = rte_eal_init( argc, argv ); 			// http://dpdk.org/doc/api/rte__eal_8h.html
+	bleat_printf( 1, "initialisation returned %d", i );
+	return i;
 }
 
 /*
@@ -677,24 +680,26 @@ static req_t* vfd_read_request( parms_t* parms ) {
 }
 
 /*
-	Request loop. Waits for an iplex request and then processes it.
-	Black hole -- we never come out of here if forever is true. If it's
-	false, then we execute once and return.
+	Request interface. Checks the request pipe and handles a reqest. If 
+	forever is set then this is a black hole (never returns).
+	Returns true if it handled a request, false otherwise.
 */
-static void vfd_dummy_loop( parms_t *parms, struct sriov_conf_c* conf, int forever ) {
+static int vfd_req_if( parms_t *parms, struct sriov_conf_c* conf, int forever ) {
 	req_t*	req;
 	char	mbuf[2048];			// message and work buffer
 	int		rc = 0;
 	char*	reason;
+	int		req_handled = 0;
 
 	if( forever ) {
-		bleat_printf( 1, "forever loop entered" );
+		bleat_printf( 1, "req_if: forever loop entered" );
 	}
 
 	*mbuf = 0;
 	do {
 		if( (req = vfd_read_request( parms )) != NULL ) {
 			bleat_printf( 1, "got request" );					// TODO -- increase level after testing
+			req_handled = 1;
 
 			switch( req->rtype ) {
 				case RT_PING:
@@ -792,6 +797,8 @@ static void vfd_dummy_loop( parms_t *parms, struct sriov_conf_c* conf, int forev
 		if( forever ) 
 			sleep( 1 );
 	} while( forever );
+
+	return req_handled;			// true if we did something -- more frequent recall if we did?
 }
 
 // ----------------- actual nic management ------------------------------------------------------------------------------------
@@ -974,6 +981,11 @@ static inline uint64_t RDTSC(void)
   return ((uint64_t)hi << 32) | lo;
 }
 
+
+
+// ---- signal managment (setup and handlers) ------------------------------------------------------------------
+  
+
 static void 
 sig_int(int sig)
 {
@@ -1038,6 +1050,29 @@ sig_hup(int __attribute__((__unused__)) sig)
   traceLog(TRACE_NORMAL, "Ignored HUP signal\n");
 }
 
+/*	
+	Setup all of the signal handling. 
+*/
+static void set_signals( void ) {
+  struct sigaction sa;
+
+  sa.sa_handler = sig_int;
+  sigaction(SIGINT, &sa, NULL);
+
+  sa.sa_handler = sig_int;
+  sigaction(SIGTERM, &sa, NULL);
+
+  sa.sa_handler = sig_int;
+  sigaction(SIGABRT, &sa, NULL);
+
+  sa.sa_handler = sig_hup;
+  sigaction(SIGHUP, &sa, NULL);
+  
+  sa.sa_handler = sig_usr;
+  sigaction(SIGUSR1, &sa, NULL);    
+}
+
+//-----------------------------------------------------------------------------------------------------------------------
 
 // Time difference in millisecond
 
@@ -1065,7 +1100,8 @@ void
 restore_vf_setings_cb(void *param){
 	struct reset_param_c *p_reset = (struct reset_param_c *) param;
 
-	traceLog(TRACE_DEBUG, "Restoring Settings, Port: %d, VF: %d", p_reset->port, p_reset->vf);
+	bleat_printf( 1, "restore settings callback driven: p=%d vf=%d",  p_reset->port, p_reset->vf );
+	//traceLog(TRACE_DEBUG, "Restoring Settings, Port: %d, VF: %d", p_reset->port, p_reset->vf);
 	restore_vf_setings(p_reset->port, p_reset->vf);
 
 	free(param);
@@ -1073,6 +1109,11 @@ restore_vf_setings_cb(void *param){
 
 
 
+/*
+	This should work without change.  
+	Driven to refresh a single vf on a port. Called by the callback which (we assume) 
+	is driven by the dpdk environment.
+*/
 void
 restore_vf_setings(uint8_t port_id, int vf_id)
 {
@@ -1339,202 +1380,6 @@ update_ports_config(void)
 }
 
 
-
-
-/* 
-	##### deprecated replaced by json reader
-*/
-int
-readConfigFile(char *fname)
-{
- 
-  //printf("Fname: %s\n", fname);
-  
-  int num_ports, num_vfs;
-  config_t cfg;
-  config_setting_t *p_setting, *v_settings, *vl_settings; 
-
-  config_init(&cfg);
- 
-  if(! config_read_file(&cfg, fname)) {
-    fprintf(stderr, "file: %s, %s:%d - %s\n", fname, config_error_file(&cfg),
-            config_error_line(&cfg), config_error_text(&cfg));
-            
-    config_destroy(&cfg);
-    exit(EXIT_FAILURE);
-  } 
-
-  
-  // iterate through all ports
-  p_setting = config_lookup(&cfg, "ports");
-  if(p_setting != NULL) {
-    num_ports = config_setting_length(p_setting);
-    
-    if(num_ports > MAX_PORTS){
-      traceLog(TRACE_ERROR, "too many ports: %d\n", num_ports);
-      exit(EXIT_FAILURE);
-    }
-    
-    sriov_config.num_ports = num_ports;
-    
-    int i;
-
-    for(i = 0; i < num_ports; i++) {
-      config_setting_t *port = config_setting_get_elem(p_setting, i);
-
-      // Only output the record if all of the expected fields are present.
-      const char *name, *pciid;
-      int last_updated, mtu;
-    
-
-      if(!(config_setting_lookup_string(port, "name", &name)
-           && config_setting_lookup_string(port, "pciid", &pciid)
-           && config_setting_lookup_int(port, "last_updated", &last_updated)
-           && config_setting_lookup_int(port, "mtu", &mtu)))
-
-        continue;
-
-      
-      stpcpy(sriov_config.ports[i].name, name);
-      stpcpy(sriov_config.ports[i].pciid, pciid);
-      sriov_config.ports[i].last_updated = last_updated;
-      sriov_config.ports[i].mtu = mtu;
-      
-
-      // not sure how to use this stuff ;(
-      char sstr[15];
-      sprintf(sstr, "ports.[%d].VFs", i);
-      v_settings = config_lookup(&cfg, sstr);
-      
-      if(v_settings != NULL) {
-
-        num_vfs = config_setting_length(v_settings);
-        
-        sriov_config.ports[i].num_vfs = num_vfs;
-        
-        if (num_vfs > MAX_VFS) {
-          traceLog(TRACE_ERROR, "too many VF's: %d\n", num_vfs);
-          exit(EXIT_FAILURE);
-        }
-        
-        int y;
-
-        
-        for(y = 0; y < num_vfs; y++) {
-          config_setting_t *vf = config_setting_get_elem(v_settings, y);
-            
-          /* Only output the record if all of the expected fields are present. */
-          int vfn, strip_stag, insert_stag, vlan_anti_spoof, mac_anti_spoof;
-          int allow_bcast, allow_mcast, allow_un_ucast, last_updated, link;
-          double rate;
-       
-                
-          if(!(config_setting_lookup_int(vf, "vf", &vfn)
-               && config_setting_lookup_int(vf, "last_updated", &last_updated)
-               && config_setting_lookup_int(vf, "strip_stag", &strip_stag)
-               && config_setting_lookup_int(vf, "insert_stag", &insert_stag)
-               && config_setting_lookup_int(vf, "vlan_anti_spoof", &vlan_anti_spoof)
-               && config_setting_lookup_int(vf, "mac_anti_spoof", &mac_anti_spoof)
-               && config_setting_lookup_float(vf, "rate", &rate)
-               && config_setting_lookup_int(vf, "link", &link)
-               && config_setting_lookup_int(vf, "allow_bcast", &allow_bcast)
-               && config_setting_lookup_int(vf, "allow_mcast", &allow_mcast)
-               && config_setting_lookup_int(vf, "allow_un_ucast", &allow_un_ucast)))
-
-
-               
-             continue;
-
-          sriov_config.ports[i].vfs[y].num = vfn;
-          sriov_config.ports[i].vfs[y].last_updated = last_updated;
-          sriov_config.ports[i].vfs[y].strip_stag = strip_stag;
-          sriov_config.ports[i].vfs[y].insert_stag = insert_stag;
-          sriov_config.ports[i].vfs[y].vlan_anti_spoof = vlan_anti_spoof;
-          sriov_config.ports[i].vfs[y].mac_anti_spoof = mac_anti_spoof;
-          sriov_config.ports[i].vfs[y].allow_bcast = allow_bcast;
-          sriov_config.ports[i].vfs[y].allow_mcast = allow_mcast;
-          sriov_config.ports[i].vfs[y].allow_un_ucast = allow_un_ucast;
-          sriov_config.ports[i].vfs[y].link = link;
-          
-          sriov_config.ports[i].vfs[y].rate = rate;
-   
-          /*
-          printf("%-5d  %-36s  %-10d  %-11d  %-8d  %-7d  %-11d  %-11d  %-14d  %2.2f\n", 
-                  sriov_config.ports[i].vfs[y].num,
-                  sriov_config.ports[i].vfs[y].last_updated,
-                  sriov_config.ports[i].vfs[y].strip_stag,
-                  sriov_config.ports[i].vfs[y].insert_stag,
-                  sriov_config.ports[i].vfs[y].vlan_anti_spoof,
-                  sriov_config.ports[i].vfs[y].mac_anti_spoof,
-                  sriov_config.ports[i].vfs[y].allow_bcast,
-                  sriov_config.ports[i].vfs[y].allow_mcast,
-                  sriov_config.ports[i].vfs[y].allow_un_ucast,
-                  sriov_config.ports[i].vfs[y].rate = rate);
-          */        
- 
-                  
-          char vstr[30];
-          sprintf(vstr, "ports.[%d].VFs.[%d].VLANs", i, y); 
-          vl_settings = config_lookup(&cfg, vstr);
-          
-          if(vl_settings != NULL) {
-            
-            int count = config_setting_length(vl_settings);   
-            
-            if(count > MAX_VF_VLANS) {
-              traceLog(TRACE_ERROR, "too many VLANs: %d\n", count);
-              exit(EXIT_FAILURE);
-            }
-            
-            sriov_config.ports[i].vfs[y].num_vlans = count;
-
-            int x;
-           // printf("%-5s\n", "VLAN ID");
-           
-            for(x = 0; x < count; x++) {
-              int vlan_id = config_setting_get_int_elem(vl_settings, x);             
-              sriov_config.ports[i].vfs[y].vlans[x] = vlan_id;
-
-              //printf("%-5d\n", sriov_config.ports[i].vfs[y].vlans[x]);
-            }
-          }
-
-          
-          sprintf(vstr, "ports.[%d].VFs.[%d].MACs", i, y); 
-          vl_settings = config_lookup(&cfg, vstr);
-          
-          if(vl_settings != NULL) {
-            
-            int count = config_setting_length(vl_settings);
-            int x;
-            //printf("%-5s\n", "MAC");
-
-            if(count > MAX_VF_MACS) {
-              traceLog(TRACE_ERROR, "too many MACs: %d\n", count);
-              exit(EXIT_FAILURE);
-            }
-
-            sriov_config.ports[i].vfs[y].num_macs = count;
-            
-            for(x = 0; x < count; x++) {
-              const char *mac = config_setting_get_string_elem(vl_settings, x);           
-              strcpy(sriov_config.ports[i].vfs[y].macs[x], mac); 
-              //printf("%-5s\n", sriov_config.ports[i].vfs[y].macs[x]);
-            }
-          }
-        }
-      }      
-    }
-  }
-
-  if (debug)
-    dump_sriov_config(sriov_config);
-  
-  return 0;
-}
-
-
-
 void 
 dump_sriov_config(struct sriov_conf_c sriov_config)
 {
@@ -1593,25 +1438,26 @@ allow_ucast: %d  allow_mcast: %d  allow_untagged: %d  rate: %f  link: %d  um_vla
   }
 }
 
+// ===============================================================================================================
 int 
 main(int argc, char **argv)
 {
+	__attribute__((__unused__))	int ignored;				// ignored return code to keep compiler from whining
 	char*	parm_file = NULL;							// default in /etc, -p overrieds
 	parms_t*	parms = NULL;							// info read from the parm file
 	char	log_file[1024];				// buffer to build full log file in
 	char	run_asynch = 1;				// -f sets off to keep attached to tty
-	int		forreal = 0;				// -n sets to 0 to keep us from actually fiddling the nic
-	
-  int  opt;
-  //int	opterr = 0;
+	int		forreal = 1;				// -n sets to 0 to keep us from actually fiddling the nic
+	char	buff[1024];					// scratch write buffer
+	int		have_pipe = 0;				// false if we didn't open the stats pipe
+	int		opt;
+	int		fd;
 
-  //"  sriovctl [options] -f <file_name>\n"
   const char * main_help =
 	"\n"
-	"Usage: vfd [-c mask] [-f] [-n] [-p parm-file] [-v level] [-s syslogid]\n"
+	"Usage: vfd [-f] [-n] [-p parm-file] [-v level] [-s syslogid]\n"
 	"Usage: vfd -?\n"
 	"  Options:\n"
-  "\t -c <mask> Processor affinity mask\n"
   "\t -f        keep in 'foreground'\n"
   "\t -n        no-nic actions executed\n"
   "\t -p <file> parmm file (/etc/vfd/vfd.cfg)\n"
@@ -1640,60 +1486,46 @@ main(int argc, char **argv)
   {
     switch (opt)
     {
+		case 'f':
+			run_asynch = 0;
+			break;
+		  
+		case 'v':
+		  traceLevel = atoi(optarg);
 
-	/*		now from the parm file
-    case 'c':
-      cpu_mask = atoi(optarg);
-      break;
-	*/
+		  if(traceLevel > 6) {
+		   useSyslog = 0;
+		   debug = 1;
+		  }
+		 break;  
+		  
+		case 'n':
+			forreal = 0;						// do NOT actually make calls to change the nic
+			break;
 
-	case 'f':
-		run_asynch = 0;
-		break;
-      
-    case 'v':
-      traceLevel = atoi(optarg);
+		case 'p':
+			parm_file = strdup( optarg );
+			break;
 
-      if(traceLevel > 6) {
-       useSyslog = 0;
-       debug = 1;
-      }
-     break;  
-      
-	case 'n':
-		forreal = 0;						// do NOT actually make calls to change the nic
-		break;
+		case 's':
+		  logFacility = (atoi(optarg) << 3);
+		  break;
 
-	case 'p':
-		parm_file = strdup( optarg );
-		break;
+		case 'h':
+		case '?':
+			printf( "vfd %s\n", version ); 
+			printf("%s\n", main_help);
+			exit( 0 );
+			break;
 
-    case 's':
-      logFacility = (atoi(optarg) << 3);
-      break;
-
-    case 'h':
-    case '?':
-		printf( "vfd %s\n", version ); 
-		printf("%s\n", main_help);
-	    exit( 0 );
-		break;
-
-	default:
-		fprintf( stderr, "unknown commandline flag: %c\n", opt );
-		fprintf( stderr, "%s\n", main_help );
-		exit( 1 );
+		default:
+			fprintf( stderr, "unknown commandline flag: %c\n", opt );
+			fprintf( stderr, "%s\n", main_help );
+			exit( 1 );
     }
   }
 
 
-	/* --- we read from config directory now
-	if(fname == NULL) {
-		printf("%s\n", main_help);
-		exit(EXIT_FAILURE);
-	}
-	*/
-  
 	if( (parms = read_parms( parm_file )) == NULL ) { 						// get overall configuration (includes list of pciids we manage)
 		fprintf( stderr, "unable to read configuration from %s: %s\n", parm_file, strerror( errno ) );
 		exit( 1 );
@@ -1731,9 +1563,11 @@ main(int argc, char **argv)
 			exit( 1 );
 		}
 	}
-dump_sriov_config( running_config );
+
+/*
 	bleat_set_lvl( parms->log_level );					// initialisation finished, set log level to running level
-	vfd_dummy_loop( parms, &running_config, 1 );		// looop foerver
+	ignored = vfd_req_if( parms, &running_config, 1 );		// looop foerver processing requests
+
 
 
 
@@ -1741,249 +1575,183 @@ bleat_printf( 0, "testing exit being taken" );
 exit( 0 ); // TESTING ---- 
 
 //##########    buck stops here #######
+*/
+bleat_printf( 1, "falling into the abyss" );
+
+	
+	if( run_asynch ) {
+		bleat_printf( 3, "detaching from tty (daemonise)" );
+		daemonize();
+	} else {
+		bleat_printf( 2, "staying attached to tty" );
+	}
 
 
-
-	/*
-  int res = readConfigFile(fname);
-  
-  if (res < 0)
-    rte_exit(EXIT_FAILURE, "Can not parse config file %s\n", fname);
-	*/
-
-    
-  argc -= optind;
-  argv += optind;
-  optind = 0;
-
-
-  //argc = 11;
-	argc = 12;
-
-  
-  
-  int argc_port = argc + sriov_config.num_ports * 2;
-  
-	//char **cli_argv = (char**)malloc(argc * sizeof(char*));
-  char **cli_argv = (char**)malloc(argc_port * sizeof(char*));
-
-  
-  // add # num of ports * 2 to args, so we can do -w pciid stuff
-  for(i = 0; i < argc_port; i ++) {
-    cli_argv[i] = (char*)malloc(20 * sizeof(char));
-  }
-
-  //sprintf(cli_argv[0], "sriovctl");
-  sprintf(cli_argv[0], "vfd");						// dummy up a command line to pass to rte_eal_init() -- it expects that we got these on our command line (what a hack)
-
-  sprintf(cli_argv[1], "-c");
-  sprintf(cli_argv[2], "%#02x", cpu_mask);
-
-  sprintf(cli_argv[3], "-n");
-  sprintf(cli_argv[4], "4");
-
-  sprintf(cli_argv[5], "–m");
-  sprintf(cli_argv[6], "50");
-
-  sprintf(cli_argv[7], "--file-prefix");
-  //sprintf(cli_argv[8], "%s", "sriovctl");
-  sprintf(cli_argv[8], "%s", "vfd");
-
-  sprintf(cli_argv[9], "--log-level");
-  sprintf(cli_argv[10], "%d", 8);
-
-  sprintf(cli_argv[11], "%s", "--no-huge");
-  
-  
-  int y = 0;										// to that add n -w <pciid> options (these need to be defined in the parm file)
-  for(i = argc; i < argc_port; i+=2) {
-    sprintf(cli_argv[i], "-w");
-    sprintf(cli_argv[i + 1], "%s", sriov_config.ports[y].pciid);
-      
-    traceLog(TRACE_INFO, "PCI num: %d, PCIID: %s\n", y, sriov_config.ports[y].pciid);
-    y++;
-  }
-  
-  
-	//TESTING -- dont detach if(!debug) daemonize();
-    
-			
-	// http://dpdk.org/doc/api/rte__eal_8h.html
-	// init EAL 
-	int ret = rte_eal_init(argc_port, cli_argv);
+	if( parms->forreal ) {										// begin dpdk setup and device discovery
+		bleat_printf( 1, "WARNING: starting rte initialisation" );
+		rte_set_log_type(RTE_LOGTYPE_PMD && RTE_LOGTYPE_PORT, 0);
+		
+		traceLog(TRACE_INFO, "LOG LEVEL = %d, LOG TYPE = %d\n", rte_get_log_level(), rte_log_cur_msg_logtype());
 
 		
-	if (ret < 0) {
-		bleat_printf( 0, "abort: unable to initalise EAL" );			// is there an error we can log?
-		rte_exit(EXIT_FAILURE, "Error with EAL initialization\n");
+		rte_set_log_level(8);
+		
+
+		n_ports = rte_eth_dev_count();
+		bleat_printf( 1, "hardware reports %d ports", n_ports );
+
+
+	  if(n_ports != running_config.num_ports) {
+		bleat_printf( 1, "port count mismatch: config lists %d device has %d", running_config.num_ports, n_ports );
+		traceLog(TRACE_ERROR, "ports found (%d) != ports requested (%d)\n", n_ports, running_config.num_ports);  
+	  }
+
+	  traceLog(TRACE_NORMAL, "n_ports = %d\n", n_ports);
+
+	  
+
+	 /*  
+	  === (commented out in original -- left)
+	  const struct rte_memzone *mz;
+
+	  mz = rte_memzone_reserve(IF_PORT_INFO, sizeof(struct ifrate_s), rte_socket_id(), 0);
+		if (mz == NULL)
+			rte_exit(EXIT_FAILURE, "Cannot reserve memory zone for port information\n");
+	  memset(mz->addr, 0, sizeof(struct ifrate_s));
+	  
+
+	  ifrate_stats = mz->addr; 
+	  
+	  printf("%p\t\n", (void *)ifrate_stats);
+	  ==== */
+
+		// Creates a new mempool in memory to hold the mbufs.
+		mbuf_pool = rte_pktmbuf_pool_create("sriovctl", NUM_MBUFS * n_ports,
+						  MBUF_CACHE_SIZE,
+						  0, 
+						  RTE_MBUF_DEFAULT_BUF_SIZE,
+						  rte_socket_id());
+
+		if (mbuf_pool == NULL) {
+			bleat_printf( 0, "abort: mbfuf pool creation failed" );
+			rte_exit(EXIT_FAILURE, "Cannot create mbuf pool\n");
+		}
+
+		/* Initialize all ports. */
+	  u_int16_t portid;
+		for (portid = 0; portid < n_ports; portid++) {
+			if (port_init(portid, mbuf_pool) != 0) {
+				bleat_printf( 0, "abort: port initialisation failed: %d", (int) portid );
+				rte_exit(EXIT_FAILURE, "Cannot init port %"PRIu8 "\n", portid);
+			}
+		}
+	   
+
+	   
+	  int port; 
+	  for(port = 0; port < n_ports; ++port){					// for each port reported by driver
+		struct rte_eth_dev_info dev_info;
+		rte_eth_dev_info_get(port, &dev_info);
+		  
+		//struct ether_addr addr;
+		rte_eth_macaddr_get(port, &addr);
+		traceLog(TRACE_INFO, "Port: %u, MAC: %02" PRIx8 ":%02" PRIx8 ":%02" PRIx8
+			   ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ", ",
+			(unsigned)port,
+			addr.addr_bytes[0], addr.addr_bytes[1],
+			addr.addr_bytes[2], addr.addr_bytes[3],
+			addr.addr_bytes[4], addr.addr_bytes[5]);
+
+
+		//traceLog(TRACE_INFO, "Driver Name: %s, Index %d, Pkts rx: %lu, ", dev_info.driver_name, dev_info.if_index, st.pcount);
+		bleat_printf( 1, "Driver Name: %s, Index %d, Pkts rx: %lu, ", dev_info.driver_name, dev_info.if_index, st.pcount);
+		
+		//traceLog(TRACE_INFO, "PCI: %04X:%02X:%02X.%01X, Max VF's: %d, Numa: %d\n\n", dev_info.pci_dev->addr.domain, dev_info.pci_dev->addr.bus, dev_info.pci_dev->addr.devid, dev_info.pci_dev->addr.function, dev_info.max_vfs, dev_info.pci_dev->numa_node);
+		bleat_printf( 1, "PCI: %04X:%02X:%02X.%01X, Max VF's: %d, Numa: %d", dev_info.pci_dev->addr.domain, dev_info.pci_dev->addr.bus, 
+				dev_info.pci_dev->addr.devid , dev_info.pci_dev->addr.function, dev_info.max_vfs, dev_info.pci_dev->numa_node);
+
+				
+		/*
+		 * rte could enumerate ports differently than in config files
+		 * rte_config_portmap array will hold index to config
+		 */
+		int i;    
+		char pciid[25];
+		snprintf(pciid, sizeof( pciid ), "%04X:%02X:%02X.%01X", 
+				dev_info.pci_dev->addr.domain, 
+				dev_info.pci_dev->addr.bus, 
+				dev_info.pci_dev->addr.devid, 
+				dev_info.pci_dev->addr.function);
+		  
+		for(i = 0; i < running_config.num_ports; ++i) {						// suss out the device in our config and map the two indexes
+		  if (strcmp(pciid, running_config.ports[i].pciid) == 0) {;
+			bleat_printf( 2, "physical port %i maps to config %d", port, i );
+			rte_config_portmap[port] = i;
+			// point config port back to rte port
+			running_config.ports[i].rte_port_number = port;
+		  }
+		}
+	  }
+	  
+		set_signals();				// register signal handlers (reload, port reset on shutdown, etc)
+
+	  gettimeofday(&st.startTime, NULL);
+
+	  traceLog(TRACE_NORMAL, "starting sriovctl loop\n");
+	  
+
+	  //update_ports_config();
+
+		if(mkfifo(STATS_FILE, 0666) != 0) {
+			have_pipe = 1;
+			traceLog(TRACE_ERROR, "can't create pipe: %s, %d\n", STATS_FILE, errno);
+		}
+
+	  /*
+		FILE * dump = fopen("/tmp/pci_dump.txt", "w");
+		rte_eal_pci_dump(dump);
+		fclose (dump);
+		*/
+	} else {
+		bleat_printf( 1, "no action mode: skipped dpdk setup, signal initialisation, and device discovery" );
 	}
 	
-	rte_set_log_type(RTE_LOGTYPE_PMD && RTE_LOGTYPE_PORT, 0);
-	
-	traceLog(TRACE_INFO, "LOG LEVEL = %d, LOG TYPE = %d\n", rte_get_log_level(), rte_log_cur_msg_logtype());
-
-    
-	rte_set_log_level(8);
-	
-
-	n_ports = rte_eth_dev_count();
-
-
-  if(n_ports != sriov_config.num_ports) {
-    traceLog(TRACE_ERROR, "ports found (%d) != ports requested (%d)\n", n_ports, sriov_config.num_ports);  
-  }
-
-  traceLog(TRACE_NORMAL, "n_ports = %d\n", n_ports);
-
-  
-
- /*
-  const struct rte_memzone *mz;
-
-  mz = rte_memzone_reserve(IF_PORT_INFO, sizeof(struct ifrate_s), rte_socket_id(), 0);
-	if (mz == NULL)
-		rte_exit(EXIT_FAILURE, "Cannot reserve memory zone for port information\n");
-  memset(mz->addr, 0, sizeof(struct ifrate_s));
-  
-
-  ifrate_stats = mz->addr; 
-  
-  printf("%p\t\n", (void *)ifrate_stats);
-
-  */
-
-	// Creates a new mempool in memory to hold the mbufs.
-	mbuf_pool = rte_pktmbuf_pool_create("sriovctl", NUM_MBUFS * n_ports,
-                      MBUF_CACHE_SIZE,
-                      0, 
-                      RTE_MBUF_DEFAULT_BUF_SIZE,
-                      rte_socket_id());
-
-	if (mbuf_pool == NULL)
-		rte_exit(EXIT_FAILURE, "Cannot create mbuf pool\n");
-
-	/* Initialize all ports. */
-  u_int16_t portid;
-	for (portid = 0; portid < n_ports; portid++)
-		if (port_init(portid, mbuf_pool) != 0)
-			rte_exit(EXIT_FAILURE, "Cannot init port %"PRIu8 "\n", portid);
-   
-
-   
-  int port; 
-  
-  for(port = 0; port < n_ports; ++port){
-    
-    struct rte_eth_dev_info dev_info;
-    rte_eth_dev_info_get(port, &dev_info);
-      
-    //struct ether_addr addr;
-    rte_eth_macaddr_get(port, &addr);
-    traceLog(TRACE_INFO, "Port: %u, MAC: %02" PRIx8 ":%02" PRIx8 ":%02" PRIx8
-           ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ", ",
-        (unsigned)port,
-        addr.addr_bytes[0], addr.addr_bytes[1],
-        addr.addr_bytes[2], addr.addr_bytes[3],
-        addr.addr_bytes[4], addr.addr_bytes[5]);
-
-
-    traceLog(TRACE_INFO, "Driver Name: %s, Index %d, Pkts rx: %lu, ", 
-            dev_info.driver_name, dev_info.if_index, st.pcount);
-    
-    traceLog(TRACE_INFO, "PCI: %04X:%02X:%02X.%01X, Max VF's: %d, Numa: %d\n\n", dev_info.pci_dev->addr.domain, 
-            dev_info.pci_dev->addr.bus , dev_info.pci_dev->addr.devid , dev_info.pci_dev->addr.function, 
-            dev_info.max_vfs, dev_info.pci_dev->numa_node);
-
-            
-    /*
-     * rte could inumerate ports different then in config file
-     * rte_config_portmap array will hold index to config
-     */
-    int i;    
-    for(i = 0; i < sriov_config.num_ports; ++i) {
-      char pciid[16];
-      sprintf(pciid, "%04X:%02X:%02X.%01X", 
-            dev_info.pci_dev->addr.domain, 
-            dev_info.pci_dev->addr.bus, 
-            dev_info.pci_dev->addr.devid, 
-            dev_info.pci_dev->addr.function);
-      
-      if (strcmp(pciid, sriov_config.ports[i].pciid) == 0) {;
-        rte_config_portmap[port] = i;
-        // point config port back to rte port
-        sriov_config.ports[i].rte_port_number = port;
-      }
-    }
-  }
-  
-
-  struct sigaction sa;
-
-  sa.sa_handler = sig_int;
-  sigaction(SIGINT, &sa, NULL);
-
-  sa.sa_handler = sig_int;
-  sigaction(SIGTERM, &sa, NULL);
-
-  sa.sa_handler = sig_int;
-  sigaction(SIGABRT, &sa, NULL);
-
-  sa.sa_handler = sig_hup;
-  sigaction(SIGHUP, &sa, NULL);
-  
-  sa.sa_handler = sig_usr;
-  sigaction(SIGUSR1, &sa, NULL);    
-  
-  gettimeofday(&st.startTime, NULL);
-
-  traceLog(TRACE_NORMAL, "starting sriovctl loop\n");
-  
-
-  update_ports_config();
-
-  char buff[1024];
-  if(mkfifo(STATS_FILE, 0666) != 0)
-    traceLog(TRACE_ERROR, "can't create pipe: %s, %d\n", STATS_FILE, errno);
-
-  int fd;
-  /*
-	FILE * dump = fopen("/tmp/pci_dump.txt", "w");
-	rte_eal_pci_dump(dump);
-	fclose (dump);
-	*/
-	
-  while(!terminated)
+	bleat_set_lvl( parms->log_level );					// initialisation finished, set log level to running level
+	fd = open(STATS_FILE, O_WRONLY);
+	while(!terminated)
 	{
-		usleep(20000);
+		usleep(50000);			// .5s
    
-    fd = open(STATS_FILE, O_WRONLY);
-    sprintf(buff, "%s %18s %10s %10s %10s %10s %10s %10s %10s %10s %10s\n", "Iface", "Link", "Speed", "Duplex", "RX pkts", "RX bytes", 
-      "RX errors", "RX dropped", "TX pkts", "TX bytes", "TX errors");   
-    
-    __attribute__((__unused__)) int ret;
-    ret = write(fd, buff, strlen(buff));
-    
-    for (i = 0; i < n_ports; ++i)
-    {
-			struct rte_eth_dev_info dev_info;
-			rte_eth_dev_info_get(i, &dev_info);			
+		while( vfd_req_if( parms, &running_config, 0 ) ); 				// process all pending requests
 
-			sprintf(buff, "%04X:%02X:%02X.%01X", 
-			dev_info.pci_dev->addr.domain, 
-			dev_info.pci_dev->addr.bus, 
-			dev_info.pci_dev->addr.devid, 
-			dev_info.pci_dev->addr.function);
-						
-      ret = write(fd, buff, strlen(buff));  
-      
-      nic_stats_display(i, buff);
-      ret = write(fd, buff, strlen(buff));       
-    }
+		if( have_pipe && fd >= 0 ) {				//TODO -- drop this in favour of show stats?
+			snprintf(buff, sizeof( buff ), "%s %18s %10s %10s %10s %10s %10s %10s %10s %10s %10s\n", "Iface", "Link", "Speed", "Duplex", "RX pkts", "RX bytes", 
+			"RX errors", "RX dropped", "TX pkts", "TX bytes", "TX errors");   
     
-    close(fd);
-   // if (debug)
-        //nic_stats_display(i);
-	}
+			ignored = write(fd, buff, strlen(buff));
+    
+			for (i = 0; i < n_ports; ++i)
+			{
+				struct rte_eth_dev_info dev_info;
+				rte_eth_dev_info_get(i, &dev_info);			
+
+				sprintf(buff, "%04X:%02X:%02X.%01X", 
+				dev_info.pci_dev->addr.domain, 
+				dev_info.pci_dev->addr.bus, 
+				dev_info.pci_dev->addr.devid, 
+				dev_info.pci_dev->addr.function);
+							
+				ignored = write(fd, buff, strlen(buff));  
+     				 
+				nic_stats_display(i, buff);
+				ignored = write(fd, buff, strlen(buff));       
+			}
+    
+			close(fd);
+			// if (debug)
+			//nic_stats_display(i);
+		}
+	}		// end while
  
   if(unlink(STATS_FILE) != 0)
     traceLog(TRACE_ERROR, "can't delete pipe: %s\n", STATS_FILE);
