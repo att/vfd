@@ -158,6 +158,7 @@ static int vfd_init_fifo( parms_t* parms ) {
 		return -1;
 	}
 
+	umask( 0 );
 	parms->rfifo = rfifo_create( parms->fifo_path, 0666 );		//TODO -- set mode more sainly, but this runs as root, so regular users need to write to this thus open wide for now
 	if( parms->rfifo == NULL ) {
 		bleat_printf( 0, "error: unable to create request fifo (%s): %s", parms->fifo_path, strerror( errno ) );
