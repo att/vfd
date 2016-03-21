@@ -102,11 +102,11 @@ static int vfd_eal_init( parms_t* parms ) {
 
 	argv[0] = strdup(  "vfd" );						// dummy up a command line to pass to rte_eal_init() -- it expects that we got these on our command line (what a hack)
 
-	if( *(parms->cpu_mask+1) != 'x' ) {
+	if( *(parms->cpu_mask+1) != 'x' ) {														// not something like 0xff
 		snprintf( wbuf, sizeof( wbuf ), "0x%02x", atoi( parms->cpu_mask ) );				// assume integer as a string given; cvt to hex
 		free( parms->cpu_mask );
 		parms->cpu_mask = strdup( wbuf );
-	}
+	} 
 	
 	argv[1] = strdup( "-c" );
 	argv[2] = strdup( parms->cpu_mask );
@@ -134,9 +134,15 @@ static int vfd_eal_init( parms_t* parms ) {
 	}
 
 	dummy_rte_eal_init( argc, argv );			// print out parms
-	bleat_printf( 1, "invoking real rte initialisation argc=%d", argc );
-	i = rte_eal_init( argc, argv ); 			// http://dpdk.org/doc/api/rte__eal_8h.html
-	bleat_printf( 1, "initialisation returned %d", i );
+	if( parms->forreal ) {
+		bleat_printf( 1, "invoking real rte initialisation argc=%d", argc );
+		i = rte_eal_init( argc, argv ); 			// http://dpdk.org/doc/api/rte__eal_8h.html
+		bleat_printf( 1, "initialisation returned %d", i );
+	} else {
+		bleat_printf( 1, "rte initialisation skipped (no harm mode)" );
+		i = 1;
+	}
+
 	return i;
 }
 
@@ -149,7 +155,7 @@ static int vfd_init_fifo( parms_t* parms ) {
 		return -1;
 	}
 
-	parms->rfifo = rfifo_create( parms->fifo_path );
+	parms->rfifo = rfifo_create( parms->fifo_path, 0666 );		//TODO -- set mode more sainly, but this runs as root, so regular users need to write to this thus open wide for now
 	if( parms->rfifo == NULL ) {
 		bleat_printf( 0, "error: unable to create request fifo (%s): %s", parms->fifo_path, strerror( errno ) );
 		return -1;
@@ -418,7 +424,7 @@ static void vfd_add_all_vfs(  parms_t* parms, struct sriov_conf_c* conf ) {
 
 	flist = list_files( parms->config_dir, "json", 1, &llen );
 	if( flist == NULL || llen <= 0 ) {
-		bleat_printf( 1, "no vf configuration files (*.json) found in %s", parms->config_dir );
+		bleat_printf( 1, "zero vf configuration files (*.json) found in %s; nothing restored", parms->config_dir );
 		return;
 	}
 
@@ -873,7 +879,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 					traceLog(TRACE_DEBUG, "------------------ DELETING VLANS, VF: %d --------------------\n", vf->num);
 					for(v = 0; v < vf->num_vlans; ++v) {
 						int vlan = vf->vlans[v];
-						bleat_printf( 2, "delete vlan: %s vf=%s vlan=%s", port->pciid, vf->num, vlan );
+						bleat_printf( 2, "delete vlan: %s vf=%d vlan=%d", port->pciid, vf->num, vlan );
 						//traceLog(TRACE_DEBUG, "------------------ DELETING VLAN: %d, VF: %d --------------------\n", vlan, vf->num );
 						if( parms->forreal )
 							set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, 0);
@@ -883,7 +889,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 					int v;
 					for(v = 0; v < vf->num_vlans; ++v) {
 						int vlan = vf->vlans[v];
-						bleat_printf( 2, "add vlan: %s vf=%s vlan=%s", port->pciid, vf->num, vlan );
+						bleat_printf( 2, "add vlan: %s vf=%d vlan=%d", port->pciid, vf->num, vlan );
 						traceLog(TRACE_DEBUG, "------------------ ADDIND VLAN: %d, VF: %d --------------------\n", vlan, vf->num );
 						if( parms->forreal )
 							set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, on);
@@ -895,7 +901,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 					for(m = 0; m < vf->num_macs; ++m) {
 						mac = vf->macs[m];
 						traceLog(TRACE_DEBUG, "------------------ DELETING MAC: %s, VF: %d --------------------\n", mac, vf->num );
-						bleat_printf( 2, "delete mac: %s vf=%s vlan=%s", port->pciid, vf->num, mac );
+						bleat_printf( 2, "delete mac: %s vf=%d mac=%s", port->pciid, vf->num, mac );
 		
 						if( parms->forreal )
 							set_vf_rx_mac(port->rte_port_number, mac, vf->num, 0);
@@ -905,7 +911,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 
 					for(m = 0; m < vf->num_macs; ++m) {
 						mac = vf->macs[m];
-						bleat_printf( 2, "adding mac: %s vf=%s vlan=%s", port->pciid, vf->num, mac );
+						bleat_printf( 2, "adding mac: %s vf=%d mac=%s", port->pciid, vf->num, mac );
 						traceLog(TRACE_DEBUG, "------------------ ADDING MAC: %s, VF: %d --------------------\n", mac, vf->num );
 
 						if( parms->forreal )
@@ -1451,7 +1457,7 @@ main(int argc, char **argv)
 	char	buff[1024];					// scratch write buffer
 	int		have_pipe = 0;				// false if we didn't open the stats pipe
 	int		opt;
-	int		fd;
+	int		fd = -1;
 
   const char * main_help =
 	"\n"
@@ -1565,30 +1571,23 @@ main(int argc, char **argv)
 	}
 
 /*
+	## uncomment this block for hard loop and no rte testing
 	bleat_set_lvl( parms->log_level );					// initialisation finished, set log level to running level
 	ignored = vfd_req_if( parms, &running_config, 1 );		// looop foerver processing requests
-
-
-
-
-bleat_printf( 0, "testing exit being taken" );
-exit( 0 ); // TESTING ---- 
-
-//##########    buck stops here #######
 */
-bleat_printf( 1, "falling into the abyss" );
 
+	bleat_printf( 1, "falling into the abyss" );			// below this point we go into the darkness
 	
 	if( run_asynch ) {
 		bleat_printf( 3, "detaching from tty (daemonise)" );
 		daemonize();
 	} else {
-		bleat_printf( 2, "staying attached to tty" );
+		bleat_printf( 2, "-f supplied, staying attached to tty" );
 	}
 
 
 	if( parms->forreal ) {										// begin dpdk setup and device discovery
-		bleat_printf( 1, "WARNING: starting rte initialisation" );
+		bleat_printf( 1, "starting rte initialisation" );
 		rte_set_log_type(RTE_LOGTYPE_PMD && RTE_LOGTYPE_PORT, 0);
 		
 		traceLog(TRACE_INFO, "LOG LEVEL = %d, LOG TYPE = %d\n", rte_get_log_level(), rte_log_cur_msg_logtype());
@@ -1602,18 +1601,17 @@ bleat_printf( 1, "falling into the abyss" );
 
 
 	  if(n_ports != running_config.num_ports) {
-		bleat_printf( 1, "port count mismatch: config lists %d device has %d", running_config.num_ports, n_ports );
+		bleat_printf( 1, "warn: port count mismatch: config lists %d device has %d", running_config.num_ports, n_ports );
 		traceLog(TRACE_ERROR, "ports found (%d) != ports requested (%d)\n", n_ports, running_config.num_ports);  
 	  }
 
 	  traceLog(TRACE_NORMAL, "n_ports = %d\n", n_ports);
 
-	  
-
 	 /*  
 	  === (commented out in original -- left)
 	  const struct rte_memzone *mz;
 
+		bleat_printf( 1, "setting memory zones" );
 	  mz = rte_memzone_reserve(IF_PORT_INFO, sizeof(struct ifrate_s), rte_socket_id(), 0);
 		if (mz == NULL)
 			rte_exit(EXIT_FAILURE, "Cannot reserve memory zone for port information\n");
@@ -1622,9 +1620,10 @@ bleat_printf( 1, "falling into the abyss" );
 
 	  ifrate_stats = mz->addr; 
 	  
-	  printf("%p\t\n", (void *)ifrate_stats);
+	  bleat_printf( 1, "rate stats addr: %p", (void *)ifrate_stats);		// converted from plain printf
 	  ==== */
 
+		bleat_printf( 1, "creating memory pool" );
 		// Creates a new mempool in memory to hold the mbufs.
 		mbuf_pool = rte_pktmbuf_pool_create("sriovctl", NUM_MBUFS * n_ports,
 						  MBUF_CACHE_SIZE,
@@ -1637,17 +1636,22 @@ bleat_printf( 1, "falling into the abyss" );
 			rte_exit(EXIT_FAILURE, "Cannot create mbuf pool\n");
 		}
 
+		bleat_printf( 1, "initialising all ports" );
 		/* Initialize all ports. */
 	  u_int16_t portid;
 		for (portid = 0; portid < n_ports; portid++) {
 			if (port_init(portid, mbuf_pool) != 0) {
 				bleat_printf( 0, "abort: port initialisation failed: %d", (int) portid );
 				rte_exit(EXIT_FAILURE, "Cannot init port %"PRIu8 "\n", portid);
+			} else {
+				bleat_printf( 2, "port initialisation successful for port %d", portid );
 			}
 		}
+		bleat_printf( 2, "port initialisation complete" );
 	   
 
 	   
+		bleat_printf( 1, "looping over ports to map indexes" );
 	  int port; 
 	  for(port = 0; port < n_ports; ++port){					// for each port reported by driver
 		struct rte_eth_dev_info dev_info;
@@ -1692,6 +1696,7 @@ bleat_printf( 1, "falling into the abyss" );
 		  }
 		}
 	  }
+		bleat_printf( 2, "indexes were mapped" );
 	  
 		set_signals();				// register signal handlers (reload, port reset on shutdown, etc)
 
@@ -1712,19 +1717,22 @@ bleat_printf( 1, "falling into the abyss" );
 		rte_eal_pci_dump(dump);
 		fclose (dump);
 		*/
+
+		bleat_printf( 1, "dpdk setup complete" );
 	} else {
 		bleat_printf( 1, "no action mode: skipped dpdk setup, signal initialisation, and device discovery" );
 	}
 	
+	fd = open(STATS_FILE, O_NONBLOCK | O_WRONLY);		// must open non-block or it hangs until there is a reader
+	bleat_printf( 1, "initialisation complete, starting to looop; stats file open%s", fd >= 0 ? "ed successfully" : " failed" );
 	bleat_set_lvl( parms->log_level );					// initialisation finished, set log level to running level
-	fd = open(STATS_FILE, O_WRONLY);
 	while(!terminated)
 	{
 		usleep(50000);			// .5s
    
-		while( vfd_req_if( parms, &running_config, 0 ) ); 				// process all pending requests
+		while( vfd_req_if( parms, &running_config, 0 ) ); 				// process _all_ pending requests before going on
 
-		if( have_pipe && fd >= 0 ) {				//TODO -- drop this in favour of show stats?
+		if( parms->forreal  && have_pipe && fd >= 0 ) {				//TODO -- drop this in favour of show stats?
 			snprintf(buff, sizeof( buff ), "%s %18s %10s %10s %10s %10s %10s %10s %10s %10s %10s\n", "Iface", "Link", "Speed", "Duplex", "RX pkts", "RX bytes", 
 			"RX errors", "RX dropped", "TX pkts", "TX bytes", "TX errors");   
     
@@ -1747,11 +1755,11 @@ bleat_printf( 1, "falling into the abyss" );
 				ignored = write(fd, buff, strlen(buff));       
 			}
     
-			close(fd);
 			// if (debug)
 			//nic_stats_display(i);
 		}
-	}		// end while
+	}		// end !terminated while
+	close(fd);
  
   if(unlink(STATS_FILE) != 0)
     traceLog(TRACE_ERROR, "can't delete pipe: %s\n", STATS_FILE);
