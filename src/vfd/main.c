@@ -35,6 +35,8 @@ struct rte_port *ports;				/// ??????
 #define RT_VERBOSE 5
 #define RT_DUMP 6
 
+// --- local structs --------------------------------------------------------------------------------------------
+
 typedef struct request {
 	int		rtype;				// type: RT_ const 
 	char*	resource;			// parm file name, show target, etc.
@@ -42,13 +44,15 @@ typedef struct request {
 	int		log_level;			// for verbose
 } req_t;
 
-// ---------------------------------------------------------------------------------------------------------------
+// --- local protos when needed ---------------------------------------------------------------------------------
 
 static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
+static char* gen_stats( int n_ports );
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-const char* version = "v1.0/63116";
+const char* version = "v1.0/63216";
 
+// ---------------------------------------------------------------------------------------------------------------
 /*
 	Test function to vet vfd_init_eal()
 */
@@ -118,14 +122,13 @@ static int vfd_eal_init( parms_t* parms ) {
 	argv[6] = strdup( "50" );
 	
 	argv[7] = strdup( "--file-prefix" );
-	argv[8] = strdup( "vfd" ); 				//sprintf(argv[8], "%s", "sriovctl" );
+	argv[8] = strdup( "vfd" );
 	
 	argv[9] = strdup( "--log-level" );
 	snprintf( wbuf, sizeof( wbuf ), "%d", parms->dpdk_log_level );
 	argv[10] = strdup( wbuf );
 	
 	argv[11] = strdup( "--no-huge" );
-  
   
 	for( i = 0; i < parms->npciids && argc_idx < argc; i++ ) {			// add in the -w pciid values to the list
 		argv[argc_idx++] = strdup( "-w" );
@@ -693,6 +696,7 @@ static req_t* vfd_read_request( parms_t* parms ) {
 static int vfd_req_if( parms_t *parms, struct sriov_conf_c* conf, int forever ) {
 	req_t*	req;
 	char	mbuf[2048];			// message and work buffer
+	char*	buf;				// buffer gnerated by something else
 	int		rc = 0;
 	char*	reason;
 	int		req_handled = 0;
@@ -772,8 +776,13 @@ static int vfd_req_if( parms_t *parms, struct sriov_conf_c* conf, int forever ) 
 					vfd_response( req->resp_fifo, 0, "dump captured in the log" );
 					break;
 
-				case RT_SHOW:
-					vfd_response( req->resp_fifo, 0, "dummy request handler: got your SHOW request and promptly ignored it." );
+				case RT_SHOW:			//TODO -- need to check for a specific thing to show; right now just dumps all
+					if( (buf = gen_stats( 1 )) != NULL )  {		// todo need to replace 1 with actual number of ports
+						vfd_response( req->resp_fifo, 0, buf );
+						free( buf );
+					} else {
+						vfd_response( req->resp_fifo, 1, "unable to generate stats" );
+					}
 					break;
 
 				case RT_VERBOSE:
@@ -808,6 +817,63 @@ static int vfd_req_if( parms_t *parms, struct sriov_conf_c* conf, int forever ) 
 }
 
 // ----------------- actual nic management ------------------------------------------------------------------------------------
+
+/*
+	Generate a set of stats to a single buffer. Return buffer to caller (caller must free).
+*/
+static char*  gen_stats( int n_ports ) {
+	char*	rbuf;			// buffer to return
+	int		rblen = 0;		// lenght
+	int		rbidx = 0;
+	char	buf[8192];
+	int		l;
+	int		i;
+	struct rte_eth_dev_info dev_info;
+
+	rblen = 8192; 
+	rbuf = (char *) malloc( sizeof( char ) * rblen );
+	if( !rbuf ) {
+		return NULL;
+	}
+
+	rbidx = snprintf( rbuf, 8192, "%s %18s %10s %10s %10s %10s %10s %10s %10s %10s %10s\n",
+			"Iface", "Link", "Speed", "Duplex", "RX pkts", "RX bytes", "RX errors", "RX dropped", "TX pkts", "TX bytes", "TX errors");   
+	
+   	 
+	for( i = 0; i < n_ports; ++i ) {
+		rte_eth_dev_info_get( i, &dev_info );			
+
+		l = snprintf( buf, sizeof( buf ), "%04X:%02X:%02X.%01X\n", 
+					dev_info.pci_dev->addr.domain, 
+					dev_info.pci_dev->addr.bus, 
+					dev_info.pci_dev->addr.devid, 
+					dev_info.pci_dev->addr.function);
+							
+		if( l + rbidx > rblen ) {
+			rblen += 8192;
+			rbuf = (char *) realloc( rbuf, sizeof( char ) * rblen );
+			if( !rbuf ) {
+				return NULL;
+			}
+		}
+
+		strcat( rbuf+rbidx,  buf );
+		rbidx += l;
+     				 
+		l = nic_stats_display(i, buf, sizeof( buf ) );
+		if( l + rbidx > rblen ) {
+			rblen += 8192;
+			rbuf = (char *) realloc( rbuf, sizeof( char ) * rblen );
+			if( !rbuf ) {
+				return NULL;
+			}
+		}
+		strcat( rbuf+rbidx,  buf );
+		rbidx += l;
+	}
+
+	return rbuf;
+}
 
 /*
 	Runs through the configuration and makes adjustments.  This is 
@@ -938,7 +1004,12 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 						rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag);   
 	
 						/*
-						CAUTION: ==== per call on 3/2/2016 we aren't allowing nova to set strip stag, so not setting here traceLog(TRACE_DEBUG, "------------------ INSERT TAG: %d, VF: %d --------------------\n", vf->insert_stag, vf->num);				rx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->insert_stag); */ set_vf_allow_bcast(port->rte_port_number, vf->num, vf->allow_bcast);
+						CAUTION: ==== per call on 3/2/2016 we aren't allowing nova to set strip stag, so not setting here 
+						traceLog(TRACE_DEBUG, "------------------ INSERT TAG: %d, VF: %d --------------------\n", vf->insert_stag, vf->num);				
+						rx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->insert_stag); 
+						*/ 
+
+						set_vf_allow_bcast(port->rte_port_number, vf->num, vf->allow_bcast);
 						set_vf_allow_mcast(port->rte_port_number, vf->num, vf->allow_mcast);
 						set_vf_allow_un_ucast(port->rte_port_number, vf->num, vf->allow_un_ucast); 
 					} else {
@@ -1386,17 +1457,20 @@ update_ports_config(void)
 }
 
 
+/*
+	Runs the current in memory configuration and dumps stuff to the log.
+	Only mods were to replace tracelog calls with bleat calls to allow
+	for dynamic level changes and file rolling.
+*/
 void 
 dump_sriov_config(struct sriov_conf_c sriov_config)
 {
-  //traceLog(TRACE_DEBUG, "Number of ports: %d\n", sriov_config.num_ports);
   int i;
 
 	bleat_printf( 1, "dump: config has %d port(s)", sriov_config.num_ports );
   
-  for (i = 0; i < sriov_config.num_ports; i++){
-    //traceLog(TRACE_DEBUG, "Port #: %d, name: %s, pciid %s, last_updated %d, mtu: %d, num_mirrors: %d, num_vfs: %d\n",
-    bleat_printf( 2, "dump: Port #: %d, name: %s, pciid %s, last_updated %d, mtu: %d, num_mirrors: %d, num_vfs: %d",
+	for (i = 0; i < sriov_config.num_ports; i++){
+		bleat_printf( 2, "dump: Port #: %d, name: %s, pciid %s, last_updated %d, mtu: %d, num_mirrors: %d, num_vfs: %d",
           i, sriov_config.ports[i].name, 
           sriov_config.ports[i].pciid, 
           sriov_config.ports[i].last_updated,
@@ -1404,44 +1478,34 @@ dump_sriov_config(struct sriov_conf_c sriov_config)
           sriov_config.ports[i].num_mirros,
           sriov_config.ports[i].num_vfs );
     
-    int y;
-    for (y = 0; y < sriov_config.ports[i].num_vfs; y++){
-      //traceLog(TRACE_DEBUG, "VF num: %d, last_updated: %d\nstrip_stag %d\ninsert_stag %d\nvlan_aspoof: %d\nmac_aspoof: %d\nallow_bcast: %d\n
-      bleat_printf( 2, "dump: VF num: %d, updated: %d  strip_stag %d  insert_stag %d  vlan_aspoof: %d  mac_aspoof: %d  allow_bcast: %d \
-allow_ucast: %d  allow_mcast: %d  allow_untagged: %d  rate: %f  link: %d  um_vlans: %d  num_macs: %d  ", 
-            sriov_config.ports[i].vfs[y].num, 
-            sriov_config.ports[i].vfs[y].last_updated, 
-            sriov_config.ports[i].vfs[y].strip_stag,
-            sriov_config.ports[i].vfs[y].insert_stag,
-            sriov_config.ports[i].vfs[y].vlan_anti_spoof,
-            sriov_config.ports[i].vfs[y].mac_anti_spoof,
-            sriov_config.ports[i].vfs[y].allow_bcast,
-            sriov_config.ports[i].vfs[y].allow_un_ucast,
-            sriov_config.ports[i].vfs[y].allow_mcast,
-            sriov_config.ports[i].vfs[y].allow_untagged,
-            sriov_config.ports[i].vfs[y].rate,
-            sriov_config.ports[i].vfs[y].link,
-            sriov_config.ports[i].vfs[y].num_vlans,
-            sriov_config.ports[i].vfs[y].num_macs);  
+		int y;
+		for (y = 0; y < sriov_config.ports[i].num_vfs; y++){
+			bleat_printf( 2, "dump: VF num: %d, updated: %d  strip_stag %d  insert_stag %d  vlan_aspoof: %d  mac_aspoof: %d  allow_bcast: %d  allow_ucast: %d  allow_mcast: %d  allow_untagged: %d  rate: %f  link: %d  um_vlans: %d  num_macs: %d  ", 
+				sriov_config.ports[i].vfs[y].num, sriov_config.ports[i].vfs[y].last_updated, 
+				sriov_config.ports[i].vfs[y].strip_stag,
+				sriov_config.ports[i].vfs[y].insert_stag,
+				sriov_config.ports[i].vfs[y].vlan_anti_spoof,
+				sriov_config.ports[i].vfs[y].mac_anti_spoof,
+				sriov_config.ports[i].vfs[y].allow_bcast,
+				sriov_config.ports[i].vfs[y].allow_un_ucast,
+				sriov_config.ports[i].vfs[y].allow_mcast,
+				sriov_config.ports[i].vfs[y].allow_untagged,
+				sriov_config.ports[i].vfs[y].rate,
+				sriov_config.ports[i].vfs[y].link,
+				sriov_config.ports[i].vfs[y].num_vlans,
+				sriov_config.ports[i].vfs[y].num_macs);  
 
-      int x;
-      //traceLog(TRACE_DEBUG, "VLANs [ ");
-      for (x = 0; x < sriov_config.ports[i].vfs[y].num_vlans; x++) {
-        //traceLog(TRACE_DEBUG, "%d ", sriov_config.ports[i].vfs[y].vlans[x]);
-        bleat_printf( 2, "vlan[%d] %d ", x, sriov_config.ports[i].vfs[y].vlans[x]);
-      }   
-      //traceLog(TRACE_DEBUG, "]\n");
+			int x;
+			for (x = 0; x < sriov_config.ports[i].vfs[y].num_vlans; x++) {
+				bleat_printf( 2, "vlan[%d] %d ", x, sriov_config.ports[i].vfs[y].vlans[x]);
+			}   
       
-      int z;
-      //traceLog(TRACE_DEBUG, "MACs [ ");
-      for (z = 0; z < sriov_config.ports[i].vfs[y].num_macs; z++) {
-        //traceLog(TRACE_DEBUG, "%s ", sriov_config.ports[i].vfs[y].macs[z]);
-        bleat_printf( 2, "dump: mac[%d] %s ", z, sriov_config.ports[i].vfs[y].macs[z]);
-      }   
-      //traceLog(TRACE_DEBUG, "]\n");
-      //traceLog(TRACE_DEBUG, "------------------------------------------------------------------------------\n");
-    }
-  }
+			int z;
+			for (z = 0; z < sriov_config.ports[i].vfs[y].num_macs; z++) {
+				bleat_printf( 2, "dump: mac[%d] %s ", z, sriov_config.ports[i].vfs[y].macs[z]);
+			}   
+		}
+	}
 }
 
 // ===============================================================================================================
@@ -1458,6 +1522,7 @@ main(int argc, char **argv)
 	int		have_pipe = 0;				// false if we didn't open the stats pipe
 	int		opt;
 	int		fd = -1;
+	int		l;							// length of something
 
   const char * main_help =
 	"\n"
@@ -1707,9 +1772,16 @@ main(int argc, char **argv)
 
 	  //update_ports_config();
 
-		if(mkfifo(STATS_FILE, 0666) != 0) {
-			have_pipe = 1;
-			traceLog(TRACE_ERROR, "can't create pipe: %s, %d\n", STATS_FILE, errno);
+		if( parms->stats_path != NULL  ) {
+			if(  mkfifo( parms->stats_path, 0666) != 0) {
+				bleat_printf( 2, "creattion of stats pipe failed: %s", parms->stats_path, strerror( errno ) );
+				//traceLog(TRACE_ERROR, "can't create pipe: %s, %d\n", STATS_FILE, errno);
+			} else {
+				bleat_printf( 2, "created stats pipe: %s", parms->stats_path );
+				have_pipe = 1;
+			}
+		} else {
+			bleat_printf( 2, "stats pipe not created, not defined in parms" );
 		}
 
 	  /*
@@ -1723,8 +1795,14 @@ main(int argc, char **argv)
 		bleat_printf( 1, "no action mode: skipped dpdk setup, signal initialisation, and device discovery" );
 	}
 	
-	fd = open(STATS_FILE, O_NONBLOCK | O_WRONLY);		// must open non-block or it hangs until there is a reader
-	bleat_printf( 1, "initialisation complete, starting to looop; stats file open%s", fd >= 0 ? "ed successfully" : " failed" );
+	if( have_pipe ) {
+		fd = open( parms->stats_path, O_NONBLOCK | O_RDWR);		// must open non-block or it hangs until there is a reader
+		if( fd < 0 ) {
+			bleat_printf( 1, "could not open stats pipe: %s: %s", parms->stats_path, strerror( errno ) );
+		}
+	}
+
+	bleat_printf( 1, "initialisation complete, setting bleat level to %d; starting to looop", parms->log_level );
 	bleat_set_lvl( parms->log_level );					// initialisation finished, set log level to running level
 	while(!terminated)
 	{
@@ -1732,37 +1810,41 @@ main(int argc, char **argv)
    
 		while( vfd_req_if( parms, &running_config, 0 ) ); 				// process _all_ pending requests before going on
 
-		if( parms->forreal  && have_pipe && fd >= 0 ) {				//TODO -- drop this in favour of show stats?
-			snprintf(buff, sizeof( buff ), "%s %18s %10s %10s %10s %10s %10s %10s %10s %10s %10s\n", "Iface", "Link", "Speed", "Duplex", "RX pkts", "RX bytes", 
-			"RX errors", "RX dropped", "TX pkts", "TX bytes", "TX errors");   
-    
-			ignored = write(fd, buff, strlen(buff));
-    
-			for (i = 0; i < n_ports; ++i)
-			{
-				struct rte_eth_dev_info dev_info;
-				rte_eth_dev_info_get(i, &dev_info);			
-
-				sprintf(buff, "%04X:%02X:%02X.%01X", 
-				dev_info.pci_dev->addr.domain, 
-				dev_info.pci_dev->addr.bus, 
-				dev_info.pci_dev->addr.devid, 
-				dev_info.pci_dev->addr.function);
-							
-				ignored = write(fd, buff, strlen(buff));  
-     				 
-				nic_stats_display(i, buff);
-				ignored = write(fd, buff, strlen(buff));       
+		if( bleat_will_it( 3 ) ) {
+			if( parms->forreal  && have_pipe && fd >= 0 ) {				//TODO -- drop this in favour of show stats?
+				l = snprintf(buff, sizeof( buff ), "%s %18s %10s %10s %10s %10s %10s %10s %10s %10s %10s\n", "Iface", "Link", "Speed", "Duplex", "RX pkts", "RX bytes", 
+						"RX errors", "RX dropped", "TX pkts", "TX bytes", "TX errors");   
+   	 
+				ignored = write(fd, buff,  l );
+   	 
+				for (i = 0; i < n_ports; ++i)
+				{
+					struct rte_eth_dev_info dev_info;
+					rte_eth_dev_info_get(i, &dev_info);			
+	
+					l = snprintf(buff, sizeof( buff ), "%04X:%02X:%02X.%01X", 
+							dev_info.pci_dev->addr.domain, 
+							dev_info.pci_dev->addr.bus, 
+							dev_info.pci_dev->addr.devid, 
+							dev_info.pci_dev->addr.function);
+								
+					ignored = write(fd, buff, l );
+     					 
+					l = nic_stats_display(i, buff, sizeof( buff ) );
+					ignored = write(fd, buff, l );       
+				}
 			}
-    
-			// if (debug)
-			//nic_stats_display(i);
 		}
 	}		// end !terminated while
-	close(fd);
+
+	if( fd >= 0 ) {
+		close(fd);
+	}
  
-  if(unlink(STATS_FILE) != 0)
-    traceLog(TRACE_ERROR, "can't delete pipe: %s\n", STATS_FILE);
+	if( have_pipe  &&  parms->stats_path != NULL  && unlink( parms->stats_path ) != 0 ) {
+		bleat_printf( 1, "couldn't delete stats pipe" );
+		//traceLog(TRACE_ERROR, "can't delete pipe: %s\n", STATS_FILE);
+	}
   
   gettimeofday(&st.endTime, NULL);
   traceLog(TRACE_NORMAL, "Duration %.f sec\n", timeDelta(&st.endTime, &st.startTime));

@@ -84,7 +84,7 @@
 #define RTE_PORT_ALL            (~(portid_t)0x0)
 #define IXGBE_RXDCTL_VME        0x40000000 /* VLAN mode enable */
 
-#define STATS_FILE "/tmp/sriov_stats"
+//#define STATS_FILE "/tmp/sriov_stats"
 
 
 //#define timeval_to_ms(timeval)  (timeval.tv_sec * 1000) + (timeval.tv_usec / 1000)
@@ -359,7 +359,7 @@ void get_ethertype_filter(uint8_t port_id, uint16_t index);
 
 void nic_stats_clear(portid_t port_id);
 //void nic_stats_display(uint8_t port_id);
-void nic_stats_display(uint8_t port_id, char * buff);
+int nic_stats_display(uint8_t port_id, char * buff, int blen);
 int port_init(uint8_t port, struct rte_mempool *mbuf_pool);
 void restore_vf_setings_cb(__rte_unused void *param);
 
