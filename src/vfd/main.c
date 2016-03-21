@@ -1191,6 +1191,13 @@ restore_vf_setings_cb(void *param){
 	This should work without change.  
 	Driven to refresh a single vf on a port. Called by the callback which (we assume) 
 	is driven by the dpdk environment.
+
+	It does seem to be a duplication of the vfd_update_nic() function.  Would it make 
+	sense to set the add flag in the matched VF and then just call update? 
+	It also seems that deleting VLAN and MAC values might not catch anything/everything
+	that has been set on the VF since it's only working off of the values that are
+	configured here.  Is there a reset all? for these?  If so, that should be worked into
+	the update_nic() funciton for an add, and probably for the delete too.
 */
 void
 restore_vf_setings(uint8_t port_id, int vf_id)
@@ -1287,174 +1294,11 @@ restore_vf_setings(uint8_t port_id, int vf_id)
 					if (ret < 0)
 						traceLog(TRACE_DEBUG, "set_vf_allow_untagged(): bad VF receive mode parameter, return code = %d \n", ret);    					
  
-			 }
+			// TODO -- should be safe to return here -- shouldn't be but one to match
+		 }
       }
     }      
   }   
-}
-
-/*
-	### deprecated #### replaced by vfd_update_nic
-*/
-int
-update_ports_config(void)
-{
-  int i;
-  int on = 1;
- 
-	return 0;
-  for (i = 0; i < sriov_config.num_ports; ++i){
-    
-    int ret;
-  
-    struct sriov_port_s *port = &sriov_config.ports[i];
-    
-    // running config
-    struct sriov_port_s *r_port = &running_config.ports[i];
-    
-    // if running config older then new config update settings
-    if (r_port->last_updated < port->last_updated) {
-      traceLog(TRACE_DEBUG, "------------------ UPDADING PORT: %d, r_port time: %d, c_port time: %d, --------------------\n",
-              i, r_port->last_updated, port->last_updated);
-      
-      rte_eth_promiscuous_enable(port->rte_port_number);
-      rte_eth_allmulticast_enable(port->rte_port_number);
-      
-      ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
-      if (ret < 0)
-        traceLog(TRACE_ERROR, "bad unicast hash table parameter, return code = %d \n", ret);
-      
-      r_port->rte_port_number = port->rte_port_number;
-      r_port->last_updated = port->last_updated;
-      strcpy(r_port->name, port->name);
-      strcpy(r_port->pciid, port->pciid);
-      r_port->last_updated = port->last_updated;
-      r_port->mtu = port->mtu;
-      r_port->num_mirros= port->num_mirros;
-      r_port->num_vfs = port->num_vfs;
-    }
-     
-    
-    /* go through all VF's and set VLAN's */
-    uint32_t vf_mask;
-    
-    int y;
-    for(y = 0; y < port->num_vfs; ++y){
-      
-      struct vf_s *vf = &port->vfs[y];   
-      
-      // running VF's
-      struct vf_s *r_vf = &r_port->vfs[y];
-      vf_mask = VFN2MASK(vf->num);    
-
-      if(r_vf->last_updated == 0)
-        r_vf->num = vf->num;
-      
-      traceLog(TRACE_DEBUG, "HERE WE ARE = %d, vf->num %d, r_vf->num: %d, vf->last_updated: %d, r_vf->last_updated: %d\n", 
-      y, vf->num, r_vf->num, vf->last_updated, r_vf->last_updated);      
-      
-      int v;
-      // delete running vlans
-      if (vf->num == r_vf->num && vf->last_updated > r_vf->last_updated) {
-        traceLog(TRACE_DEBUG, "------------------ DELETING VLANS, VF: %d --------------------\n", vf->num);
-        
-        for(v = 0; v < r_vf->num_vlans; ++v) {
-          int vlan = r_vf->vlans[v];
-					traceLog(TRACE_DEBUG, "------------------ DELETING VLAN: %d, VF: %d --------------------\n", vlan, vf->num );
-          set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, 0);
-        }
-      
-        // add new vlans from config file
-
-        traceLog(TRACE_DEBUG, "------------------ ADDING VLANS, VF: %d --------------------\n", vf->num);
-        int v;
-        for(v = 0; v < vf->num_vlans; ++v) {
-          int vlan = vf->vlans[v];
-					traceLog(TRACE_DEBUG, "------------------ ADDIND VLAN: %d, VF: %d --------------------\n", vlan, vf->num );
-          set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, on);
-          
-          // update running config
-          r_vf->vlans[v] = vlan;
-        }
-        r_vf->num_vlans = vf->num_vlans;
-        
-
-           
-        traceLog(TRACE_DEBUG, "------------------ DELETING MACs, VF: %d --------------------\n", vf->num);
-        
-        int m;
-        for(m = 0; m < r_vf->num_macs; ++m) {
-          char *mac = vf->macs[m];
-					traceLog(TRACE_DEBUG, "------------------ DELETING MAC: %s, VF: %d --------------------\n", mac, vf->num );
-          set_vf_rx_mac(port->rte_port_number, mac, vf->num, 0);
-        }
-
-        traceLog(TRACE_DEBUG, "------------------ ADDING MACs, VF: %d --------------------\n", vf->num);
-
-        // iterate through all macs
-        for(m = 0; m < vf->num_macs; ++m) {
-          char *mac = vf->macs[m];
-					traceLog(TRACE_DEBUG, "------------------ ADDING MAC: %s, VF: %d --------------------\n", mac, vf->num );
-          set_vf_rx_mac(port->rte_port_number, mac, vf->num, 1);
-
-					strcpy(r_vf->macs[m], mac);
-        }
-				r_vf->num_macs = vf->num_macs;
-        
-
-        // set VLAN anti spoofing when VLAN filter is used
-				
-				traceLog(TRACE_DEBUG, "------------------ SETTING VLAN ANTI SPOOFING: %d, VF: %d --------------------\n", vf->vlan_anti_spoof, vf->num);
-        set_vf_vlan_anti_spoofing(port->rte_port_number, vf->num, vf->vlan_anti_spoof);  
-
-				traceLog(TRACE_DEBUG, "------------------ SETTING MAC ANTISPOOFING: %d, VF: %d --------------------\n", vf->mac_anti_spoof, vf->num);					
-        set_vf_mac_anti_spoofing(port->rte_port_number, vf->num, vf->mac_anti_spoof);
-
-        traceLog(TRACE_DEBUG, "------------------ STRIP TAG: %d, VF: %d -------------------\n", vf->strip_stag, vf->num);	
-        rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag);   
-
-				traceLog(TRACE_DEBUG, "------------------ INSERT TAG: %d, VF: %d --------------------\n", vf->insert_stag, vf->num);				
-        rx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->insert_stag);
-        
-        set_vf_allow_bcast(port->rte_port_number, vf->num, vf->allow_bcast);
-        set_vf_allow_mcast(port->rte_port_number, vf->num, vf->allow_mcast);
-        set_vf_allow_un_ucast(port->rte_port_number, vf->num, vf->allow_un_ucast); 
-        
-        r_vf->vlan_anti_spoof = vf->vlan_anti_spoof;
-        r_vf->mac_anti_spoof  = vf->mac_anti_spoof;
-        r_vf->strip_stag      = vf->strip_stag;
-        r_vf->insert_stag     = vf->insert_stag;
-        r_vf->allow_bcast     = vf->allow_bcast;
-        r_vf->allow_mcast     = vf->allow_mcast;
-        r_vf->allow_un_ucast  = vf->allow_un_ucast;
-        
-        
-        r_vf->last_updated = vf->last_updated;
-      }
-      
-			traceLog(TRACE_DEBUG, "------------------ SET PROMISCUOUS: %d, VF: %d --------------------\n", port->rte_port_number, vf->num);
-      uint16_t rx_mode = 0;
-
-      // figure this out if we have to update it every time we change VLANS/MACS 
-      // or once when update ports config
-      rte_eth_promiscuous_enable(port->rte_port_number);
-      rte_eth_allmulticast_enable(port->rte_port_number);  
-      ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
-      
-
-      // don't accept untagged frames
-      rx_mode |= ETH_VMDQ_ACCEPT_UNTAG; 
-      ret = rte_eth_dev_set_vf_rxmode(port->rte_port_number, vf->num, rx_mode, !on);
-	
-      if (ret < 0)
-        traceLog(TRACE_DEBUG, "set_vf_allow_untagged(): bad VF receive mode parameter, return code = %d \n", ret);    
-  
-    }     
-  }
-  
-  running_config.num_ports = sriov_config.num_ports;
-  
-  return 0;
 }
 
 
@@ -1756,12 +1600,13 @@ main(int argc, char **argv)
 		for(i = 0; i < running_config.num_ports; ++i) {						// suss out the device in our config and map the two indexes
 		  if (strcmp(pciid, running_config.ports[i].pciid) == 0) {;
 			bleat_printf( 2, "physical port %i maps to config %d", port, i );
-			rte_config_portmap[port] = i;
-			// point config port back to rte port
-			running_config.ports[i].rte_port_number = port;
+			rte_config_portmap[port] = i;									// TODO -- do we need this map?
+			running_config.ports[i].rte_port_number = port; 				// point config port back to rte port
 		  }
 		}
 	  }
+
+
 		bleat_printf( 2, "indexes were mapped" );
 	  
 		set_signals();				// register signal handlers (reload, port reset on shutdown, etc)
