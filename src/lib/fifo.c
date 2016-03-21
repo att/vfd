@@ -33,16 +33,20 @@ typedef struct {
 	return is a void pointer which is actually a pointer that our functions
 	can use.
 */
-extern void* rfifo_create( char* fname ) {
+extern void* rfifo_create( char* fname, int mode ) {
 	int fd;
 	fifo_t*	fifo = NULL;
 
+	if( mode == 0 ) {
+		mode = 0x660;
+	}
+
 	unlink( fname );								// hard unlink and we don't care if this fails
-	if( mkfifo( fname, 0600 ) < 0 ) {
+	if( mkfifo( fname, mode ) < 0 ) {
 		return NULL;								// can't make send back err errno still set
 	}
 
-	if( (fd =  open( fname, O_RDWR | O_NONBLOCK )) >= 0 ) {				// open in read AND write mode so that we don't block
+	if( (fd =  open( fname, O_RDWR | O_NONBLOCK, mode )) >= 0 ) {				// open in read AND write mode so that we don't block
 		if( (fifo = malloc( sizeof( *fifo ) )) == NULL ) {
 			return NULL;
 		}

@@ -17,6 +17,7 @@ typedef struct {
 	char*	fifo_path;      // path to fifo that cli will write to
 	int		log_keep;       // number of days of logs to keep (do we need this?)
 	char*	config_dir;     // directory where nova writes pf config files
+	char*	stats_path;		// filename where we might dump stats
 
 							// these things have no defaults
 	int		npciids;		// number of pciids specified for us to configure
@@ -70,7 +71,7 @@ void ng_flow_ref( void *vf, char *buf, long len );
 
 
 // ---------------- fifo ---------------------------------------------------------------------------------
-extern void* rfifo_create( char* fname );
+extern void* rfifo_create( char* fname, int mode );
 extern void rfifo_close( void* vfifo );
 extern char* rfifo_read( void* vfifo );
 

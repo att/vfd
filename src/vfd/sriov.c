@@ -394,8 +394,8 @@ nic_stats_clear(portid_t port_id)
 }
 
 
-void
-nic_stats_display(uint8_t port_id, char * buff)
+int
+nic_stats_display(uint8_t port_id, char * buff, int bsize)
 {
 	struct rte_eth_stats stats;
   struct rte_eth_link link;
@@ -408,7 +408,7 @@ nic_stats_display(uint8_t port_id, char * buff)
   else
     stpcpy(status, "UP  ");
   
-  sprintf(buff, "        %s %10"PRIu16" %10"PRIu16" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64"\n", 
+  return snprintf(buff, bsize, "        %s %10"PRIu16" %10"PRIu16" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64"\n", 
     status, link.link_speed, link.link_duplex, stats.ipackets, stats.ibytes, stats.ierrors, stats.imissed, stats.opackets, stats.obytes, stats.oerrors);           
 }
 
