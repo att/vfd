@@ -778,11 +778,15 @@ static int vfd_req_if( parms_t *parms, struct sriov_conf_c* conf, int forever ) 
 					break;
 
 				case RT_SHOW:			//TODO -- need to check for a specific thing to show; right now just dumps all
-					if( (buf = gen_stats( 1 )) != NULL )  {		// todo need to replace 1 with actual number of ports
-						vfd_response( req->resp_fifo, 0, buf );
-						free( buf );
+					if( parms->forreal ) {
+						if( (buf = gen_stats( 1 )) != NULL )  {		// todo need to replace 1 with actual number of ports
+							vfd_response( req->resp_fifo, 0, buf );
+							free( buf );
+						} else {
+							vfd_response( req->resp_fifo, 1, "unable to generate stats" );
+						}
 					} else {
-						vfd_response( req->resp_fifo, 1, "unable to generate stats" );
+							vfd_response( req->resp_fifo, 1, "VFD running in 'no harm' (-n) mode; no stats available." );
 					}
 					break;
 
