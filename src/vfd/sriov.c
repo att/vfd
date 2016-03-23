@@ -88,8 +88,8 @@ port_id_is_invalid(portid_t port_id, enum print_warning warning)
 	if (port_id < RTE_MAX_ETHPORTS && ports[port_id].enabled)
 		return 0;
 
-	if (warning == ENABLED_WARN)
-		traceLog(TRACE_ERROR,"Invalid port %d\n", port_id);
+	if( warning == ENABLED_WARN )
+		bleat_printf( 2, "warn: Invalid port %d\n", port_id);
 
 	return 1;
 }
@@ -105,14 +105,14 @@ set_queue_rate_limit(portid_t port_id, uint16_t queue_idx, uint16_t rate)
 		return 1;
 	rte_eth_link_get_nowait(port_id, &link);
 	if (rate > link.link_speed) {
-		traceLog(TRACE_ERROR,"Invalid rate value:%u bigger than link speed: %u\n",
+		bleat_printf( 0, "error: Invalid rate value:%u bigger than link speed: %u\n",
 			rate, link.link_speed);
 		return 1;
 	}
 	diag = rte_eth_set_queue_rate_limit(port_id, queue_idx, rate);
 	if (diag == 0)
 		return diag;
-	traceLog(TRACE_ERROR,"rte_eth_set_queue_rate_limit for port_id=%d failed diag=%d\n",
+	bleat_printf( 0, "error: rte_eth_set_queue_rate_limit for port_id=%d failed diag=%d\n",
 		port_id, diag);
 	return diag;
 }
@@ -132,7 +132,7 @@ set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk)
 		return 1;
 	rte_eth_link_get_nowait(port_id, &link);
 	if (rate > link.link_speed) {
-		traceLog(TRACE_ERROR,"Invalid rate value:%u bigger than link speed: %u\n",
+		bleat_printf( 0, "error: Invalid rate value:%u bigger than link speed: %u\n",
 			rate, link.link_speed);
 		return 1;
 	}
