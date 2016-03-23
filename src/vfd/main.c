@@ -945,6 +945,11 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
     uint32_t vf_mask;
     int y;
 
+	if( parms->initialised == 0 ) {
+		bleat_printf( 2, "update_nic: not initialised, nic settings not updated" );
+		return 0;
+	}
+
 	for (i = 0; i < conf->num_ports; ++i){							// run each port we know about
 		int ret;
 		struct sriov_port_s *port = &conf->ports[i];
@@ -1245,11 +1250,13 @@ restore_vf_setings(uint8_t port_id, int vf_id)
   dump_sriov_config(running_config);
   int i;
   int on = 1;
+	int matched = 0;		// number matched for log
  
   for (i = 0; i < running_config.num_ports; ++i){
     struct sriov_port_s *port = &running_config.ports[i];
     
     if (port_id == port->rte_port_number){
+		matched++;
       traceLog(TRACE_DEBUG, "------------------ PORT ID: %d --------------------\n", port->rte_port_number);
       traceLog(TRACE_DEBUG, "------------------ PORT PCIID: %s --------------------\n", port->pciid);
       
@@ -1339,6 +1346,8 @@ restore_vf_setings(uint8_t port_id, int vf_id)
       }
     }      
   }   
+
+	bleat_printf( 1, "refresh for  port=%d vf=%d matched %d vfs in the config", port_id, vf_id, matched );
 }
 
 
@@ -1676,6 +1685,7 @@ main(int argc, char **argv)
 		bleat_printf( 1, "no action mode: skipped dpdk setup, signal initialisation, and device discovery" );
 	}
 
+	parms->initialised = 1;					// safe to update nic now
 	if( vfd_update_nic( parms, &running_config ) != 0 ) {							// now that dpdk is initialised run the list and 'activate' everything
 		bleat_printf( 0, "abort: unable to initialise nic with base config:" );
 		if( forreal ) {

@@ -29,6 +29,7 @@ typedef struct {
 							// these are NOT populated from the file, but are added so the struct can be the one stop shopping place for info
 	void*	rfifo;			// the read fifo 'handle' where we 'listen' for requests
 	int		forreal;		// if not set we don't execute any dpdk calls
+	int		initialised;	// all things have been initialised
 } parms_t;
 
 /*
