@@ -338,6 +338,17 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 		return 0;
 	}
 
+	if( vidx >= port->nvfs_config ) {		// greater than the number configured
+		snprintf( mbuf, sizeof( mbuf ), "vf %d is out of range; only %d VFs are configured on port %s", vidx, port->nvfs_config, port->pciid );
+		bleat_printf( 1, "vf not added: %s", mbuf );
+		if( reason ) {
+			*reason = strdup( mbuf );
+		}
+
+		free_config( vfc );
+		return 0;
+	}
+
 	if( vfc->nvlans > MAX_VF_VLANS ) {
 		snprintf( mbuf, sizeof( mbuf ), "number of vlans supplied (%d) exceeds the maximum (%d)", vfc->nvlans, MAX_VF_VLANS );
 		bleat_printf( 1, "vf not added: %s", mbuf );
@@ -347,6 +358,7 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 		free_config( vfc );
 		return 0;
 	}
+
 
 	if( vfc->nmacs > MAX_VF_MACS ) {
 		snprintf( mbuf, sizeof( mbuf ), "number of vlans supplied (%d) exceeds the maximum (%d)", vfc->nvlans, MAX_VF_MACS );
@@ -1478,7 +1490,8 @@ main(int argc, char **argv)
 	parms->forreal = forreal;												// fill in command line captured things that are passed in parms
   
 	snprintf( log_file, sizeof( log_file ), "%s/vfd.log", parms->log_dir );
-	if(  run_asynch ) {
+	if( run_asynch ) {
+		bleat_printf( 1, "setting log to: %s", log_file );
 		bleat_set_log( log_file, BLEAT_ADD_DATE );									// open bleat log with date suffix
 	}
 	bleat_set_lvl( parms->init_log_level );											// set default level
@@ -1602,7 +1615,7 @@ main(int argc, char **argv)
 		bleat_printf( 1, "driver: %s, Index %d, Pkts rx: %lu, ", dev_info.driver_name, dev_info.if_index, st.pcount);
 		
 		//traceLog(TRACE_INFO, "PCI: %04X:%02X:%02X.%01X, Max VF's: %d, Numa: %d\n\n", dev_info.pci_dev->addr.domain, dev_info.pci_dev->addr.bus, dev_info.pci_dev->addr.devid, dev_info.pci_dev->addr.function, dev_info.max_vfs, dev_info.pci_dev->numa_node);
-		bleat_printf( 1, "pci: %04X:%02X:%02X.%01X, Max VF's: %d, Numa: %d", dev_info.pci_dev->addr.domain, dev_info.pci_dev->addr.bus, 
+		bleat_printf( 1, "pci: %04X:%02X:%02X.%01X, max VF's: %d, numa: %d", dev_info.pci_dev->addr.domain, dev_info.pci_dev->addr.bus, 
 				dev_info.pci_dev->addr.devid , dev_info.pci_dev->addr.function, dev_info.max_vfs, dev_info.pci_dev->numa_node);
 
 				
@@ -1622,6 +1635,7 @@ main(int argc, char **argv)
 		  if (strcmp(pciid, running_config.ports[i].pciid) == 0) {
 			bleat_printf( 2, "physical port %i maps to config %d", port, i );
 			rte_config_portmap[port] = i;									// TODO -- do we need this map?
+			running_config.ports[i].nvfs_config = dev_info.max_vfs;			// number of configured VFs (could be less than max)
 			running_config.ports[i].rte_port_number = port; 				// point config port back to rte port
 		  }
 		}
