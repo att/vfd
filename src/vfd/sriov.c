@@ -695,6 +695,26 @@ traceLog(int eventTraceLevel, const char * file, int line, const char * format, 
 }
 
 
+/*
+	Writes the current pid into the named file as a newline terminated string.
+	Returns true on success.
+*/
+static int save_pid( char* fname ) {
+	int fd;
+	char buf[100];
+	int	len;
+	int rc = 0;
+
+	if( (fd = open( fname, O_CREAT|O_TRUNC|O_WRONLY, 0644 )) >= 0 ) {
+		len = snprintf( buf, sizeof( buf ), "%d\n", getpid()  );
+		if( write( fd, buf, len ) == len ) {
+			rc = 1;
+		}
+		close( fd );
+	}
+
+	return rc;
+}
 
 void 
 detachFromTerminal(void)
@@ -712,7 +732,7 @@ detachFromTerminal(void)
 
 
 void
-daemonize(void)
+daemonize(  char* pid_fname )
 {
   int childpid;
 
@@ -731,6 +751,9 @@ daemonize(void)
       // child
       traceLog(TRACE_INFO, "INIT: Starting Tcap daemon");
       detachFromTerminal();
+		if( pid_fname != NULL ) {
+			save_pid( pid_fname );
+		}
     }
     else {
       // parent

@@ -406,8 +406,8 @@ void print_port_errors(struct rte_eth_stats et_stats, int col);
 double timeDelta (struct timeval * now, struct timeval * before);
 void runIfrate(uint8_t port, unsigned n_ports, unsigned long cpu_mask);
 
-void daemonize(void);
-void detachFromTerminal(void);
+void daemonize( char* pid_fname );
+void detachFromTerminal( void );
 void traceLog(int eventTraceLevel, const char * file, int line, const char * format, ...);
 int readConfigFile(char *fname);
 void dump_sriov_config(struct sriov_conf_c config);

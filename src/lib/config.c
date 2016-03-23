@@ -126,6 +126,12 @@ extern parms_t* read_parms( char* fname ) {
 			parms->config_dir = strdup( "/var/lib/vfd/config" );
 		}
 
+		if(  (stuff = jw_string( jblob, "pid_fname" )) ) {
+			parms->pid_fname = strdup( stuff );
+		} else {
+			parms->pid_fname = strdup( "/var/run/vfd.pid" );
+		}
+
 		if(  (stuff = jw_string( jblob, "stats_path" )) ) {
 			parms->stats_path = strdup( stuff );
 		} else {
