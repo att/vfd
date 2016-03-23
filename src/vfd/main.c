@@ -338,8 +338,8 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 		return 0;
 	}
 
-	if( vidx >= port->nvfs_config ) {		// greater than the number configured
-		snprintf( mbuf, sizeof( mbuf ), "vf %d is out of range; only %d VFs are configured on port %s", vidx, port->nvfs_config, port->pciid );
+	if( vfc->vfid >= port->nvfs_config ) {		// greater than the number configured
+		snprintf( mbuf, sizeof( mbuf ), "vf %d is out of range; only %d VFs are configured on port %s", vfc->vfid, port->nvfs_config, port->pciid );
 		bleat_printf( 1, "vf not added: %s", mbuf );
 		if( reason ) {
 			*reason = strdup( mbuf );
