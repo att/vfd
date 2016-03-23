@@ -238,6 +238,7 @@ struct sriov_port_s
   int     last_updated;
   int     mtu;
   int     num_mirros;
+	int		nvfs_config;		// actual number of configured vfs; could be less than max
   int     num_vfs;
   struct  mirror_s mirror[MAX_VFS];
   struct  vf_s vfs[MAX_VFS];
