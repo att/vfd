@@ -47,7 +47,7 @@ typedef struct request {
 // --- local protos when needed ---------------------------------------------------------------------------------
 
 static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
-static char* gen_stats( int n_ports );
+static char* gen_stats( struct sriov_conf_c* conf );
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
 const char* version = "v1.0/63216";
@@ -91,6 +91,7 @@ static int vfd_eal_init( parms_t* parms ) {
 	int		argc_idx = 12;			// insertion index into argc (initial value depends on static parms below)
 	int		i;
 	char	wbuf[128];				// scratch buffer
+	int		count;
 
 	if( parms->npciids <= 0 ) {
 		bleat_printf( 0, "abort: no pciids were defined in the configuration file" );
@@ -106,11 +107,37 @@ static int vfd_eal_init( parms_t* parms ) {
 
 	argv[0] = strdup(  "vfd" );						// dummy up a command line to pass to rte_eal_init() -- it expects that we got these on our command line (what a hack)
 
-	if( *(parms->cpu_mask+1) != 'x' ) {														// not something like 0xff
-		snprintf( wbuf, sizeof( wbuf ), "0x%02x", atoi( parms->cpu_mask ) );				// assume integer as a string given; cvt to hex
-		free( parms->cpu_mask );
-		parms->cpu_mask = strdup( wbuf );
-	} 
+
+	if( parms->cpu_mask != NULL ) {
+		i = (int) strtol( parms->cpu_mask, NULL, 0 );			// enforce sanity (only allow one bit else we hog multiple cpus)
+		if( i <= 0 ) {
+			free( parms->cpu_mask );						 	// free and use default below
+			parms->cpu_mask = NULL;
+		} else {
+			count = 0;
+			while( i )  {
+				if( i & 0x01 ) {
+					count++;
+				}
+				i >>= 1;
+			}
+
+			if( count > 1 ) {							// invalid number of bits
+				bleat_printf( 0, "warn: cpu_mask value in parms (%s) is not acceptable (too many bits); setting to 0x04", parms->cpu_mask );
+				free( parms->cpu_mask );
+				parms->cpu_mask = NULL;
+			}
+		}
+	}
+	if( parms->cpu_mask == NULL ) {
+			parms->cpu_mask = strdup( "0x04" );
+	} else {
+		if( *(parms->cpu_mask+1) != 'x' ) {														// not something like 0xff
+			snprintf( wbuf, sizeof( wbuf ), "0x%02x", atoi( parms->cpu_mask ) );				// assume integer as a string given; cvt to hex
+			free( parms->cpu_mask );
+			parms->cpu_mask = strdup( wbuf );
+		} 
+	}
 	
 	argv[1] = strdup( "-c" );
 	argv[2] = strdup( parms->cpu_mask );
@@ -779,7 +806,7 @@ static int vfd_req_if( parms_t *parms, struct sriov_conf_c* conf, int forever ) 
 
 				case RT_SHOW:			//TODO -- need to check for a specific thing to show; right now just dumps all
 					if( parms->forreal ) {
-						if( (buf = gen_stats( 1 )) != NULL )  {		// todo need to replace 1 with actual number of ports
+						if( (buf = gen_stats( conf )) != NULL )  {		// todo need to replace 1 with actual number of ports
 							vfd_response( req->resp_fifo, 0, buf );
 							free( buf );
 						} else {
@@ -826,7 +853,7 @@ static int vfd_req_if( parms_t *parms, struct sriov_conf_c* conf, int forever ) 
 /*
 	Generate a set of stats to a single buffer. Return buffer to caller (caller must free).
 */
-static char*  gen_stats( int n_ports ) {
+static char*  gen_stats( struct sriov_conf_c* conf ) {
 	char*	rbuf;			// buffer to return
 	int		rblen = 0;		// lenght
 	int		rbidx = 0;
@@ -844,9 +871,8 @@ static char*  gen_stats( int n_ports ) {
 	rbidx = snprintf( rbuf, 8192, "%s %18s %10s %10s %10s %10s %10s %10s %10s %10s %10s\n",
 			"Iface", "Link", "Speed", "Duplex", "RX pkts", "RX bytes", "RX errors", "RX dropped", "TX pkts", "TX bytes", "TX errors");   
 	
-   	 
-	for( i = 0; i < n_ports; ++i ) {
-		rte_eth_dev_info_get( i, &dev_info );			
+	for( i = 0; i < conf->num_ports; ++i ) {
+		rte_eth_dev_info_get( conf->ports[i].rte_port_number, &dev_info );				// must use port number that we mapped during initialisation
 
 		l = snprintf( buf, sizeof( buf ), "%04X:%02X:%02X.%01X\n", 
 					dev_info.pci_dev->addr.domain, 
@@ -865,9 +891,9 @@ static char*  gen_stats( int n_ports ) {
 		strcat( rbuf+rbidx,  buf );
 		rbidx += l;
      				 
-		l = nic_stats_display(i, buf, sizeof( buf ) );
+		l = nic_stats_display( conf->ports[i].rte_port_number, buf, sizeof( buf ) );
 		if( l + rbidx > rblen ) {
-			rblen += 8192;
+			rblen += 8192 + l;
 			rbuf = (char *) realloc( rbuf, sizeof( char ) * rblen );
 			if( !rbuf ) {
 				return NULL;
@@ -942,8 +968,6 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 
 			if( vf->last_updated != UNCHANGED ) {					// this vf was changed (add/del), reconfigure it
 				bleat_printf( 1, "reconfigure vf for %s: %s vf=%d", vf->last_updated == ADDED ? "add" : "delete", port->pciid, vf->num );
-				//traceLog(TRACE_DEBUG, "HERE WE ARE = %d, vf->num %d, vf->num: %d, vf->last_updated: %d, vf->last_updated: %d\n", y, vf->num, vf->num, vf->last_updated, vf->last_updated);      
-
 
 				// TODO: order from original kept; probably can group into to blocks based on updated flag
 				if( vf->last_updated == DELETED ) { 							// delete vlans
@@ -1475,14 +1499,6 @@ main(int argc, char **argv)
 	vfd_add_ports( parms, &running_config );			// add the pciid info from parms to the ports list
 	vfd_add_all_vfs( parms, &running_config );			// read all existing config files and add the VFs to the config
 
-	if( vfd_update_nic( parms, &running_config ) != 0 ) {
-		bleat_printf( 0, "abort: unable to initialise nic with base config:" );
-		if( forreal ) {
-			rte_exit( EXIT_FAILURE, "initialisation failure, see log(s) in: %s\n", parms->log_dir );
-		} else {
-			exit( 1 );
-		}
-	}
 
 /*
 	## uncomment this block for hard loop and no rte testing
@@ -1565,7 +1581,7 @@ main(int argc, char **argv)
 	   
 
 	   
-		bleat_printf( 1, "looping over ports to map indexes" );
+		bleat_printf( 1, "looping over %d ports to map indexes", n_ports );
 	  int port; 
 	  for(port = 0; port < n_ports; ++port){					// for each port reported by driver
 		struct rte_eth_dev_info dev_info;
@@ -1573,19 +1589,20 @@ main(int argc, char **argv)
 		  
 		//struct ether_addr addr;
 		rte_eth_macaddr_get(port, &addr);
-		traceLog(TRACE_INFO, "Port: %u, MAC: %02" PRIx8 ":%02" PRIx8 ":%02" PRIx8
-			   ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ", ",
+		//traceLog(TRACE_INFO, "Port: %u, MAC: %02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ", ",
+		bleat_printf( 1,  "mapping port: %u, MAC: %02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ", ",
 			(unsigned)port,
 			addr.addr_bytes[0], addr.addr_bytes[1],
 			addr.addr_bytes[2], addr.addr_bytes[3],
 			addr.addr_bytes[4], addr.addr_bytes[5]);
 
 
+
 		//traceLog(TRACE_INFO, "Driver Name: %s, Index %d, Pkts rx: %lu, ", dev_info.driver_name, dev_info.if_index, st.pcount);
-		bleat_printf( 1, "Driver Name: %s, Index %d, Pkts rx: %lu, ", dev_info.driver_name, dev_info.if_index, st.pcount);
+		bleat_printf( 1, "driver: %s, Index %d, Pkts rx: %lu, ", dev_info.driver_name, dev_info.if_index, st.pcount);
 		
 		//traceLog(TRACE_INFO, "PCI: %04X:%02X:%02X.%01X, Max VF's: %d, Numa: %d\n\n", dev_info.pci_dev->addr.domain, dev_info.pci_dev->addr.bus, dev_info.pci_dev->addr.devid, dev_info.pci_dev->addr.function, dev_info.max_vfs, dev_info.pci_dev->numa_node);
-		bleat_printf( 1, "PCI: %04X:%02X:%02X.%01X, Max VF's: %d, Numa: %d", dev_info.pci_dev->addr.domain, dev_info.pci_dev->addr.bus, 
+		bleat_printf( 1, "pci: %04X:%02X:%02X.%01X, Max VF's: %d, Numa: %d", dev_info.pci_dev->addr.domain, dev_info.pci_dev->addr.bus, 
 				dev_info.pci_dev->addr.devid , dev_info.pci_dev->addr.function, dev_info.max_vfs, dev_info.pci_dev->numa_node);
 
 				
@@ -1602,7 +1619,7 @@ main(int argc, char **argv)
 				dev_info.pci_dev->addr.function);
 		  
 		for(i = 0; i < running_config.num_ports; ++i) {						// suss out the device in our config and map the two indexes
-		  if (strcmp(pciid, running_config.ports[i].pciid) == 0) {;
+		  if (strcmp(pciid, running_config.ports[i].pciid) == 0) {
 			bleat_printf( 2, "physical port %i maps to config %d", port, i );
 			rte_config_portmap[port] = i;									// TODO -- do we need this map?
 			running_config.ports[i].rte_port_number = port; 				// point config port back to rte port
@@ -1643,6 +1660,15 @@ main(int argc, char **argv)
 		bleat_printf( 1, "dpdk setup complete" );
 	} else {
 		bleat_printf( 1, "no action mode: skipped dpdk setup, signal initialisation, and device discovery" );
+	}
+
+	if( vfd_update_nic( parms, &running_config ) != 0 ) {							// now that dpdk is initialised run the list and 'activate' everything
+		bleat_printf( 0, "abort: unable to initialise nic with base config:" );
+		if( forreal ) {
+			rte_exit( EXIT_FAILURE, "initialisation failure, see log(s) in: %s\n", parms->log_dir );
+		} else {
+			exit( 1 );
+		}
 	}
 	
 	if( have_pipe ) {
