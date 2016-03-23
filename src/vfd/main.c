@@ -1510,7 +1510,7 @@ main(int argc, char **argv)
 	
 	if( run_asynch ) {
 		bleat_printf( 3, "detaching from tty (daemonise)" );
-		daemonize();
+		daemonize( parms->pid_fname );
 	} else {
 		bleat_printf( 2, "-f supplied, staying attached to tty" );
 	}

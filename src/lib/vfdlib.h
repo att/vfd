@@ -18,11 +18,12 @@ typedef struct {
 	int		log_keep;       // number of days of logs to keep (do we need this?)
 	char*	config_dir;     // directory where nova writes pf config files
 	char*	stats_path;		// filename where we might dump stats
+	char*	pid_fname;		// if we daemonise we should write our pid here.
+	char*	cpu_mask;		// should be something like 0x04, but could be decimal.  string so it can have lead 0x
 
 							// these things have no defaults
 	int		npciids;		// number of pciids specified for us to configure
 	char**	pciids;			// array of pciids that we are to configure (no default)
-	char*	cpu_mask;		// should be something like #ab, but could be decimal.  string so it can have lead#
 
 
 							// these are NOT populated from the file, but are added so the struct can be the one stop shopping place for info
