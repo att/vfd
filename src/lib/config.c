@@ -97,7 +97,6 @@ extern parms_t* read_parms( char* fname ) {
 	void*		jblob;			// parsed json
 	char*		buf;			// buffer read from file (nil terminated)
 	char*		stuff;
-	int			val;
 	int			i;
 
 	if( (buf = file_into_buf( fname )) == NULL ) {
