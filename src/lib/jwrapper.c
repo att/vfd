@@ -298,8 +298,8 @@ void* parse_jobject( void* st, char *json, char* prefix ) {
 					return NULL;
 				}
 				switch( *data ) {								// assume T|t is true and F|f is false
-					case '0':
-						jtp->v.fv = 1; 
+					case 0:
+						jtp->v.fv = 0;
 						break;
 
 					case 'T':
