@@ -10,6 +10,7 @@
 				E. Scott Daniels (extensions)
 
 	Mods:		25 Mar 2016 - Corrected bug preventing vfid 0 from being added.
+							Added initial support for getting mtu from config.
 */
 
 
@@ -52,7 +53,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
 static char* gen_stats( struct sriov_conf_c* conf );
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-const char* version = "v1.0/63256";
+const char* version = "v1.0/63256a";
 
 // ---------------------------------------------------------------------------------------------------------------
 /*
@@ -220,7 +221,7 @@ static void vfd_add_ports( parms_t* parms, struct sriov_conf_c* conf ) {
 		port->last_updated = ADDED;												// flag newly added so the nic is configured next go round
 		snprintf( port->name, sizeof( port->name ), "port-%d",  i);				// TODO--- support getting a name from the config
 		snprintf( port->pciid, sizeof( port->pciid ), "%s", parms->pciids[i] );
-		port->mtu = 9000;														// TODO -- support getting mtu from config
+		port->mtu = parms->mtu;													// TODO -- support getting mtu for each specific PF
 		port->num_mirros = 0;
 		port->num_vfs = 0;
 		
