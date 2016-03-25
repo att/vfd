@@ -34,12 +34,12 @@ int main( int argc, char** argv ) {
 		fprintf( stderr, "[OK]   Able to open, read and parse json in config file\n" );
 		fprintf( stderr, "  configs read:\n" );
 		fprintf( stderr, "\tname: %s\n", vfc->name );
+		fprintf( stderr, "\tvfid: %d\n", vfc->vfid );
 		fprintf( stderr, "\tpciid: %s\n", vfc->pciid );
 		fprintf( stderr, "\tstrip_stag: %d\n", vfc->strip_stag );
 		fprintf( stderr, "\tallow_bcast: %d\n", vfc->allow_bcast );
 		fprintf( stderr, "\tallow_mcast: %d\n", vfc->allow_mcast );
 		fprintf( stderr, "\tallow_un_ucast: %d\n", vfc->allow_un_ucast );
-		fprintf( stderr, "\tvfid: %d\n", vfc->vfid );
 		fprintf( stderr, "\tantispoof_mac: %d\n", vfc->antispoof_mac );
 		fprintf( stderr, "\tantispoof_vlan: %d\n", vfc->antispoof_vlan );
 		fprintf( stderr, "\tlink_status: %s\n", vfc->link_status );

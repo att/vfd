@@ -27,6 +27,8 @@ void pprint( parms_t* parms ) {
 	fprintf( stderr, "\tfifo: %s\n", parms->fifo_path );
 	fprintf( stderr, "\tcpu_mask: %s\n", parms->cpu_mask );
 	fprintf( stderr, "\tdpdk_log_level: %d\n", parms->dpdk_log_level );
+	fprintf( stderr, "\tdpdk_init_log_level: %d\n", parms->dpdk_init_log_level );
+	fprintf( stderr, "\tmtu: %d\n", parms->mtu );
 
 	fprintf( stderr, "\tnpciids: %d\n", parms->npciids );
 	for( i = 0; i < parms->npciids; i++ ) {
