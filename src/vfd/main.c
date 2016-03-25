@@ -8,6 +8,8 @@
 	Date:		February 2016
 	Authors:	Alex Zelezniak (original code)
 				E. Scott Daniels (extensions)
+
+	Mods:		25 Mar 2016 - Corrected bug preventing vfid 0 from being added.
 */
 
 
@@ -50,7 +52,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
 static char* gen_stats( struct sriov_conf_c* conf );
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-const char* version = "v1.0/63216";
+const char* version = "v1.0/63256";
 
 // ---------------------------------------------------------------------------------------------------------------
 /*
@@ -157,7 +159,7 @@ static int vfd_eal_init( parms_t* parms ) {
 	
 	argv[11] = strdup( "--no-huge" );
   
-	for( i = 0; i < parms->npciids && argc_idx < argc; i++ ) {			// add in the -w pciid values to the list
+	for( i = 0; i < parms->npciids && argc_idx < argc - 1; i++ ) {			// add in the -w pciid values to the list
 		argv[argc_idx++] = strdup( "-w" );
 		argv[argc_idx++] = strdup( parms->pciids[i] );
 		bleat_printf( 1, "add pciid to dpdk dummy command line -w %s", parms->pciids[i] );
@@ -327,7 +329,7 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 		vidx = i;
 	}
 
-	if( vidx >= MAX_VFS || vfc->vfid < 1 || vfc->vfid > 32) {							// something is out of range
+	if( vidx >= MAX_VFS || vfc->vfid < 0 || vfc->vfid > 31) {							// something is out of range
 		snprintf( mbuf, sizeof( mbuf ), "max VFs already defined or vfid %d is out of range", vfc->vfid );
 		bleat_printf( 1, "vf not added: %s", mbuf );
 		if( reason ) {
@@ -1179,6 +1181,7 @@ sig_hup(int __attribute__((__unused__)) sig)
 static void set_signals( void ) {
   struct sigaction sa;
 
+	memset( &sa, 0, sizeof( sa ) );
   sa.sa_handler = sig_int;
   sigaction(SIGINT, &sa, NULL);
 
@@ -1434,7 +1437,7 @@ main(int argc, char **argv)
   
   //int devnum = 0;
  
- 	struct rte_mempool *mbuf_pool;
+ 	struct rte_mempool *mbuf_pool = NULL;
 	//unsigned n_ports;
 	
   prog_name = strdup(argv[0]);
@@ -1469,6 +1472,8 @@ main(int argc, char **argv)
 			break;
 
 		case 'p':
+			if( parm_file )
+				free( parm_file );
 			parm_file = strdup( optarg );
 			break;
 
@@ -1518,25 +1523,14 @@ main(int argc, char **argv)
 	}
 
 														// set up config structs. these always succeeed (see notes in README)
-	vfd_add_ports( parms, &running_config );			// add the pciid info from parms to the ports list
-	vfd_add_all_vfs( parms, &running_config );			// read all existing config files and add the VFs to the config
+	vfd_add_ports( parms, &running_config );			// add the pciid info from parms to the ports list (must do before dpdk init, config file adds wait til after)
 
-
-/*
-	## uncomment this block for hard loop and no rte testing
-	bleat_set_lvl( parms->log_level );					// initialisation finished, set log level to running level
-	ignored = vfd_req_if( parms, &running_config, 1 );		// looop foerver processing requests
-*/
-
-	bleat_printf( 1, "falling into the abyss" );			// below this point we go into the darkness
-	
 	if( run_asynch ) {
 		bleat_printf( 3, "detaching from tty (daemonise)" );
 		daemonize( parms->pid_fname );
 	} else {
 		bleat_printf( 2, "-f supplied, staying attached to tty" );
 	}
-
 
 	if( parms->forreal ) {										// begin dpdk setup and device discovery
 		bleat_printf( 1, "starting rte initialisation" );
@@ -1545,7 +1539,7 @@ main(int argc, char **argv)
 		traceLog(TRACE_INFO, "LOG LEVEL = %d, LOG TYPE = %d\n", rte_get_log_level(), rte_log_cur_msg_logtype());
 
 		
-		rte_set_log_level(8);
+		rte_set_log_level( parms->dpdk_init_log_level );
 		
 
 		n_ports = rte_eth_dev_count();
@@ -1685,7 +1679,8 @@ main(int argc, char **argv)
 		bleat_printf( 1, "no action mode: skipped dpdk setup, signal initialisation, and device discovery" );
 	}
 
-	parms->initialised = 1;					// safe to update nic now
+	parms->initialised = 1;								// safe to update nic now
+	vfd_add_all_vfs( parms, &running_config );			// read all existing config files and add the VFs to the config
 	if( vfd_update_nic( parms, &running_config ) != 0 ) {							// now that dpdk is initialised run the list and 'activate' everything
 		bleat_printf( 0, "abort: unable to initialise nic with base config:" );
 		if( forreal ) {
@@ -1704,6 +1699,9 @@ main(int argc, char **argv)
 
 	bleat_printf( 1, "initialisation complete, setting bleat level to %d; starting to looop", parms->log_level );
 	bleat_set_lvl( parms->log_level );					// initialisation finished, set log level to running level
+	if( forreal ) {
+		rte_set_log_level( parms->dpdk_log_level );
+	}
 	while(!terminated)
 	{
 		usleep(50000);			// .5s

@@ -13,7 +13,8 @@ typedef struct {
 	char*	log_dir;        // directory where log files should be written
 	int		log_level;      // verbose (bleat) log level (set after initialisation)
 	int		init_log_level; // vlog level used during initialisation
-	int		dpdk_log_level;	// log level passed to dpdk; allow it to be different than verbose level
+	int		dpdk_log_level;			// log level passed to dpdk; allow it to be different than verbose level
+	int		dpdk_init_log_level;	// log level for dpdk during initialisation
 	char*	fifo_path;      // path to fifo that cli will write to
 	int		log_keep;       // number of days of logs to keep (do we need this?)
 	char*	config_dir;     // directory where nova writes pf config files

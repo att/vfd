@@ -116,6 +116,7 @@ extern parms_t* read_parms( char* fname ) {
 		memset( parms, 0, sizeof( *parms ) );					// probably not needed, but we don't do this frequently enough to worry
 
 		parms->dpdk_log_level = jw_missing( jblob, "dpdk_log_level" ) ? 0 : (int) jw_value( jblob, "dpdk_log_level" );
+		parms->dpdk_init_log_level = jw_missing( jblob, "dpdk_init_log_level" ) ? 0 : (int) jw_value( jblob, "dpdk_init_log_level" );
 		parms->log_level = jw_missing( jblob, "log_level" ) ? 0 : (int) jw_value( jblob, "log_level" );
 		parms->init_log_level = jw_missing( jblob, "init_log_level" ) ? 1 : (int) jw_value( jblob, "init_log_level" );
 		parms->log_keep = jw_missing( jblob, "log_keep" ) ? 30 : (int) jw_value( jblob, "log_keep" );
@@ -268,6 +269,7 @@ extern vf_config_t*	read_config( char* fname ) {
 			}
 		} else {
 			vfc->nmacs = 0;		// if not set len() might return -1
+			vfc->macs = NULL;	// take no chances
 		}
 		
 		// TODO -- add code which picks up mirror stuff (jwrapper must be enhanced first)
