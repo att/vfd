@@ -11,6 +11,7 @@
 
 	Mods:		25 Mar 2016 - Corrected bug preventing vfid 0 from being added.
 							Added initial support for getting mtu from config.
+				28 Mar 2016 - Allow a single vlan in the list when stripping.
 */
 
 
@@ -53,7 +54,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
 static char* gen_stats( struct sriov_conf_c* conf );
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-const char* version = "v1.0/63256a";
+const char* version = "v1.0/63286";
 
 // ---------------------------------------------------------------------------------------------------------------
 /*
@@ -385,7 +386,7 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 		}
 	}
 
-	if( vfc->strip_stag  &&  vfc->nvlans > 0 ) {
+	if( vfc->strip_stag  &&  vfc->nvlans > 1 ) {		// one vlan is allowed when stripping
 		snprintf( mbuf, sizeof( mbuf ), "conflicting options: strip_stag may not be supplied with a list of vlan ids" );
 		bleat_printf( 1, "vf not added: %s", mbuf );
 		if( reason ) {
