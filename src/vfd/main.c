@@ -1260,7 +1260,6 @@ restore_vf_setings(uint8_t port_id, int vf_id)
     struct sriov_port_s *port = &running_config.ports[i];
     
     if (port_id == port->rte_port_number){
-		matched++;
       traceLog(TRACE_DEBUG, "------------------ PORT ID: %d --------------------\n", port->rte_port_number);
       traceLog(TRACE_DEBUG, "------------------ PORT PCIID: %s --------------------\n", port->pciid);
       
@@ -1272,6 +1271,7 @@ restore_vf_setings(uint8_t port_id, int vf_id)
         traceLog(TRACE_DEBUG, "------------------ CHECKING VF ID: %d --------------------\n", vf->num);
         
         if(vf_id == vf->num){
+			matched++;
            
           uint32_t vf_mask = VFN2MASK(vf->num); 
 
