@@ -11,6 +11,7 @@
 
 	Mods:		25 Mar 2016 - Corrected bug preventing vfid 0 from being added.
 							Added initial support for getting mtu from config.
+				28 Mar 2016 - Allow a single vlan in the list when stripping.
 */
 
 
@@ -53,7 +54,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
 static char* gen_stats( struct sriov_conf_c* conf );
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-const char* version = "v1.0/63256a";
+const char* version = "v1.0/63286";
 
 // ---------------------------------------------------------------------------------------------------------------
 /*
@@ -385,7 +386,7 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 		}
 	}
 
-	if( vfc->strip_stag  &&  vfc->nvlans > 0 ) {
+	if( vfc->strip_stag  &&  vfc->nvlans > 1 ) {		// one vlan is allowed when stripping
 		snprintf( mbuf, sizeof( mbuf ), "conflicting options: strip_stag may not be supplied with a list of vlan ids" );
 		bleat_printf( 1, "vf not added: %s", mbuf );
 		if( reason ) {
@@ -1260,7 +1261,6 @@ restore_vf_setings(uint8_t port_id, int vf_id)
     struct sriov_port_s *port = &running_config.ports[i];
     
     if (port_id == port->rte_port_number){
-		matched++;
       traceLog(TRACE_DEBUG, "------------------ PORT ID: %d --------------------\n", port->rte_port_number);
       traceLog(TRACE_DEBUG, "------------------ PORT PCIID: %s --------------------\n", port->pciid);
       
@@ -1272,6 +1272,7 @@ restore_vf_setings(uint8_t port_id, int vf_id)
         traceLog(TRACE_DEBUG, "------------------ CHECKING VF ID: %d --------------------\n", vf->num);
         
         if(vf_id == vf->num){
+			matched++;
            
           uint32_t vf_mask = VFN2MASK(vf->num); 
 
