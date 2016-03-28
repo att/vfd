@@ -1,0 +1,36 @@
+echo "running attlrqlite post initialisation..."
+
+if [ ! -d /etc/vfd ]
+then
+	mkdir -p /etc/vfd
+fi
+
+if [ $? -ne 0 ]
+then
+	echo "unable to create /etc/vfd "
+	exit 0
+fi
+
+if [ ! -d /var/log/vfd ]
+then
+	mkdir -p /var/log/vfd
+fi
+
+if [ $? -ne 0 ]
+then
+	echo "unable to create /var/log/vfd "
+	exit 0
+fi
+
+if [ ! -d /var/lib/vfd/config ]
+then
+	mkdir -p /var/lib/vfd/config
+fi
+
+if [ $? -ne 0 ]
+then
+	echo "unable to create /var/lib/vfd/config "
+	exit 0
+fi
+
+echo "post initialisation completed"
