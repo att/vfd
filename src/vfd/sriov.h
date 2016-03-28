@@ -66,7 +66,7 @@
 
 #include <libconfig.h>
 
-#include "../dpdk/drivers/net/ixgbe/base/ixgbe_mbx.h"
+#include "../lib/dpdk/drivers/net/ixgbe/base/ixgbe_mbx.h"
 
 #define RX_RING_SIZE 64
 #define TX_RING_SIZE 64
