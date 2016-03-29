@@ -40,10 +40,15 @@ int main( int argc, char** argv ) {
 	bleat_printf( 2, "this message should NOT be seen it is level 2" );
 	bleat_printf( 0, "this is a level 0 should be SEEN with pid: %d",  id );
 
-	// these should to to foo.log.<date> in the current directory
+	// these should to to foo.log.<date> in the current directory, hms should be added and the 
+	// log should 'roll' on 5 minute boundaries
 	bleat_printf( 0, "setting log to foo.log.<date>, look there for other messages" );
-	bleat_set_log( "foo.log", 1 );
+	bleat_set_log( "foo.log", 300 );
 	bleat_printf( 1, "this is a level 1 message should be SEEN" );
 	bleat_printf( 2, "this message should NOT be seen it is level 2" );
 	bleat_printf( 0, "this is a level 0 should be SEEN with pid: %d",  id );
+
+	fprintf( stderr, "sleeping 300 sec to test log file date rolling, next roll = %ld\n", (long )bleat_next_roll()  );
+	sleep( 300 );
+	bleat_printf( 0, "this bleat should be seen in the rolled log file" );
 }
