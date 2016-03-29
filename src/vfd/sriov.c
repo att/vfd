@@ -516,100 +516,124 @@ check_mcast_mbox(uint32_t * mb)
   return 0;
 }
   
+/*
+	Called when a 'mailbox' message is received.  Examine and take action based on 
+	the message type.
+*/
 void
-vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param)
-{
-  uint32_t *p = (uint32_t*) param;
-  uint16_t vf = p[0] & 0xffff;
-  uint16_t mbox_type = (p[0] >> 16) & 0xffff;
-	
-  struct reset_param_c *p_reset = malloc(sizeof(struct reset_param_c));
+vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param) {
+	uint32_t *p = (uint32_t*) param;
+	uint16_t vf = p[0] & 0xffff;
+	uint16_t mbox_type = (p[0] >> 16) & 0xffff;
+
+
+	struct reset_param_c *p_reset = malloc(sizeof(struct reset_param_c));
 	if(p_reset == NULL)
 		rte_exit(EXIT_FAILURE, "vf_msb_event_callback(): Can not allocate memory\n");
- 
-  /* check & process VF to PF mailbox message */
-  switch (mbox_type) {
-  case IXGBE_VF_RESET:
-    p_reset->port = port_id;
-    p_reset->vf = vf;
-		
-		rte_eal_alarm_set(RESTORE_DELAY * US_PER_S, restore_vf_setings_cb, (void *)p_reset);
-		
-    *(int*) param = RTE_ETH_MB_EVENT_NOOP_ACK;     /* noop & ack */     
-    traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", 
-      type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_RESET");
-    break;
-  case IXGBE_VF_SET_MAC_ADDR:
-    *(int*) param = RTE_ETH_MB_EVENT_PROCEED;    /* do what's needed */
-		//*(int*) param = RTE_ETH_MB_EVENT_NOOP_ACK;     /* noop & ack */  
-    traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", 
-      type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_MAC_ADDR");
 
-    struct ether_addr *new_mac = (struct ether_addr *)(&p[1]);
+	/* check & process VF to PF mailbox message */
+	switch (mbox_type) {
+		case IXGBE_VF_RESET:
+			bleat_printf( 1, "reset event received: port=%d", port_id );
+			p_reset->port = port_id;
+			p_reset->vf = vf;
+	
+			rte_eal_alarm_set(RESTORE_DELAY * US_PER_S, restore_vf_setings_cb, (void *)p_reset);
 
-    if (is_valid_assigned_ether_addr(new_mac)) {
-      traceLog(TRACE_DEBUG, "SETTING MAC, VF %u, MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
-			   " %02" PRIx8 " %02" PRIx8 " %02" PRIx8 "\n",
-         (uint32_t)vf,
-        new_mac->addr_bytes[0], new_mac->addr_bytes[1],
-        new_mac->addr_bytes[2], new_mac->addr_bytes[3],
-        new_mac->addr_bytes[4], new_mac->addr_bytes[5]);
-    }    
-    break;
-  case IXGBE_VF_SET_MULTICAST:
-    *(int*) param = RTE_ETH_MB_EVENT_PROCEED;    /* do what's needed */
-		//*(int*) param = RTE_ETH_MB_EVENT_NOOP_ACK;     /* noop & ack */  
-    traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", 
-      type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_MULTICAST");
-      
-    new_mac = (struct ether_addr *)(&p[1]);
+			*(int*) param = RTE_ETH_MB_EVENT_NOOP_ACK;     /* noop & ack */     
+			traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", 
+				type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_RESET");
+			break;
 
-    if (is_valid_assigned_ether_addr(new_mac)) {
-      traceLog(TRACE_DEBUG, "SETTING MCAST, VF %u, MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
-			   " %02" PRIx8 " %02" PRIx8 " %02" PRIx8 "\n",
-         (uint32_t)vf,
-        new_mac->addr_bytes[0], new_mac->addr_bytes[1],
-        new_mac->addr_bytes[2], new_mac->addr_bytes[3],
-        new_mac->addr_bytes[4], new_mac->addr_bytes[5]);
-    }       
-    break;    
-  case IXGBE_VF_SET_VLAN:
-    *(int*) param = RTE_ETH_MB_EVENT_NOOP_NACK;     /* noop & nack */
-		/* FIX ME ckeck if VLAN belongs to VF, NOOP_ACK if yes, NACK if not */
-    //*(int*) param = RTE_ETH_MB_EVENT_PROCEED; 
-    traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", 
-      type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_VLAN");
-    traceLog(TRACE_DEBUG, "SETTING VLAN ID = %d\n", p[1]);
-    break;  
-  case IXGBE_VF_SET_LPE:
-    *(int*) param = RTE_ETH_MB_EVENT_PROCEED;    /* do what's needed */
-		/* FIX ME check if requested MTU <= ports MTU then allow */  
-    traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", 
-    type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_LPE");
-    traceLog(TRACE_DEBUG, "SETTING MTU = %d\n", p[1]);
-    break; 
-  case IXGBE_VF_SET_MACVLAN:
-    *(int*) param =  RTE_ETH_MB_EVENT_NOOP_NACK;    /* noop & nack */
-    traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", 
-      type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_MACVLAN");
-    traceLog(TRACE_DEBUG, "SETTING MAC_VLAN = %d\n", p[1]);
-    break;     
-  case IXGBE_VF_API_NEGOTIATE:
-    *(int*) param =  RTE_ETH_MB_EVENT_PROCEED;   /* do what's needed */
-    traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", 
-      type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_API_NEGOTIATE");
-    break;
-  case IXGBE_VF_GET_QUEUES:
-    *(int*) param =  RTE_ETH_MB_EVENT_PROCEED;   /* do what's needed */
-    traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", 
-      type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_GET_QUEUES");
-    break;
-  default:
-    *(int*) param = RTE_ETH_MB_EVENT_NOOP_NACK;     /* noop & nack */
-    traceLog(TRACE_DEBUG, "--------------------\n Type: %d, Port: %d, VF: %d, OUT: %d, MBOX_TYPE: %d\n---------------\n", 
-      type, port_id, vf, *(uint32_t*) param, mbox_type);
-		break;
-  }
+		case IXGBE_VF_SET_MAC_ADDR:
+			bleat_printf( 1, "setmac event received: port=%d", port_id );
+			*(int*) param = RTE_ETH_MB_EVENT_PROCEED;    /* do what's needed */
+			//*(int*) param = RTE_ETH_MB_EVENT_NOOP_ACK;     /* noop & ack */  
+			traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", 
+				type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_MAC_ADDR");
+			
+			struct ether_addr *new_mac = (struct ether_addr *)(&p[1]);
+			
+			if (is_valid_assigned_ether_addr(new_mac)) {
+				traceLog(TRACE_DEBUG, "SETTING MAC, VF %u, MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
+					" %02" PRIx8 " %02" PRIx8 " %02" PRIx8 "\n",
+					(uint32_t)vf,
+					new_mac->addr_bytes[0], new_mac->addr_bytes[1],
+					new_mac->addr_bytes[2], new_mac->addr_bytes[3],
+					new_mac->addr_bytes[4], new_mac->addr_bytes[5]);
+			}    
+			break;
+
+		case IXGBE_VF_SET_MULTICAST:
+			bleat_printf( 1, "setmulticast event received: port=%d", port_id );
+			*(int*) param = RTE_ETH_MB_EVENT_PROCEED;    /* do what's needed */
+			//*(int*) param = RTE_ETH_MB_EVENT_NOOP_ACK;     /* noop & ack */  
+			traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", 
+				type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_MULTICAST");
+
+			new_mac = (struct ether_addr *)(&p[1]);
+
+			if (is_valid_assigned_ether_addr(new_mac)) {
+				traceLog(TRACE_DEBUG, "SETTING MCAST, VF %u, MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
+					" %02" PRIx8 " %02" PRIx8 " %02" PRIx8 "\n",
+					(uint32_t)vf,
+					new_mac->addr_bytes[0], new_mac->addr_bytes[1],
+					new_mac->addr_bytes[2], new_mac->addr_bytes[3],
+					new_mac->addr_bytes[4], new_mac->addr_bytes[5]);
+			}       
+			break;    
+
+		case IXGBE_VF_SET_VLAN:
+			// NOTE: we _always_ approve this.  This is the VMs setting of what will be an 'inner' vlan ID and thus we don't care
+			bleat_printf( 1, "vlan set event approved: port=%d vf=%d vlan=%d", port_id, vf, (int) p[1] );
+			*((int*) param) = RTE_ETH_MB_EVENT_PROCEED; 
+
+			//traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_VLAN");
+			//traceLog(TRACE_DEBUG, "SETTING VLAN ID = %d\n", p[1]);
+			break;  
+
+		case IXGBE_VF_SET_LPE:
+			bleat_printf( 1, "set mtu event received %d %d", port_id, (int) p[1] );
+			if( valid_mtu( port_id, (int) p[1] ) ) {
+				bleat_printf( 1, "mtu set event approved: port=%d vf=%d mtu=%d", port_id, vf, (int) p[1] );
+				*((int*) param) = RTE_ETH_MB_EVENT_PROCEED; 
+			} else {
+				bleat_printf( 1, "mtu set event rejected: port=%d vf=%d mtu=%d", port_id, vf, (int) p[1] );
+				*((int*) param) = RTE_ETH_MB_EVENT_NOOP_NACK;     /* noop & nack */
+			}
+
+			//traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_LPE");
+			//traceLog(TRACE_DEBUG, "SETTING MTU = %d\n", p[1]);
+			break; 
+
+		case IXGBE_VF_SET_MACVLAN:
+			bleat_printf( 1, "set macvlan event received: port=%d", port_id );
+			*(int*) param =  RTE_ETH_MB_EVENT_NOOP_NACK;    /* noop & nack */
+			traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", 
+					type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_MACVLAN");
+			traceLog(TRACE_DEBUG, "SETTING MAC_VLAN = %d\n", p[1]);
+			break;     
+
+		case IXGBE_VF_API_NEGOTIATE:
+			bleat_printf( 1, "set negotiate event received: port=%d", port_id );
+			*(int*) param =  RTE_ETH_MB_EVENT_PROCEED;   /* do what's needed */
+			traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", 
+				type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_API_NEGOTIATE");
+			break;
+
+		case IXGBE_VF_GET_QUEUES:
+			bleat_printf( 1, "get queues  event received: port=%d", port_id );
+			*(int*) param =  RTE_ETH_MB_EVENT_PROCEED;   /* do what's needed */
+			traceLog(TRACE_DEBUG, "-------------------- Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ---------------\n", 
+				type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_GET_QUEUES");
+			break;
+
+		default:
+			*(int*) param = RTE_ETH_MB_EVENT_NOOP_NACK;     /* noop & nack */
+			traceLog(TRACE_DEBUG, "--------------------\n Type: %d, Port: %d, VF: %d, OUT: %d, MBOX_TYPE: %d\n---------------\n", 
+				type, port_id, vf, *(uint32_t*) param, mbox_type);
+			break;
+	}
   
   traceLog(TRACE_DEBUG, "--------------------\n Type: %d, Port: %d, VF: %d, OUT: %d, _T: %d\n---------------\n", 
       type, port_id, vf, *(uint32_t*) param, mbox_type);
@@ -722,12 +746,12 @@ detachFromTerminal(void)
   setsid();  // detach from the terminal
 
   fclose(stdin);
-  fclose(stdout);
+	dup2( 1, 2 );				// dup stdout to stderr rather than closing so we get rte messages that appear on stdout
 
   // clear any inherited file mode creation mask
   umask(0);
 
-  setvbuf(stdout, (char *)NULL, _IOLBF, 0);
+  setvbuf( stderr, (char *)NULL, _IOLBF, 0);
 }
 
 

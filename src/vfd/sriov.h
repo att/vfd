@@ -420,5 +420,8 @@ void vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *
 void restore_vf_setings(uint8_t port_id, int vf);
 int check_mcast_mbox(uint32_t * mb);
 
+// callback validation support 
+int valid_mtu( int port, int mtu );
+int valid_vlan( int port, int vfid, int vlan );
 
 #endif /* _SRIOV_H_ */
