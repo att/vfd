@@ -135,7 +135,7 @@ int valid_mtu( int port, int mtu ) {
 		return 0;
 	}
 
-	if( mtu > 10 &&  mtu <= p->mtu ) {
+	if( mtu >= 0 &&  mtu <= p->mtu ) {
 		bleat_printf( 2, "valid_mtu: mtu OK for port/mtu %d/%d: %d", port, p->mtu, mtu );
 		return 1;
 	}
