@@ -12,6 +12,8 @@
 	Mods:		25 Mar 2016 - Corrected bug preventing vfid 0 from being added.
 							Added initial support for getting mtu from config.
 				28 Mar 2016 - Allow a single vlan in the list when stripping.
+				29 Mar 2016 - Converted parms in main() to use global parms; needed
+							to support callback.
 */
 
 
@@ -54,7 +56,93 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
 static char* gen_stats( struct sriov_conf_c* conf );
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-const char* version = "v1.0/63286";
+static const char* version = "v1.0/63296";
+static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
+
+// --- callback/mailbox support - depend on global parms ---------------------------------------------------------
+
+/*
+	Given a dpdk/hardware port id, find our port struct and return a pointer or
+	nil if we cant or it's out of range.
+*/
+static struct sriov_port_s *suss_port( int portid ) {
+	int		rc_idx; 					// index into our config
+
+	if( portid < 0 || portid > running_config.num_ports ) {
+		bleat_printf( 1, "suss_port: port is out of range: %d", portid );
+		return NULL;
+	}
+
+	rc_idx = rte_config_portmap[portid];				// tanslate port to index
+	if( rc_idx >= running_config.num_ports ) {
+		bleat_printf( 1, "suss_port: port index for port %d (%d) is out of range", portid, rc_idx );
+		return NULL;
+	}
+
+	return &running_config.ports[rc_idx];
+}
+
+/*
+	Given a port and vfid, find the vf block and return a pointer to it.
+*/
+static struct vf_s *suss_vf( int port, int vfid ) {
+	struct sriov_port_s *p;
+	int		i;
+
+	p = suss_port( port ); 
+	for( i = 0; i < p->num_vfs; i++ ) {
+		if( p->vfs[i].num == vfid ) {					// found it
+			return &p->vfs[i];
+		}
+	}
+
+	return NULL;
+}
+
+
+/*
+	Return true if the vlan is permitted for the port/vfid pair.
+*/
+int valid_vlan( int port, int vfid, int vlan ) {
+	struct vf_s *vf;
+	int i;
+
+	if( (vf = suss_vf( port, vfid )) == NULL ) {
+		bleat_printf( 2, "valid_vlan: cannot find port/vf pair: %d/%d", port, vfid );
+		return 0;
+	}
+
+	
+	for( i = 0; i < vf->num_vlans; i++ ) {
+		if( vf->vlans[i] == vlan ) {				// this is in the list; allowed
+			bleat_printf( 2, "valid_vlan: vlan OK for port/vfid %d/%d: %d", port, vfid, vlan );
+			return 1;
+		}
+	}
+
+	bleat_printf( 1, "valid_vlan: vlan not valid for port/vfid %d/%d: %d", port, vfid, vlan );
+	return 0;
+}
+
+/*
+	Return true if the mtu value is valid for the port given.
+*/
+int valid_mtu( int port, int mtu ) {
+	struct sriov_port_s *p;
+
+	if( (p = suss_port( port )) == NULL ) {				// find our struct
+		bleat_printf( 2, "valid_mtu: port doesn't map: %d", port );
+		return 0;
+	}
+
+	if( mtu > 10 &&  mtu <= p->mtu ) {
+		bleat_printf( 2, "valid_mtu: mtu OK for port/mtu %d/%d: %d", port, p->mtu, mtu );
+		return 1;
+	}
+	
+	bleat_printf( 1, "valid_mtu: mtu is not accptable for port/mtu %d/%d: %d", port, p->mtu, mtu );
+	return 0;
+}
 
 // ---------------------------------------------------------------------------------------------------------------
 /*
@@ -1396,7 +1484,7 @@ dump_sriov_config(struct sriov_conf_c sriov_config)
 
 			int x;
 			for (x = 0; x < sriov_config.ports[i].vfs[y].num_vlans; x++) {
-				bleat_printf( 2, "vlan[%d] %d ", x, sriov_config.ports[i].vfs[y].vlans[x]);
+				bleat_printf( 2, "dump: vlan[%d] %d ", x, sriov_config.ports[i].vfs[y].vlans[x]);
 			}   
       
 			int z;
@@ -1413,7 +1501,6 @@ main(int argc, char **argv)
 {
 	__attribute__((__unused__))	int ignored;				// ignored return code to keep compiler from whining
 	char*	parm_file = NULL;							// default in /etc, -p overrieds
-	parms_t*	parms = NULL;							// info read from the parm file
 	char	log_file[1024];				// buffer to build full log file in
 	char	run_asynch = 1;				// -f sets off to keep attached to tty
 	int		forreal = 1;				// -n sets to 0 to keep us from actually fiddling the nic
@@ -1449,7 +1536,6 @@ main(int argc, char **argv)
 
 
 	parm_file = strdup( "/etc/vfd/vfd.cfg" );				// set default before command line parsing as -p overrides 
-  fname = NULL;		// deprecated
   
   // Parse command line options
   while ( (opt = getopt(argc, argv, "fhnv:p:s:")) != -1)			// f,c  dropped
@@ -1498,50 +1584,48 @@ main(int argc, char **argv)
   }
 
 
-	if( (parms = read_parms( parm_file )) == NULL ) { 						// get overall configuration (includes list of pciids we manage)
+	if( (g_parms = read_parms( parm_file )) == NULL ) {						// get overall configuration (includes list of pciids we manage)
 		fprintf( stderr, "unable to read configuration from %s: %s\n", parm_file, strerror( errno ) );
 		exit( 1 );
 	} 
 
-	parms->forreal = forreal;												// fill in command line captured things that are passed in parms
+	g_parms->forreal = forreal;												// fill in command line captured things that are passed in parms
   
-	snprintf( log_file, sizeof( log_file ), "%s/vfd.log", parms->log_dir );
+	snprintf( log_file, sizeof( log_file ), "%s/vfd.log", g_parms->log_dir );
 	if( run_asynch ) {
 		bleat_printf( 1, "setting log to: %s", log_file );
-		bleat_set_log( log_file, BLEAT_ADD_DATE );									// open bleat log with date suffix
+		bleat_printf( 3, "detaching from tty (daemonise)" );
+		daemonize( g_parms->pid_fname );
+		bleat_set_log( log_file, BLEAT_ADD_DATE );									// open bleat log with date suffix _after_ daemonize so it doesn't close our fd
+	} else {
+		bleat_printf( 2, "-f supplied, staying attached to tty" );
 	}
-	bleat_set_lvl( parms->init_log_level );											// set default level
+	bleat_set_lvl( g_parms->init_log_level );											// set default level
 	bleat_printf( 0, "VFD initialising" );
-	bleat_printf( 0, "config dir set to: %s", parms->config_dir );
+	bleat_printf( 0, "config dir set to: %s", g_parms->config_dir );
 
-	if( vfd_init_fifo( parms ) < 0 ) {
+	if( vfd_init_fifo( g_parms ) < 0 ) {
 		bleat_printf( 0, "abort: unable to initialise request fifo" );
 		exit( 1 );
 	}
 
-	if( vfd_eal_init( parms ) < 0 ) {												// dpdk function returns -1 on error
+	if( vfd_eal_init( g_parms ) < 0 ) {												// dpdk function returns -1 on error
 		bleat_printf( 0, "abort: unable to initialise dpdk eal environment" );
 		exit( 1 );
 	}
 
 														// set up config structs. these always succeeed (see notes in README)
-	vfd_add_ports( parms, &running_config );			// add the pciid info from parms to the ports list (must do before dpdk init, config file adds wait til after)
+	vfd_add_ports( g_parms, &running_config );			// add the pciid info from parms to the ports list (must do before dpdk init, config file adds wait til after)
 
-	if( run_asynch ) {
-		bleat_printf( 3, "detaching from tty (daemonise)" );
-		daemonize( parms->pid_fname );
-	} else {
-		bleat_printf( 2, "-f supplied, staying attached to tty" );
-	}
 
-	if( parms->forreal ) {										// begin dpdk setup and device discovery
+	if( g_parms->forreal ) {										// begin dpdk setup and device discovery
 		bleat_printf( 1, "starting rte initialisation" );
 		rte_set_log_type(RTE_LOGTYPE_PMD && RTE_LOGTYPE_PORT, 0);
 		
 		traceLog(TRACE_INFO, "LOG LEVEL = %d, LOG TYPE = %d\n", rte_get_log_level(), rte_log_cur_msg_logtype());
 
 		
-		rte_set_log_level( parms->dpdk_init_log_level );
+		rte_set_log_level( g_parms->dpdk_init_log_level );
 		
 
 		n_ports = rte_eth_dev_count();
@@ -1639,7 +1723,7 @@ main(int argc, char **argv)
 		for(i = 0; i < running_config.num_ports; ++i) {						// suss out the device in our config and map the two indexes
 		  if (strcmp(pciid, running_config.ports[i].pciid) == 0) {
 			bleat_printf( 2, "physical port %i maps to config %d", port, i );
-			rte_config_portmap[port] = i;									// TODO -- do we need this map?
+			rte_config_portmap[port] = i;
 			running_config.ports[i].nvfs_config = dev_info.max_vfs;			// number of configured VFs (could be less than max)
 			running_config.ports[i].rte_port_number = port; 				// point config port back to rte port
 		  }
@@ -1658,16 +1742,16 @@ main(int argc, char **argv)
 
 	  //update_ports_config();
 
-		if( parms->stats_path != NULL  ) {
-			if(  mkfifo( parms->stats_path, 0666) != 0) {
-				bleat_printf( 2, "creattion of stats pipe failed: %s", parms->stats_path, strerror( errno ) );
+		if( g_parms->stats_path != NULL  ) {
+			if(  mkfifo( g_parms->stats_path, 0666) != 0) {
+				bleat_printf( 2, "creattion of stats pipe failed: %s", g_parms->stats_path, strerror( errno ) );
 				//traceLog(TRACE_ERROR, "can't create pipe: %s, %d\n", STATS_FILE, errno);
 			} else {
-				bleat_printf( 2, "created stats pipe: %s", parms->stats_path );
+				bleat_printf( 2, "created stats pipe: %s", g_parms->stats_path );
 				have_pipe = 1;
 			}
 		} else {
-			bleat_printf( 2, "stats pipe not created, not defined in parms" );
+			bleat_printf( 2, "stats pipe not created, not defined in g_parms" );
 		}
 
 	  /*
@@ -1681,37 +1765,37 @@ main(int argc, char **argv)
 		bleat_printf( 1, "no action mode: skipped dpdk setup, signal initialisation, and device discovery" );
 	}
 
-	parms->initialised = 1;								// safe to update nic now
-	vfd_add_all_vfs( parms, &running_config );			// read all existing config files and add the VFs to the config
-	if( vfd_update_nic( parms, &running_config ) != 0 ) {							// now that dpdk is initialised run the list and 'activate' everything
+	g_parms->initialised = 1;								// safe to update nic now
+	vfd_add_all_vfs( g_parms, &running_config );			// read all existing config files and add the VFs to the config
+	if( vfd_update_nic( g_parms, &running_config ) != 0 ) {							// now that dpdk is initialised run the list and 'activate' everything
 		bleat_printf( 0, "abort: unable to initialise nic with base config:" );
 		if( forreal ) {
-			rte_exit( EXIT_FAILURE, "initialisation failure, see log(s) in: %s\n", parms->log_dir );
+			rte_exit( EXIT_FAILURE, "initialisation failure, see log(s) in: %s\n", g_parms->log_dir );
 		} else {
 			exit( 1 );
 		}
 	}
 	
 	if( have_pipe ) {
-		fd = open( parms->stats_path, O_NONBLOCK | O_RDWR);		// must open non-block or it hangs until there is a reader
+		fd = open( g_parms->stats_path, O_NONBLOCK | O_RDWR);		// must open non-block or it hangs until there is a reader
 		if( fd < 0 ) {
-			bleat_printf( 1, "could not open stats pipe: %s: %s", parms->stats_path, strerror( errno ) );
+			bleat_printf( 1, "could not open stats pipe: %s: %s", g_parms->stats_path, strerror( errno ) );
 		}
 	}
 
-	bleat_printf( 1, "initialisation complete, setting bleat level to %d; starting to looop", parms->log_level );
-	bleat_set_lvl( parms->log_level );					// initialisation finished, set log level to running level
+	bleat_printf( 1, "initialisation complete, setting bleat level to %d; starting to looop", g_parms->log_level );
+	bleat_set_lvl( g_parms->log_level );					// initialisation finished, set log level to running level
 	if( forreal ) {
-		rte_set_log_level( parms->dpdk_log_level );
+		rte_set_log_level( g_parms->dpdk_log_level );
 	}
 	while(!terminated)
 	{
 		usleep(50000);			// .5s
    
-		while( vfd_req_if( parms, &running_config, 0 ) ); 				// process _all_ pending requests before going on
+		while( vfd_req_if( g_parms, &running_config, 0 ) ); 				// process _all_ pending requests before going on
 
 		if( bleat_will_it( 3 ) ) {
-			if( parms->forreal  && have_pipe && fd >= 0 ) {				//TODO -- drop this in favour of show stats?
+			if( g_parms->forreal  && have_pipe && fd >= 0 ) {				//TODO -- drop this in favour of show stats?
 				l = snprintf(buff, sizeof( buff ), "%s %18s %10s %10s %10s %10s %10s %10s %10s %10s %10s\n", "Iface", "Link", "Speed", "Duplex", "RX pkts", "RX bytes", 
 						"RX errors", "RX dropped", "TX pkts", "TX bytes", "TX errors");   
    	 
@@ -1741,7 +1825,7 @@ main(int argc, char **argv)
 		close(fd);
 	}
  
-	if( have_pipe  &&  parms->stats_path != NULL  && unlink( parms->stats_path ) != 0 ) {
+	if( have_pipe  &&  g_parms->stats_path != NULL  && unlink( g_parms->stats_path ) != 0 ) {
 		bleat_printf( 1, "couldn't delete stats pipe" );
 		//traceLog(TRACE_ERROR, "can't delete pipe: %s\n", STATS_FILE);
 	}
