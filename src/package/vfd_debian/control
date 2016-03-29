@@ -1,0 +1,10 @@
+Source: attlrvfd
+Section: net
+Priority: optional
+Maintainer: Dhanunjaya Naidu Ravada <dr3662.att.com>
+Package: attlrvfd
+Version: <VER>
+Architecture: amd64
+Depends: ksh
+Installed-Size: 4000
+Description: Will fill in future

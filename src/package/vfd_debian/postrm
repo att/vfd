@@ -1,0 +1,30 @@
+echo "cleaning up after removal"
+
+if initctl stop vfd >/dev/null
+then
+	if [ $? -ne 0 ]
+	then
+		echo "removing vfd.conf"
+		rm -f /etc/init/vfd.conf
+	fi
+
+else
+	rm -f /etc/init/vfd.conf
+	if [ $? -ne 0 ]
+	then
+		echo "unable to remove /etc/init/vfd.conf "
+	fi
+fi
+
+if [ -d /var/log/tegu ]
+then
+	echo "leaving logs in /var/log/tegu for historical purposes"
+fi
+
+if [ -d /etc/tegu ]
+then
+	echo "leaving tegu configuration in /etc/tegu for historical purposes"
+fi
+
+
+echo "removal complete"

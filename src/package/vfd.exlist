@@ -1,0 +1,3 @@
+src/vfd/build/app/vfd			usr/bin/
+src/system/iplex				usr/bin/
+src/system/vfd.conf				etc/init/
