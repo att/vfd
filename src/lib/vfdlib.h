@@ -1,6 +1,8 @@
 
 // vim: ts=4 sw=4 :
 
+#include <time.h>
+
 /*
 	Things that need to be visible to vfd
 */
