@@ -14,6 +14,7 @@
 				28 Mar 2016 - Allow a single vlan in the list when stripping.
 				29 Mar 2016 - Converted parms in main() to use global parms; needed
 							to support callback.
+				30 Mar 2016 - Added parm to bleat log to cause it to roll at midnight.
 */
 
 
@@ -56,7 +57,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
 static char* gen_stats( struct sriov_conf_c* conf );
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-static const char* version = "v1.0/63296";
+static const char* version = "v1.0/63306";
 static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
 
 // --- callback/mailbox support - depend on global parms ---------------------------------------------------------
@@ -1596,7 +1597,7 @@ main(int argc, char **argv)
 		bleat_printf( 1, "setting log to: %s", log_file );
 		bleat_printf( 3, "detaching from tty (daemonise)" );
 		daemonize( g_parms->pid_fname );
-		bleat_set_log( log_file, BLEAT_ADD_DATE );									// open bleat log with date suffix _after_ daemonize so it doesn't close our fd
+		bleat_set_log( log_file, 86400 );									// open bleat log with date suffix _after_ daemonize so it doesn't close our fd
 	} else {
 		bleat_printf( 2, "-f supplied, staying attached to tty" );
 	}
