@@ -1,6 +1,8 @@
 
 // vim: ts=4 sw=4 :
 
+#include <time.h>
+
 /*
 	Things that need to be visible to vfd
 */
@@ -92,6 +94,7 @@ extern void free_list( char** list, int size );
 #define BLEAT_NO_DATE	0
 
 extern int bleat_set_lvl( int l );
+extern time_t bleat_next_roll( void );
 extern void bleat_push_lvl( int l );
 extern void bleat_push_glvl( int l );
 extern void bleat_pop_lvl( void );
