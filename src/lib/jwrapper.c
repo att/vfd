@@ -146,6 +146,7 @@ void* parse_jobject( void* st, char *json, char* prefix ) {
 	char	*data;				// data string from the json
 	jthing_t*	jarray;			// array of jthings we'll coonstruct
 	int		size;
+	int		osize;
 	int		njtokens; 			// tokens actually sussed out
 	jsmn_parser jp;				// 'parser' object
 	jsmntok_t *jtokens;			// pointer to tokens returned by the parser
@@ -222,12 +223,30 @@ void* parse_jobject( void* st, char *json, char* prefix ) {
 					switch( jtokens[i+n].type ) {
 						case JSMN_UNDEFINED:
 							fprintf( stderr, "warn: [%d] array element %d is not valid type (undefined) is not string or primative\n", i, n );
+							fprintf( stderr, "\tstart=%d end=%d\n", jtokens[i+n].start, jtokens[i+n].end );
 							break;
 
 						case JSMN_OBJECT:
-							fprintf( stderr, "warn: [%d] array element %d is not valid type (object) is not string or primative\n", i, n );
-							sym_free( st );
-							return NULL;			// FIXME -- for now we'll bail out, but we should really just skip over this
+							//fprintf( stderr, "warn: [%d] array element %d size=%d is not valid type (object) is not string or primative\n", i, n, jtokens[i+n].size );
+							//fprintf( stderr, "\tstart=%d end=%d\n", jtokens[i+n].start, jtokens[i+n].end );
+							//fprintf( stderr, "\t%s (%s)\n", name, extract( json, &jtokens[i+n]  ) ); 
+
+							jarray[n].v.pv = (void *) sym_alloc( 255 );
+							if( jarray[n].v.pv == NULL ) {
+								fprintf( stderr, "abort: [%d] array element %d size=%d could not allocate symtab\n", i, n, jtokens[i+n].size );
+								sym_free( st );
+								return NULL;
+							}
+							jarray[n].jsmn_type = JSMN_OBJECT;
+							parse_jobject( jarray[n].v.pv,  extract( json, &jtokens[i+n]  ), "" );		// recurse acorss the string and build a new symtab
+							osize = jtokens[i+n].end;									// done with them, we need to skip them 
+							i++;
+							while( i < njtokens-1  &&  jtokens[n+i].end < osize ) {
+								fprintf( stderr, "\tskip: [%d] object element start=%d end=%d (%s)\n", i, jtokens[i].start, jtokens[i].end, extract( json, &jtokens[i])  );
+								i++;
+							}
+							i--;					// allow incr at loop end
+							break;
 
 						case JSMN_ARRAY:
 							fprintf( stderr, "warn: [%d] array element %d is not valid type (array) is not string or primative\n", i, n );
@@ -460,6 +479,32 @@ extern float jw_value_ele( void* st, const char* name, int idx ) {
 	}
 
 	return jtp->v.fv;
+}
+
+/*
+	Look up array element as an object. Returns NULL if:
+		name is not an array
+		name is not in the hash
+		index is out of range
+		element is not an object
+
+	An object in an array is a standalone symbol table. Thus the object
+	is treated differently than a nested object whose members are a 
+	part of the parent namespace.  An object in an array has its own
+	namespace.
+*/
+extern void* jw_obj_ele( void* st, const char* name, int idx ) {
+	jthing_t* jtp;									// thing that is referenced by the symtab entry
+
+	if( (jtp = suss_element( st, name, idx )) == NULL ) {
+		return 0;
+	}
+
+	if( jtp->jsmn_type != JSMN_OBJECT ) {
+		return 0;
+	}
+
+	return (void *) jtp->v.pv;
 }
 
 /*
