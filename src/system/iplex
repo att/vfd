@@ -53,9 +53,19 @@ def setup_logging(args, filename='iplex.log'):
     log.addHandler(handler)
     return log
 
+def _errorMsg(msg):
+    data = {}
+    data['state'] = 'ERROR'
+    data['msg'] = msg
+    print data
+
 def read_config():
-        with open(VFD_CONFIG) as data_file:
-                data = json.load(data_file)
+    with open(VFD_CONFIG) as data_file:
+        try:
+            data = json.load(data_file)
+        except ValueError:
+            _errorMsg(VFD_CONFIG + " is not a valid json")
+            sys.exit(1)
         return data
 
 class Iplex(object):
