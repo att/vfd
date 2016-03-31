@@ -109,6 +109,8 @@ extern int jw_missing( void* st, const char* name );
 extern int jw_exists( void* st, const char* name );
 extern char* jw_string( void* st, const char* name );
 extern float jw_value( void* st, const char* name );
+extern void* jw_blob( void* st, const char* name );
 extern char* jw_string_ele( void* st, const char* name, int idx );
 extern float jw_value_ele( void* st, const char* name, int idx );
+extern void* jw_obj_ele( void* st, const char* name, int idx );
 extern int jw_array_len( void* st, const char* name );

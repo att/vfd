@@ -151,6 +151,7 @@ void* parse_jobject( void* st, char *json, char* prefix ) {
 	jsmn_parser jp;				// 'parser' object
 	jsmntok_t *jtokens;			// pointer to tokens returned by the parser
 	char	pname[1024];		// name with prefix
+	char*	dstr;				// dup'd string
 
 	jsmn_init( &jp );			// does this have a failure mode?
 
@@ -193,9 +194,25 @@ void* parse_jobject( void* st, char *json, char* prefix ) {
 				fprintf( stderr, "warn: element [%d] in json is undefined\n", i );
 				break;
 
-    		case JSMN_OBJECT:				// object + size*2 elements
-				parse_jobject( st, extract( json, &jtokens[i] ), name );					// recurse to add the object as objectname.xxxx elements
+    		case JSMN_OBJECT:				// save object in two ways: as an object 'blob' and in the current symtab using name as a base (original)
+				dstr = strdup( extract( json, &jtokens[i] ) );
+				parse_jobject( st, dstr, name );					// recurse to add the object as objectname.xxxx elements
 				
+				jtp = mk_thing( st, name, jtokens[i].type );
+				if( jtp == NULL ) {
+					fprintf( stderr, "warn: memory alloc error processing element [%d] in json\n", i );
+					sym_free( st );
+					return NULL;
+				}
+				jtp->v.pv = (void *) sym_alloc( 255 );						// object is just a blob
+				if( jtp->v.pv == NULL ) {
+					fprintf( stderr, "error: [%d] symtab for object blob could not be allocated\n", i );
+					sym_free( st );
+					return NULL;
+				}
+				dstr = strdup( extract( json, &jtokens[i] ) );
+				parse_jobject( jtp->v.pv,  dstr, "" );					// recurse acorss the string and build a new symtab
+
 				size = jtokens[i].end;									// done with them, we need to skip them 
 				i++;
 				while( i < njtokens-1  &&  jtokens[i].end < size ) {
@@ -227,22 +244,19 @@ void* parse_jobject( void* st, char *json, char* prefix ) {
 							break;
 
 						case JSMN_OBJECT:
-							//fprintf( stderr, "warn: [%d] array element %d size=%d is not valid type (object) is not string or primative\n", i, n, jtokens[i+n].size );
-							//fprintf( stderr, "\tstart=%d end=%d\n", jtokens[i+n].start, jtokens[i+n].end );
-							//fprintf( stderr, "\t%s (%s)\n", name, extract( json, &jtokens[i+n]  ) ); 
-
 							jarray[n].v.pv = (void *) sym_alloc( 255 );
 							if( jarray[n].v.pv == NULL ) {
-								fprintf( stderr, "abort: [%d] array element %d size=%d could not allocate symtab\n", i, n, jtokens[i+n].size );
+								fprintf( stderr, "error: [%d] array element %d size=%d could not allocate symtab\n", i, n, jtokens[i+n].size );
 								sym_free( st );
 								return NULL;
 							}
+
 							jarray[n].jsmn_type = JSMN_OBJECT;
 							parse_jobject( jarray[n].v.pv,  extract( json, &jtokens[i+n]  ), "" );		// recurse acorss the string and build a new symtab
 							osize = jtokens[i+n].end;									// done with them, we need to skip them 
 							i++;
 							while( i < njtokens-1  &&  jtokens[n+i].end < osize ) {
-								fprintf( stderr, "\tskip: [%d] object element start=%d end=%d (%s)\n", i, jtokens[i].start, jtokens[i].end, extract( json, &jtokens[i])  );
+								//fprintf( stderr, "\tskip: [%d] object element start=%d end=%d (%s)\n", i, jtokens[i].start, jtokens[i].end, extract( json, &jtokens[i])  );
 								i++;
 							}
 							i--;					// allow incr at loop end
@@ -437,6 +451,25 @@ extern float jw_value( void* st, const char* name ) {
 	}
 
 	return jtp->v.fv;
+}
+
+/*
+	Look up name and return the blob (symtab).
+*/
+extern void* jw_blob( void* st, const char* name ) {
+	jthing_t* jtp;									// thing that is referenced by the symtab
+
+	jtp = (jthing_t *) sym_get( st, name, 0 );		// get it or NULL
+
+	if( ! jtp ) {
+		return NULL;
+	}
+
+	if( jtp->jsmn_type != JSMN_OBJECT ) {
+		return NULL;
+	}
+
+	return jtp->v.pv;
 }
 
 /*
