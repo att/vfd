@@ -1,30 +1,40 @@
-echo "cleaning up after removal"
+#!/bin/sh -e
 
-if initctl stop vfd >/dev/null
-then
-	if [ $? -ne 0 ]
-	then
-		echo "removing vfd.conf"
-		rm -f /etc/init/vfd.conf
+case "$1" in
+	remove)
+	if [ -d /var/log/vfd ]; then
+	echo "leaving logs in /var/log/vfd for historical purposes"
 	fi
 
-else
+	if [ -d /etc/vfd ]; then
+	echo "leaving vfd configuration in /etc/vfd for historical purposes"
+	fi
+    ;;
+
+	purge)
+	if [ -f /etc/init/vfd.conf ]; then
 	rm -f /etc/init/vfd.conf
-	if [ $? -ne 0 ]
-	then
-		echo "unable to remove /etc/init/vfd.conf "
+	rmdir --ignore-fail-on-non-empty /etc/vfd/
 	fi
-fi
 
-if [ -d /var/log/tegu ]
-then
-	echo "leaving logs in /var/log/tegu for historical purposes"
-fi
+	if [ -d /var/log/vfd ]; then
+	rm -rf /var/log/vfd
+	fi
 
-if [ -d /etc/tegu ]
-then
-	echo "leaving tegu configuration in /etc/tegu for historical purposes"
-fi
+	if [ -d /var/lib/vfd ]; then
+	rm -rf /var/lib/vfd
+	fi
 
+    if [ -d /etc/vfd ]; then
+    rm -rf /etc/vfd/vfd.conf
+    fi
+    ;;
 
-echo "removal complete"
+	upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+	;;
+
+    *)
+    echo "postrm called with unknown argument '$1'" >&2
+    exit 1
+    ;;
+esac
