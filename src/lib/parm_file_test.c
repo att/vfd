@@ -2,6 +2,8 @@
 	Mneminic:	parm_file_test.c
 	Abstract: 	Unit test for parm file parsing (part of config.c).
 				Tests obvious things, may miss edge cases.
+				usage:  parm_file_test cfg-file-name
+
 	Date:		03 February 2016
 	Author:		E. Scott Daniels
 */
@@ -28,11 +30,10 @@ void pprint( parms_t* parms ) {
 	fprintf( stderr, "\tcpu_mask: %s\n", parms->cpu_mask );
 	fprintf( stderr, "\tdpdk_log_level: %d\n", parms->dpdk_log_level );
 	fprintf( stderr, "\tdpdk_init_log_level: %d\n", parms->dpdk_init_log_level );
-	fprintf( stderr, "\tmtu: %d\n", parms->mtu );
 
 	fprintf( stderr, "\tnpciids: %d\n", parms->npciids );
 	for( i = 0; i < parms->npciids; i++ ) {
-		fprintf( stderr, "\tpciid[%d]: %s\n", i, parms->pciids[i] );
+		fprintf( stderr, "\tpciid[%d]: %s %d\n", i, parms->pciids[i].id, parms->pciids[i].mtu );
 	}
 }
 
@@ -54,6 +55,7 @@ int main( int argc, char** argv ) {
 		fprintf( stderr, "[OK]   Able to open, read and parse json in parm file\n" );
 		pprint( parms );
 	}
+	free_parms( parms );
 	
 	parms = read_parms( "/hosuchdir/nosuchfile" );			// should return defaults all round rather than failing
 	if( parms != NULL ) {
