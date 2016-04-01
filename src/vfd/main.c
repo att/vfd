@@ -15,6 +15,8 @@
 				29 Mar 2016 - Converted parms in main() to use global parms; needed
 							to support callback.
 				30 Mar 2016 - Added parm to bleat log to cause it to roll at midnight.
+				01 Apr 2016 - Add ability to suss individual mtu for each pciid defined in
+							the /etc parm file.
 */
 
 
@@ -24,9 +26,6 @@
 
 #define DEBUG
 
-struct rte_port *ports;				/// ?????? 
-
- 
 // -------------------------------------------------------------------------------------------------------------
 
 // TODO - these need to move to header file
@@ -57,7 +56,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
 static char* gen_stats( struct sriov_conf_c* conf );
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-static const char* version = "v1.0/63306";
+static const char* version = "v1.0/64016";
 static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
 
 // --- callback/mailbox support - depend on global parms ---------------------------------------------------------
@@ -252,8 +251,8 @@ static int vfd_eal_init( parms_t* parms ) {
   
 	for( i = 0; i < parms->npciids && argc_idx < argc - 1; i++ ) {			// add in the -w pciid values to the list
 		argv[argc_idx++] = strdup( "-w" );
-		argv[argc_idx++] = strdup( parms->pciids[i] );
-		bleat_printf( 1, "add pciid to dpdk dummy command line -w %s", parms->pciids[i] );
+		argv[argc_idx++] = strdup( parms->pciids[i].id );
+		bleat_printf( 1, "add pciid to dpdk dummy command line -w %s", parms->pciids[i].id );
 	}
 
 	dummy_rte_eal_init( argc, argv );			// print out parms
@@ -310,12 +309,12 @@ static void vfd_add_ports( parms_t* parms, struct sriov_conf_c* conf ) {
 		port = &conf->ports[pidx];
 		port->last_updated = ADDED;												// flag newly added so the nic is configured next go round
 		snprintf( port->name, sizeof( port->name ), "port-%d",  i);				// TODO--- support getting a name from the config
-		snprintf( port->pciid, sizeof( port->pciid ), "%s", parms->pciids[i] );
-		port->mtu = parms->mtu;													// TODO -- support getting mtu for each specific PF
+		snprintf( port->pciid, sizeof( port->pciid ), "%s", parms->pciids[i].id );
+		port->mtu = parms->pciids[i].mtu;
 		port->num_mirros = 0;
 		port->num_vfs = 0;
 		
-		bleat_printf( 1, "add pciid to in memory config: %s", parms->pciids[i] );
+		bleat_printf( 1, "add pciid to in memory config: %s mtu=%d", parms->pciids[i].id, parms->pciids[i].mtu );
 	}
 
 	conf->num_ports = pidx;

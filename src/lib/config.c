@@ -6,6 +6,7 @@
 	Date:		26 Feb 2016
 
 	Mods:		10 Mar 2016 : Added support for additional parm file values.
+				01 Apr 2016 : Support variable mtu for each pciid in the parm file.
 */
 
 #include <fcntl.h>
@@ -95,9 +96,11 @@ static char* file_into_buf( char* fname ) {
 extern parms_t* read_parms( char* fname ) {
 	parms_t*	parms = NULL;
 	void*		jblob;			// parsed json
+	void*		pobj;			// parsed sub object
 	char*		buf;			// buffer read from file (nil terminated)
 	char*		stuff;
 	int			i;
+	int			def_mtu;		// default mtu (pulled and used to set pciid struct, but not kept in parms
 
 	if( (buf = file_into_buf( fname )) == NULL ) {
 		return NULL;
@@ -119,8 +122,13 @@ extern parms_t* read_parms( char* fname ) {
 		parms->dpdk_init_log_level = jw_missing( jblob, "dpdk_init_log_level" ) ? 0 : (int) jw_value( jblob, "dpdk_init_log_level" );
 		parms->log_level = jw_missing( jblob, "log_level" ) ? 0 : (int) jw_value( jblob, "log_level" );
 		parms->init_log_level = jw_missing( jblob, "init_log_level" ) ? 1 : (int) jw_value( jblob, "init_log_level" );
-		parms->mtu = jw_missing( jblob, "mtu" ) ? 9000 : (int) jw_value( jblob, "mtu" );
 		parms->log_keep = jw_missing( jblob, "log_keep" ) ? 30 : (int) jw_value( jblob, "log_keep" );
+
+		if( jw_missing( jblob, "default_mtu" ) ) {			// could be an old install using deprecated mtu, so look for that and default if neither is there
+			def_mtu = jw_missing( jblob, "mtu" ) ? 9000 : (int) jw_value( jblob, "mtu" );
+		} else {
+ 		 	def_mtu = (int) jw_value( jblob, "default_mtu" );
+		}
 
 		if(  (stuff = jw_string( jblob, "config_dir" )) ) {
 			parms->config_dir = strdup( stuff );
@@ -160,7 +168,19 @@ extern parms_t* read_parms( char* fname ) {
 			parms->pciids = malloc( sizeof( *parms->pciids ) * parms->npciids );
 			if( parms->pciids != NULL ) {
 				for( i = 0; i < parms->npciids; i++ ) {
-					parms->pciids[i] = strdup( (char *) jw_string_ele( jblob, "pciids", i ) );
+					stuff = (char *) jw_string_ele( jblob, "pciids", i );
+					if( stuff != NULL ) {										// string, use default mtu
+						parms->pciids[i].id = strdup( stuff );
+						parms->pciids[i].mtu = def_mtu; 
+					} else {
+						if( (pobj = jw_obj_ele( jblob, "pciids", i )) != NULL ) {		// full pciid object -- take both values from it
+							if( (stuff = jw_string( pobj, "id" )) == NULL ) {
+								stuff = strdup( "missing-id" );
+							}
+							parms->pciids[i].id = strdup( stuff );
+							parms->pciids[i].mtu = jw_missing( pobj, "mtu" ) ? def_mtu : (int) jw_value( pobj, "mtu" );
+						}
+					}
 				}
 			} else {
 				parms->npciids = 0;			// memory failure; return zip
@@ -185,6 +205,9 @@ extern void free_parms( parms_t* parms ) {
 	SFREE( parms->log_dir );
 	SFREE( parms->fifo_path );
 	SFREE( parms->config_dir );
+	SFREE( parms->pciids );
+	SFREE( parms->pid_fname );
+	SFREE( parms->stats_path );
 
 	free( parms );
 }
