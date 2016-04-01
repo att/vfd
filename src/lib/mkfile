@@ -31,6 +31,9 @@ $lib:   ${lib_src:%=$lib(%.o)}
 jwrapper_test:: jwrapper_test.c jwrapper.h jwrapper.o symtab.o
 	$cc $cflags jwrapper_test.c  -o jwrapper_test jwrapper.o symtab.o $jsmn_lib
 
+jwrapper_test2:: jwrapper_test2.c jwrapper.h jwrapper.o symtab.o
+	$cc $cflags jwrapper_test2.c  -o jwrapper_test2 jwrapper.o symtab.o $jsmn_lib
+
 parm_file_test::	parm_file_test.c $lib
 	$cc $cflags parm_file_test.c -o parm_file_test -L. -lvfd $jsmn_lib
 	

@@ -20,6 +20,10 @@
 #define JSON_SYM_NAME	"_jw_json_string"
 #define MAX_THINGS		1024		// max objects/elements
 
+extern void jw_nuke( void* st );
+
+// ---------------------------------------------------------------------------------------
+
 /*
 	This is what we will manage in the symtab. Right now we store all values (primatives)
 	as float, but we could be smarter about it and look for a decimal. Unsigned and 
@@ -119,16 +123,32 @@ static jthing_t* suss_element( void* st, const char* name, int idx ) {
 
 /*
 	Invoked for each thing in the symtab; we free the things that actually point to 
-	allocated data (e.g. arrays).
+	allocated data (e.g. arrays) and recurse to handle objects.
 */
 static void nix_things( void* st, void* se, const char* name,  void* ele, void *data ) {
-	jthing_t* j;
+	jthing_t*	j;
+	jthing_t*	jarray;
+	int i;
 
 	j = (jthing_t *) ele;
 	if( j ) {
 		switch( j->jsmn_type ) {
 			case JSMN_ARRAY:
-				free( j->v.pv );			// must free the array (arrays aren't nested, so all things in the array don't reference allocated mem)
+				if( (jarray = (jthing_t *) j->v.pv)  != NULL ) {
+					for( i = 0; i < j->nele; i++ ) {					// must look for embedded objects
+						if( jarray[i].jsmn_type == JSMN_OBJECT ) {
+							jw_nuke( jarray[i].v.pv );
+							jarray[i].jsmn_type = JSMN_UNDEFINED;			// prevent accidents
+						}
+					}
+
+					free( j->v.pv );			// must free the array (arrays aren't nested, so all things in the array don't reference allocated mem)
+				}
+				break;
+
+			case JSMN_OBJECT:
+				jw_nuke( j->v.pv );
+				j->jsmn_type = JSMN_UNDEFINED;			// prevent a double free
 				break;
 		}
 	}
@@ -146,10 +166,13 @@ void* parse_jobject( void* st, char *json, char* prefix ) {
 	char	*data;				// data string from the json
 	jthing_t*	jarray;			// array of jthings we'll coonstruct
 	int		size;
+	int		osize;
 	int		njtokens; 			// tokens actually sussed out
 	jsmn_parser jp;				// 'parser' object
 	jsmntok_t *jtokens;			// pointer to tokens returned by the parser
 	char	pname[1024];		// name with prefix
+	char	wbuf[256];			// temp buf to build a working name in
+	char*	dstr;				// dup'd string
 
 	jsmn_init( &jp );			// does this have a failure mode?
 
@@ -192,10 +215,31 @@ void* parse_jobject( void* st, char *json, char* prefix ) {
 				fprintf( stderr, "warn: element [%d] in json is undefined\n", i );
 				break;
 
-    		case JSMN_OBJECT:				// object + size*2 elements
-				parse_jobject( st, extract( json, &jtokens[i] ), name );					// recurse to add the object as objectname.xxxx elements
+    		case JSMN_OBJECT:				// save object in two ways: as an object 'blob' and in the current symtab using name as a base (original)
+				dstr = strdup( extract( json, &jtokens[i] ) );
+				snprintf( wbuf, sizeof( wbuf ), "%s_json", name );	// must stash the json string in the symtab for clean up during nuke	
+				sym_fmap( st, (unsigned char *) wbuf, 0, dstr );
+				parse_jobject( st, dstr, name );					// recurse to add the object as objectname.xxxx elements
 				
-				size = jtokens[i].end;									// done with them, we need to skip them 
+				jtp = mk_thing( st, name, jtokens[i].type );		// create thing and reference it in current symtab
+				if( jtp == NULL ) {
+					fprintf( stderr, "warn: memory alloc error processing element [%d] in json\n", i );
+					free( dstr );
+					sym_free( st );
+					return NULL;
+				}
+				jtp->v.pv = (void *) sym_alloc( 255 );						// object is just a blob
+				if( jtp->v.pv == NULL ) {
+					fprintf( stderr, "error: [%d] symtab for object blob could not be allocated\n", i );
+					sym_free( st );
+					free( dstr );
+					return NULL;
+				}
+				dstr = strdup( extract( json, &jtokens[i] ) );
+				sym_fmap( jtp->v.pv, (unsigned char *) JSON_SYM_NAME, 0, dstr );		// must stash json so it is freed during nuke()
+				parse_jobject( jtp->v.pv,  dstr, "" );							// recurse acorss the string and build a new symtab
+
+				size = jtokens[i].end;											// done with them, we need to skip them 
 				i++;
 				while( i < njtokens-1  &&  jtokens[i].end < size ) {
 					//fprintf( stderr, "\tskip: [%d] object element start=%d end=%d (%s)\n", i, jtokens[i].start, jtokens[i].end, extract( json, &jtokens[i])  );
@@ -216,18 +260,34 @@ void* parse_jobject( void* st, char *json, char* prefix ) {
 					return NULL;
 				}
 				jarray = jtp->v.pv = (jsmntok_t *) malloc( sizeof( *jarray ) * size );		// allocate the array
+				memset( jarray, 0, sizeof( *jarray ) * size );
 				jtp->nele = size;
 
 				for( n = 0; n < size; n++ ) {								// for each array element
 					switch( jtokens[i+n].type ) {
 						case JSMN_UNDEFINED:
 							fprintf( stderr, "warn: [%d] array element %d is not valid type (undefined) is not string or primative\n", i, n );
+							fprintf( stderr, "\tstart=%d end=%d\n", jtokens[i+n].start, jtokens[i+n].end );
 							break;
 
 						case JSMN_OBJECT:
-							fprintf( stderr, "warn: [%d] array element %d is not valid type (object) is not string or primative\n", i, n );
-							sym_free( st );
-							return NULL;			// FIXME -- for now we'll bail out, but we should really just skip over this
+							jarray[n].v.pv = (void *) sym_alloc( 255 );
+							if( jarray[n].v.pv == NULL ) {
+								fprintf( stderr, "error: [%d] array element %d size=%d could not allocate symtab\n", i, n, jtokens[i+n].size );
+								sym_free( st );
+								return NULL;
+							}
+
+							jarray[n].jsmn_type = JSMN_OBJECT;
+							parse_jobject( jarray[n].v.pv,  extract( json, &jtokens[i+n]  ), "" );		// recurse acorss the string and build a new symtab
+							osize = jtokens[i+n].end;									// done with them, we need to skip them 
+							i++;
+							while( i+n < njtokens-1  &&  jtokens[n+i].end < osize ) {
+								//fprintf( stderr, "\tskip: [%d] object element start=%d end=%d (%s)\n", i, jtokens[i].start, jtokens[i].end, extract( json, &jtokens[i])  );
+								i++;
+							}
+							i--;					// allow incr at loop end
+							break;
 
 						case JSMN_ARRAY:
 							fprintf( stderr, "warn: [%d] array element %d is not valid type (array) is not string or primative\n", i, n );
@@ -421,6 +481,25 @@ extern float jw_value( void* st, const char* name ) {
 }
 
 /*
+	Look up name and return the blob (symtab).
+*/
+extern void* jw_blob( void* st, const char* name ) {
+	jthing_t* jtp;									// thing that is referenced by the symtab
+
+	jtp = (jthing_t *) sym_get( st, name, 0 );		// get it or NULL
+
+	if( ! jtp ) {
+		return NULL;
+	}
+
+	if( jtp->jsmn_type != JSMN_OBJECT ) {
+		return NULL;
+	}
+
+	return jtp->v.pv;
+}
+
+/*
 	Look up array element as a string. Returns NULL if:
 		name is not an array
 		name is not in the hash
@@ -460,6 +539,32 @@ extern float jw_value_ele( void* st, const char* name, int idx ) {
 	}
 
 	return jtp->v.fv;
+}
+
+/*
+	Look up array element as an object. Returns NULL if:
+		name is not an array
+		name is not in the hash
+		index is out of range
+		element is not an object
+
+	An object in an array is a standalone symbol table. Thus the object
+	is treated differently than a nested object whose members are a 
+	part of the parent namespace.  An object in an array has its own
+	namespace.
+*/
+extern void* jw_obj_ele( void* st, const char* name, int idx ) {
+	jthing_t* jtp;									// thing that is referenced by the symtab entry
+
+	if( (jtp = suss_element( st, name, idx )) == NULL ) {
+		return 0;
+	}
+
+	if( jtp->jsmn_type != JSMN_OBJECT ) {
+		return 0;
+	}
+
+	return (void *) jtp->v.pv;
 }
 
 /*
