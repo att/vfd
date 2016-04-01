@@ -20,6 +20,10 @@
 #define JSON_SYM_NAME	"_jw_json_string"
 #define MAX_THINGS		1024		// max objects/elements
 
+extern void jw_nuke( void* st );
+
+// ---------------------------------------------------------------------------------------
+
 /*
 	This is what we will manage in the symtab. Right now we store all values (primatives)
 	as float, but we could be smarter about it and look for a decimal. Unsigned and 
@@ -119,16 +123,32 @@ static jthing_t* suss_element( void* st, const char* name, int idx ) {
 
 /*
 	Invoked for each thing in the symtab; we free the things that actually point to 
-	allocated data (e.g. arrays).
+	allocated data (e.g. arrays) and recurse to handle objects.
 */
 static void nix_things( void* st, void* se, const char* name,  void* ele, void *data ) {
-	jthing_t* j;
+	jthing_t*	j;
+	jthing_t*	jarray;
+	int i;
 
 	j = (jthing_t *) ele;
 	if( j ) {
 		switch( j->jsmn_type ) {
 			case JSMN_ARRAY:
-				free( j->v.pv );			// must free the array (arrays aren't nested, so all things in the array don't reference allocated mem)
+				if( (jarray = (jthing_t *) j->v.pv)  != NULL ) {
+					for( i = 0; i < j->nele; i++ ) {					// must look for embedded objects
+						if( jarray[i].jsmn_type == JSMN_OBJECT ) {
+							jw_nuke( jarray[i].v.pv );
+							jarray[i].jsmn_type = JSMN_UNDEFINED;			// prevent accidents
+						}
+					}
+
+					free( j->v.pv );			// must free the array (arrays aren't nested, so all things in the array don't reference allocated mem)
+				}
+				break;
+
+			case JSMN_OBJECT:
+				jw_nuke( j->v.pv );
+				j->jsmn_type = JSMN_UNDEFINED;			// prevent a double free
 				break;
 		}
 	}
@@ -151,6 +171,7 @@ void* parse_jobject( void* st, char *json, char* prefix ) {
 	jsmn_parser jp;				// 'parser' object
 	jsmntok_t *jtokens;			// pointer to tokens returned by the parser
 	char	pname[1024];		// name with prefix
+	char	wbuf[256];			// temp buf to build a working name in
 	char*	dstr;				// dup'd string
 
 	jsmn_init( &jp );			// does this have a failure mode?
@@ -196,11 +217,14 @@ void* parse_jobject( void* st, char *json, char* prefix ) {
 
     		case JSMN_OBJECT:				// save object in two ways: as an object 'blob' and in the current symtab using name as a base (original)
 				dstr = strdup( extract( json, &jtokens[i] ) );
+				snprintf( wbuf, sizeof( wbuf ), "%s_json", name );	// must stash the json string in the symtab for clean up during nuke	
+				sym_fmap( st, (unsigned char *) wbuf, 0, dstr );
 				parse_jobject( st, dstr, name );					// recurse to add the object as objectname.xxxx elements
 				
-				jtp = mk_thing( st, name, jtokens[i].type );
+				jtp = mk_thing( st, name, jtokens[i].type );		// create thing and reference it in current symtab
 				if( jtp == NULL ) {
 					fprintf( stderr, "warn: memory alloc error processing element [%d] in json\n", i );
+					free( dstr );
 					sym_free( st );
 					return NULL;
 				}
@@ -208,12 +232,14 @@ void* parse_jobject( void* st, char *json, char* prefix ) {
 				if( jtp->v.pv == NULL ) {
 					fprintf( stderr, "error: [%d] symtab for object blob could not be allocated\n", i );
 					sym_free( st );
+					free( dstr );
 					return NULL;
 				}
 				dstr = strdup( extract( json, &jtokens[i] ) );
-				parse_jobject( jtp->v.pv,  dstr, "" );					// recurse acorss the string and build a new symtab
+				sym_fmap( jtp->v.pv, (unsigned char *) JSON_SYM_NAME, 0, dstr );		// must stash json so it is freed during nuke()
+				parse_jobject( jtp->v.pv,  dstr, "" );							// recurse acorss the string and build a new symtab
 
-				size = jtokens[i].end;									// done with them, we need to skip them 
+				size = jtokens[i].end;											// done with them, we need to skip them 
 				i++;
 				while( i < njtokens-1  &&  jtokens[i].end < size ) {
 					//fprintf( stderr, "\tskip: [%d] object element start=%d end=%d (%s)\n", i, jtokens[i].start, jtokens[i].end, extract( json, &jtokens[i])  );
@@ -234,6 +260,7 @@ void* parse_jobject( void* st, char *json, char* prefix ) {
 					return NULL;
 				}
 				jarray = jtp->v.pv = (jsmntok_t *) malloc( sizeof( *jarray ) * size );		// allocate the array
+				memset( jarray, 0, sizeof( *jarray ) * size );
 				jtp->nele = size;
 
 				for( n = 0; n < size; n++ ) {								// for each array element
@@ -255,7 +282,7 @@ void* parse_jobject( void* st, char *json, char* prefix ) {
 							parse_jobject( jarray[n].v.pv,  extract( json, &jtokens[i+n]  ), "" );		// recurse acorss the string and build a new symtab
 							osize = jtokens[i+n].end;									// done with them, we need to skip them 
 							i++;
-							while( i < njtokens-1  &&  jtokens[n+i].end < osize ) {
+							while( i+n < njtokens-1  &&  jtokens[n+i].end < osize ) {
 								//fprintf( stderr, "\tskip: [%d] object element start=%d end=%d (%s)\n", i, jtokens[i].start, jtokens[i].end, extract( json, &jtokens[i])  );
 								i++;
 							}

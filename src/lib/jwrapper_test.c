@@ -57,10 +57,10 @@ int main( int argc, char **argv ) {
 	}
 	
 	if(  (stuff = jw_string( jblob, argv[2] )) ) {
-		fprintf( stderr, "found name (string): %s = (%s)\n", argv[2], stuff );
+		fprintf( stderr, "found name (as a string): %s = (%s)\n", argv[2], stuff );
 	} else {
 		if(  (value = jw_value( jblob, argv[2] )) ) {
-			fprintf( stderr, "found name (value): %s = (%0.2f)\n", argv[2], value );
+			fprintf( stderr, "found name (as a value): %s = (%0.2f)\n", argv[2], value );
 		} else {
 			fprintf( stderr, "failed to find name: %s\n", argv[2] );
 		}
