@@ -64,8 +64,6 @@
 #include <rte_ethdev.h>
 #include <rte_string_fns.h>
 
-#include <libconfig.h>
-
 #include "../lib/dpdk/drivers/net/ixgbe/base/ixgbe_mbx.h"
 
 #define RX_RING_SIZE 64

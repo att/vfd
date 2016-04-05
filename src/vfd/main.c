@@ -22,7 +22,7 @@
 
 #include <strings.h>
 #include "sriov.h"
-#include "vfdlib.h"
+#include <vfdlib.h>
 
 #define DEBUG
 
