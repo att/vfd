@@ -1,10 +1,10 @@
 Source: attlrvfd
-Section: net
+Section: misc
 Priority: optional
 Maintainer: Dhanunjaya Naidu Ravada <dr3662.att.com>
 Package: attlrvfd
 Version: <VER>
 Architecture: amd64
-Depends: ksh
-Installed-Size: 4000
-Description: Will fill in future
+Depends: python-docopt
+Installed-Size: 2048
+Description: VFD is a daemon which is used to configures NIC VF's

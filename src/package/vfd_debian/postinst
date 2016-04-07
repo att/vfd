@@ -1,4 +1,4 @@
-echo "running attlrqlite post initialisation..."
+echo "running attlrvfd post initialisation..."
 
 if [ ! -d /etc/vfd ]
 then
@@ -31,6 +31,16 @@ if [ $? -ne 0 ]
 then
 	echo "unable to create /var/lib/vfd/config "
 	exit 0
+fi
+
+if [ -f /etc/vfd/vfd.cfg.sample ]
+then
+	chmod 0644 /etc/vfd/vfd.cfg.sample
+fi
+
+if [ $? -ne 0 ]
+then
+	echo "no file found /etc/vfd/vfd.cfg.sample"
 fi
 
 echo "post initialisation completed"
