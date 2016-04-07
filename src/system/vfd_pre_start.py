@@ -25,7 +25,7 @@ def is_vfio_pci_loaded():
 
 def load_vfio_pci_driver():
 	try:
-		subprocess.check_all('modprobe vfio-pci')
+		subprocess.check_call('modprobe vfio-pci')
 		return True
 	except subprocess.CalledProcessError:
 		return Flase
