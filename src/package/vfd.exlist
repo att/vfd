@@ -1,4 +1,6 @@
-src/vfd/build/app/vfd			usr/bin/
-src/system/iplex				usr/bin/
-src/system/vfd.conf				etc/init/
+src/vfd/build/app/vfd		usr/bin/
+src/system/iplex		usr/bin/
+src/system/vfd.conf		etc/init/
 src/system/dpdk_nic_bind        usr/bin/
+src/system/vfd.cfg.sample	etc/vfd/
+src/system/vfd_pre_start	usr/bin/
