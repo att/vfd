@@ -3,7 +3,7 @@ Section: misc
 Priority: optional
 Maintainer: Dhanunjaya Naidu Ravada <dr3662.att.com>
 Package: attlrvfd
-Version: 1.0
+Version: <VER>
 Architecture: amd64
 Depends: python-docopt
 Installed-Size: 2048
