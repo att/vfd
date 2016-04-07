@@ -2,18 +2,18 @@
 # vi: sw=4 ts=4:
 
 """
-	Mnemonic:	vfd_pre_start.py
-	Abstract:	This script calls the 'dpdk_nic_bind' script to bind PF's and VF's to vfio-pci.
-	Date:		7 April	2016
-	Author:		Dhanunjaya Naidu Ravada (dr3662@att.com)
-	Mod:		2016 7 Apr - Created script
+		Mnemonic:       vfd_pre_start.py
+    	Abstract:       This script calls the 'dpdk_nic_bind' script to bind PF's and VF's to vfio-pci
+    	Date:           7 April 2016
+    	Author:         Dhanunjaya Naidu Ravada (dr3662@att.com)
+    	Mod:            2016 7 Apr - Created script
 """
 
 import subprocess
 import json
 import sys
 
-VFD_CONFIG='/home/dj/vfd.cfg'
+VFD_CONFIG='/etc/vfd/vfd.cfg'
 SYS_DIR="/sys/devices"
 
 def is_vfio_pci_loaded():
@@ -25,7 +25,7 @@ def is_vfio_pci_loaded():
 
 def load_vfio_pci_driver():
 	try:
-		subprocess.check_call('modprobe vfio-pci >/dev/null', shell=True)
+		subprocess.check_all('modprobe vfio-pci')
 		return True
 	except subprocess.CalledProcessError:
 		return Flase
@@ -53,28 +53,36 @@ def get_pciids():
 			sys.exit(1)
 	return data['pciids']
 
-def unbind_pfs(pciid):
-	unbind_cmd = 'dpdk_nic_bind -u %s' % pciid
+def unbind_pfs(dev_id):
+	unbind_cmd = 'dpdk_nic_bind -u %s' % dev_id
 	try:
 		subprocess.check_call(unbind_cmd, shell=True)
 		return True
 	except subprocess.CalledProcessError:
 		return False
 
-def get_vfids(pciid):
-	cmd='find %s -name %s -type d | while read d; do echo "$d"; ls -l $d | grep virtfn| sed \'s!.*/!!\'; done' % (SYS_DIR, pciid)
+def get_vfids(dev_id):
+	cmd='find %s -name %s -type d | while read d; do echo "$d"; ls -l $d | grep virtfn| sed \'s!.*/!!\'; done' % (SYS_DIR, dev_id)
 	vfids = subprocess.check_output(cmd, shell=True).split('\n')[1:]
 	return filter(None, vfids)
 
-def bind_pf_vfs(id):
-	bind_cmd = 'dpdk_nic_bind -b vfio-pci %s' % id
+def bind_pf_vfs(dev_id):
+	bind_cmd = 'dpdk_nic_bind -b vfio-pci %s' % dev_id
 	try:
 		subprocess.check_call(bind_cmd, shell=True)
 		return True
 	except subprocess.CalledProcessError:
 		return False
 
-if __name__ == '__main__':
+def driver_attach(dev_id):
+	cmd = 'lspci -k -s %s' % dev_id
+	driver_name = subprocess.check_output(cmd, shell=True).splitlines()[2].split(':')[1].lstrip()
+	if driver_name == 'vfio-pci':
+		return True
+	else:
+		return False
+
+def main():
 	pciids = []
 	for value in get_pciids():
 		if 'id' in value:
@@ -95,14 +103,20 @@ if __name__ == '__main__':
 			sys.exit(1)
 
 	for pciid in pciids:
-		if not unbind_pfs(pciid):
-			print "unable to bind %s PF" % pciid
-		else:
-			print "Successfully binded %s PF" % pciid
+		if not driver_attach(pciid):
+			if not unbind_pfs(pciid):
+				print "unable to bind %s PF" % pciid
+			else:
+				print "Successfully binded %s PF" % pciid
 
 	for pciid in pciids:
-		if not bind_pf_vfs(pciid):
-			print "unable to bind %s with vfio-pci" % pciid
-		for vfid in get_vfids(pciid):
-			if not bind_pf_vfs(vfid):
-				print "unbale to bind %s with vfio-pci" % vfid
+		if not driver_attach(pciid):
+			if not bind_pf_vfs(pciid):
+				print "unable to bind %s with vfio-pci" % pciid
+			for vfid in get_vfids(pciid):
+				if not driver_attach(vfid):
+					if not bind_pf_vfs(vfid):
+						print "unbale to bind %s with vfio-pci" % vfid
+
+if __name__ == '__main__':
+	main()
