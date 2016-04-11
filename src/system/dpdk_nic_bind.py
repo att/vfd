@@ -336,7 +336,7 @@ def bind_one(dev_id, driver, force):
     # unbind any existing drivers we don't want
     if has_driver(dev_id):
         if dev["Driver_str"] == driver:
-            print "%s already bound to driver %s, skipping\n" % (dev_id, driver)
+            print "%s already bound to driver %s, skipping" % (dev_id, driver)
             return
         else:
             saved_driver = dev["Driver_str"]
