@@ -7,6 +7,7 @@
     	Date:           7 April 2016
     	Author:         Dhanunjaya Naidu Ravada (dr3662@att.com)
     	Mod:            2016 7 Apr - Created script
+    					2016 8 Apr - fix to index out of bound error
 """
 
 import subprocess
@@ -15,6 +16,13 @@ import sys
 
 VFD_CONFIG='/etc/vfd/vfd.cfg'
 SYS_DIR="/sys/devices"
+
+# global pciids list
+pciids = []
+# global group pciids list
+group_pciids = []
+# To catch index error
+index = 0
 
 def is_vfio_pci_loaded():
 	try:
@@ -25,7 +33,7 @@ def is_vfio_pci_loaded():
 
 def load_vfio_pci_driver():
 	try:
-		subprocess.check_call('modprobe vfio-pci')
+		subprocess.check_call('modprobe vfio-pci', shell=True)
 		return True
 	except subprocess.CalledProcessError:
 		return Flase
@@ -54,9 +62,11 @@ def get_pciids():
 	return data['pciids']
 
 def unbind_pfs(dev_id):
-	unbind_cmd = 'dpdk_nic_bind -u %s' % dev_id
+	unbind_cmd = 'dpdk_nic_bind -u --force %s' % dev_id
 	try:
-		subprocess.check_call(unbind_cmd, shell=True)
+		msg = subprocess.check_output(unbind_cmd, shell=True)
+		if "Routing" in msg:
+			return False
 		return True
 	except subprocess.CalledProcessError:
 		return False
@@ -67,7 +77,7 @@ def get_vfids(dev_id):
 	return filter(None, vfids)
 
 def bind_pf_vfs(dev_id):
-	bind_cmd = 'dpdk_nic_bind -b vfio-pci %s' % dev_id
+	bind_cmd = 'dpdk_nic_bind -b --force vfio-pci %s' % dev_id
 	try:
 		subprocess.check_call(bind_cmd, shell=True)
 		return True
@@ -75,20 +85,45 @@ def bind_pf_vfs(dev_id):
 		return False
 
 def driver_attach(dev_id):
+	global index
+	index = 0
 	cmd = 'lspci -k -s %s' % dev_id
-	driver_name = subprocess.check_output(cmd, shell=True).splitlines()[2].split(':')[1].lstrip()
-	if driver_name == 'vfio-pci':
-		return True
-	else:
+	try:
+		driver_name = subprocess.check_output(cmd, shell=True).splitlines()[2].split(':')[1].lstrip()
+		if driver_name == 'vfio-pci':
+			return True
+		return False
+	except IndexError:
+		index = 1
 		return False
 
+def get_pciids_group(dev_id):
+	global group_pciids
+	group_num = None
+	cmd = "find /sys/kernel/iommu_groups -type l|grep %s | awk -F/ '{print $(NF-2)}'" % dev_id
+	group_num = subprocess.check_output(cmd, shell=True)
+	if group_num != None:
+		cmd = "find /sys/kernel/iommu_groups -type l|grep groups.%s" % group_num
+		list_pciids = subprocess.check_output(cmd, shell=True)
+		for pciid in list_pciids.splitlines():
+			group_pciids.append(pciid.split('/')[-1])
+
 def main():
-	pciids = []
+	global pciids
+	global group_pciids
+	global index
+
 	for value in get_pciids():
 		if 'id' in value:
 			pciids.append(value['id'])
 		else:
 			pciids = get_pciids()
+
+	for pciid in pciids:
+		get_pciids_group(pciid)
+
+	pciids = list(set(pciids) | set(group_pciids))
+	print "pciids: " + ','.join(pciids)
 
 	if is_ixgbevf_loaded():
 		if not unload_ixgbevf_driver():
@@ -104,17 +139,19 @@ def main():
 
 	for pciid in pciids:
 		if not driver_attach(pciid):
-			if not unbind_pfs(pciid):
-				print "unable to bind %s PF" % pciid
-			else:
-				print "Successfully binded %s PF" % pciid
+			if index == 0:
+				if not unbind_pfs(pciid):
+					print "unable to bind %s PF" % pciid
+					sys.exit(1)
+				else:
+					print "Successfully binded %s PF" % pciid
 
 	for pciid in pciids:
-		if not driver_attach(pciid):
-			if not bind_pf_vfs(pciid):
-				print "unable to bind %s with vfio-pci" % pciid
-			for vfid in get_vfids(pciid):
-				if not driver_attach(vfid):
+		if not bind_pf_vfs(pciid):
+			print "unable to bind %s with vfio-pci" % pciid
+		for vfid in get_vfids(pciid):
+			if not driver_attach(vfid):
+				if index == 1:
 					if not bind_pf_vfs(vfid):
 						print "unbale to bind %s with vfio-pci" % vfid
 
