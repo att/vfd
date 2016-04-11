@@ -1,6 +1,8 @@
 
 // vim: ts=4 sw=4 :
 
+#ifndef _vfdlib_h_
+#define _vfdlib_h_
 #include <time.h>
 
 /*
@@ -123,3 +125,4 @@ extern char* jw_string_ele( void* st, const char* name, int idx );
 extern float jw_value_ele( void* st, const char* name, int idx );
 extern void* jw_obj_ele( void* st, const char* name, int idx );
 extern int jw_array_len( void* st, const char* name );
+#endif
