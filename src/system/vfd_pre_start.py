@@ -62,7 +62,7 @@ def get_pciids():
 	return data['pciids']
 
 def unbind_pfs(dev_id):
-	unbind_cmd = 'dpdk_nic_bind -u --force %s' % dev_id
+	unbind_cmd = 'dpdk_nic_bind --force -u %s' % dev_id
 	try:
 		msg = subprocess.check_output(unbind_cmd, shell=True)
 		if "Routing" in msg:
@@ -77,7 +77,7 @@ def get_vfids(dev_id):
 	return filter(None, vfids)
 
 def bind_pf_vfs(dev_id):
-	bind_cmd = 'dpdk_nic_bind -b --force vfio-pci %s' % dev_id
+	bind_cmd = 'dpdk_nic_bind --force -b vfio-pci %s' % dev_id
 	try:
 		subprocess.check_call(bind_cmd, shell=True)
 		return True
