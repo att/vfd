@@ -1,9 +1,9 @@
 {
-     comments": [
+     "comments": [
             "sample conf file, fill the pciids",
             "cp vfd.cfg.sample vfd.cfg",
             "initctl start vfd",
-            "default_mtu is used if mtu is omitted from a pciid object.
+            "default_mtu is used if mtu is omitted from a pciid object."
          ],
 
          "fifo": "/var/lib/vfd/request",
