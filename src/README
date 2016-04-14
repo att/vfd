@@ -3,14 +3,16 @@ Top level source directory.  Things which maybe aren't obvious are described
 in this file.
 
 
-The dpdk directory is either a symlink, or a real directory. Either 
-way it references the dpdk repo clone from att-cloud.  That repo
-must be cloned and built before anything in the vfd source tree can 
-be done. Sadly, the implementation of the intel script requires a 
-human to execute (there is a menu choice) so initially the build 
-process cannot be automated without some extra effort. 
+This code makes use of a modified dpdk library which must be pulled from the
+github:/att/dpdk repo.  The suggested method is to clone it alongside other 
+repos and create a sim-link in src/lib here.   There are some includes which
+must make reference to a relative path because of the way the dpdk stuff is
+built via the dpdk make environment. 
 
-Once the repo is cloned run these:
+Once the dpdk repo has been cloned, it must be built before anything in the 
+vfd source tree can be built. To do this follow the following steps:
+
+    -   create symlink in src/lib
 	- 	cd dpdk
 	-	make config T=x86_64-native-linuxapp-gcc
 	-	make
