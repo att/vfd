@@ -117,6 +117,8 @@ typedef unsigned int uint128_t __attribute__((mode(TI)));
 
 #define MAX_VF_VLANS 64
 #define MAX_VF_MACS  64
+#define MAX_PF_VLANS 64		// vlan count across all PFs cannot exceed
+#define MAX_PF_MACS  128	// mac count across all PFs cannot exceed
 
 typedef uint8_t  lcoreid_t;
 typedef uint8_t  portid_t;

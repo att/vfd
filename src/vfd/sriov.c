@@ -105,14 +105,14 @@ set_queue_rate_limit(portid_t port_id, uint16_t queue_idx, uint16_t rate)
 		return 1;
 	rte_eth_link_get_nowait(port_id, &link);
 	if (rate > link.link_speed) {
-		bleat_printf( 0, "error: Invalid rate value:%u bigger than link speed: %u\n",
+		bleat_printf( 0, "error: Invalid rate value:%u bigger than link speed: %u",
 			rate, link.link_speed);
 		return 1;
 	}
 	diag = rte_eth_set_queue_rate_limit(port_id, queue_idx, rate);
 	if (diag == 0)
 		return diag;
-	bleat_printf( 0, "error: rte_eth_set_queue_rate_limit for port_id=%d failed diag=%d\n",
+	bleat_printf( 0, "error: rte_eth_set_queue_rate_limit for port_id=%d failed diag=%d",
 		port_id, diag);
 	return diag;
 }
@@ -128,19 +128,22 @@ set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk)
 	if (q_msk == 0)
 		return 0;
 
-	if (port_id_is_invalid(port_id, ENABLED_WARN))
-		return 1;
+	// main will only call for a valid port.
+	//if (port_id_is_invalid(port_id, ENABLED_WARN))
+	//	return 1;
+
 	rte_eth_link_get_nowait(port_id, &link);
 	if (rate > link.link_speed) {
-		bleat_printf( 0, "error: Invalid rate value:%u bigger than link speed: %u\n",
-			rate, link.link_speed);
-		return 1;
+		bleat_printf( 0, "set_vf_rate: invalid rate value: %u bigger than link speed: %u", rate, link.link_speed);
+		//return 1;
 	}
 	diag = rte_eth_set_vf_rate_limit(port_id, vf, rate, q_msk);
-	if (diag == 0)
-		return diag;
-	traceLog(TRACE_ERROR, "rte_eth_set_vf_rate_limit for port_id=%d failed diag=%d\n",
-		port_id, diag);
+	if (diag != 0) {
+		bleat_printf( 0, "set_vf_rate: unable to set value %u: (%d) %s", rate, diag, strerror( -diag ) );
+	
+		//traceLog(TRACE_ERROR, "rte_eth_set_vf_rate_limit for port_id=%d failed diag=%d\n", port_id, diag);
+	}
+
 	return diag;
 }
 
@@ -384,6 +387,16 @@ set_vf_mac_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 	       "diag=%d vf=%d\n", port_id, diag, vf);
              
 }
+
+/*
+	Return the link speed for the indicated port
+int nic_value_speed( uint8_t id ) {
+	struct rte_eth_link link;
+
+	rte_eth_link_get_nowait( id, &link );
+	return (int) link.link_speed;
+}
+*/
 
 void
 nic_stats_clear(portid_t port_id)
