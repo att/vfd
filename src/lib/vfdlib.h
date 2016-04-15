@@ -65,6 +65,7 @@ typedef struct {
 	int		nvlans;			// number of vlans allocated
 	char**	macs;			// array of mac addresses
 	int		nmacs;			// number of mac addresses
+	float	rate;			// percentage of the total link speed this to be confined to (rate limiting)
 	// ignoring mirrors right now
 	/*
     "mirror":           [ { "vlan": 100; "vfid": 3 },
