@@ -251,6 +251,8 @@ extern vf_config_t*	read_config( char* fname ) {
 		vfc->allow_un_ucast = jw_missing( jblob, "allow_un_ucast" ) ? 1 : (int) jw_value( jblob, "allow_un_ucast" );
 		vfc->vfid = jw_missing( jblob, "vfid" ) ? -1 : (int) jw_value( jblob, "vfid" );			// there is no real default value, so set to invalid
 
+		vfc->rate = jw_missing( jblob, "rate" ) ? 0 : (float) jw_value( jblob, "rate" );			// there is no real default value, so set to invalid
+
 		if(  (stuff = jw_string( jblob, "name" )) ) {
 			vfc->name = strdup( stuff );
 		}
