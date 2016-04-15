@@ -17,6 +17,8 @@
 				30 Mar 2016 - Added parm to bleat log to cause it to roll at midnight.
 				01 Apr 2016 - Add ability to suss individual mtu for each pciid defined in
 							the /etc parm file.
+				15 Apr 2016 - Added check to ensure that the total number of MACs or the 
+							total number of VLANs across the PF does not exceed the max.
 */
 
 
@@ -56,7 +58,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
 static char* gen_stats( struct sriov_conf_c* conf );
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-static const char* version = "v1.0/64016";
+static const char* version = "v1.0/64156";
 static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
 
 // --- callback/mailbox support - depend on global parms ---------------------------------------------------------
@@ -244,7 +246,7 @@ static int vfd_eal_init( parms_t* parms ) {
 	argv[8] = strdup( "vfd" );
 	
 	argv[9] = strdup( "--log-level" );
-	snprintf( wbuf, sizeof( wbuf ), "%d", parms->dpdk_log_level );
+	snprintf( wbuf, sizeof( wbuf ), "%d", parms->dpdk_init_log_level );
 	argv[10] = strdup( wbuf );
 	
 	argv[11] = strdup( "--no-huge" );
@@ -344,6 +346,8 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 	struct sriov_port_s* port = NULL;	// reference to a single port in the config
 	struct vf_s*	vf;		// point at the vf we need to fill in
 	char mbuf[1024];					// message buffer if we fail
+	int tot_vlans = 0;					// must count vlans and macs to ensure limit not busted
+	int tot_macs = 0;
 	
 
 	if( conf == NULL || fname == NULL ) {
@@ -410,6 +414,9 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 				free_config( vfc );
 				return 0;
 			}
+
+			tot_vlans += port->vfs[i].num_vlans;
+			tot_macs += port->vfs[i].num_macs;
 		}
 	}
 
@@ -441,8 +448,28 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 		return 0;
 	}
 
-	if( vfc->nvlans > MAX_VF_VLANS ) {
+	if( vfc->nvlans > MAX_VF_VLANS ) {				// more than allowed for a single VF
 		snprintf( mbuf, sizeof( mbuf ), "number of vlans supplied (%d) exceeds the maximum (%d)", vfc->nvlans, MAX_VF_VLANS );
+		bleat_printf( 1, "vf not added: %s", mbuf );
+		if( reason ) {
+			*reason = strdup( mbuf );
+		}
+		free_config( vfc );
+		return 0;
+	}
+
+	if( vfc->nvlans + tot_vlans > MAX_PF_VLANS ) { 			// would bust the total across the whole PF
+		snprintf( mbuf, sizeof( mbuf ), "number of vlans supplied (%d) cauess total for PF to exceed the maximum (%d)", vfc->nvlans, MAX_PF_VLANS );
+		bleat_printf( 1, "vf not added: %s", mbuf );
+		if( reason ) {
+			*reason = strdup( mbuf );
+		}
+		free_config( vfc );
+		return 0;
+	}
+
+	if( vfc->nmacs + tot_vlans > MAX_PF_MACS ) { 			// would bust the total across the whole PF
+		snprintf( mbuf, sizeof( mbuf ), "number of macs supplied (%d) cauess total for PF to exceed the maximum (%d)", vfc->nmacs, MAX_PF_MACS );
 		bleat_printf( 1, "vf not added: %s", mbuf );
 		if( reason ) {
 			*reason = strdup( mbuf );
@@ -502,6 +529,7 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 	vf->vlan_anti_spoof = 1;
 	vf->mac_anti_spoof = 1;
 	vf->rate = 0.0;							// best effort :)
+	vf->rate = vfc->rate;
 	
 	vf->link = 0;							// default if parm missing or mis-set (not fatal)
 	switch( *vfc->link_status ) {			// down, up or auto are allowed in config file
@@ -1121,6 +1149,11 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 						if( parms->forreal )
 							set_vf_rx_mac(port->rte_port_number, mac, vf->num, 1);
 					}
+				}
+
+				if( vf->rate > 0 ) {
+					bleat_printf( 1, "setting rate: %d", (int)  ( 10000 * vf->rate ) );
+					set_vf_rate_limit( port->rte_port_number, vf->num, (uint16_t)( 10000 * vf->rate ), 0x01 );
 				}
 
 				if( vf->last_updated == DELETED ) {				// do this last!
