@@ -19,6 +19,7 @@
 							the /etc parm file.
 				15 Apr 2016 - Added check to ensure that the total number of MACs or the 
 							total number of VLANs across the PF does not exceed the max.
+				19 Apr 2016 - Changed message when vetting the parm list to eal-init.
 */
 
 
@@ -153,7 +154,7 @@ int valid_mtu( int port, int mtu ) {
 static int dummy_rte_eal_init( int argc, char** argv ) {
 	int i;
 
-	bleat_printf( 2,  "dummy_rte_eal_init: %d parms", argc );
+	bleat_printf( 2,  "eal_init parm list: %d parms", argc );
 	for( i = 0; i < argc; i++ ) {
 		bleat_printf( 2, "[%d] = (%s)", i, argv[i] );
 	}
