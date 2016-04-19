@@ -301,6 +301,8 @@ extern vf_config_t*	read_config( char* fname ) {
 		// TODO -- add code which picks up mirror stuff (jwrapper must be enhanced first)
 
 		jw_nuke( jblob );
+	} else {
+		errno = EINVAL;	
 	}
 
 	free( buf );
