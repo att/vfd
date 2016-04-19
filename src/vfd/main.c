@@ -19,6 +19,7 @@
 							the /etc parm file.
 				15 Apr 2016 - Added check to ensure that the total number of MACs or the 
 							total number of VLANs across the PF does not exceed the max.
+				19 Apr 2016 - Changed message when vetting the parm list to eal-init.
 */
 
 
@@ -153,7 +154,7 @@ int valid_mtu( int port, int mtu ) {
 static int dummy_rte_eal_init( int argc, char** argv ) {
 	int i;
 
-	bleat_printf( 2,  "dummy_rte_eal_init: %d parms", argc );
+	bleat_printf( 2,  "eal_init parm list: %d parms", argc );
 	for( i = 0; i < argc; i++ ) {
 		bleat_printf( 2, "[%d] = (%s)", i, argv[i] );
 	}
@@ -188,13 +189,13 @@ static int vfd_eal_init( parms_t* parms ) {
 	int		count;
 
 	if( parms->npciids <= 0 ) {
-		bleat_printf( 0, "abort: no pciids were defined in the configuration file" );
+		bleat_printf( 0, "CRI: abort: no pciids were defined in the configuration file" );
 		exit( 1 );
 	}
 
 	argc = argc_idx + (parms->npciids * 2);											// 2 slots for each pcciid;  number to alloc is one larger to allow for ending nil
 	if( (argv = (char **) malloc( (argc + 1) * sizeof( char* ) )) == NULL ) {		// n static parms + 2 slots for each pciid + null
-		bleat_printf( 0, "abort: unable to alloc memory for eal initialisation" );
+		bleat_printf( 0, "CRI: abort: unable to alloc memory for eal initialisation" );
 		exit( 1 );
 	}
 	memset( argv, 0, sizeof( char* ) * (argc + 1) );
@@ -217,7 +218,7 @@ static int vfd_eal_init( parms_t* parms ) {
 			}
 
 			if( count > 1 ) {							// invalid number of bits
-				bleat_printf( 0, "warn: cpu_mask value in parms (%s) is not acceptable (too many bits); setting to 0x04", parms->cpu_mask );
+				bleat_printf( 0, "WRN: cpu_mask value in parms (%s) is not acceptable (too many bits); setting to 0x04", parms->cpu_mask );
 				free( parms->cpu_mask );
 				parms->cpu_mask = NULL;
 			}
@@ -282,7 +283,7 @@ static int vfd_init_fifo( parms_t* parms ) {
 	umask( 0 );
 	parms->rfifo = rfifo_create( parms->fifo_path, 0666 );		//TODO -- set mode more sainly, but this runs as root, so regular users need to write to this thus open wide for now
 	if( parms->rfifo == NULL ) {
-		bleat_printf( 0, "error: unable to create request fifo (%s): %s", parms->fifo_path, strerror( errno ) );
+		bleat_printf( 0, "ERR: unable to create request fifo (%s): %s", parms->fifo_path, strerror( errno ) );
 		return -1;
 	} else {
 		bleat_printf( 0, "listening for requests via pipe: %s", parms->fifo_path );
@@ -730,7 +731,7 @@ static void vfd_response( char* rpipe, int state, const char* msg ) {
 	bleat_printf( 2, "response json: %s", buf );
 	if( (len = write( fd, buf, strlen( buf ) )) != strlen( buf ) ) {
 		bleat_printf( 0, "enum=%s", strerror( errno ) );
-		bleat_printf( 0, "warn: write of response to pipe failed: %s: state=%d msg=%s", rpipe, state, msg ? msg : "" );
+		bleat_printf( 0, "WRN: write of response to pipe failed: %s: state=%d msg=%s", rpipe, state, msg ? msg : "" );
 	}
 
 	bleat_printf( 2, "response written to pipe" );
@@ -771,13 +772,13 @@ static req_t* vfd_read_request( parms_t* parms ) {
 	}
 
 	if( (jblob = jw_new( rbuf )) == NULL ) {
-		bleat_printf( 0, "error: failed to create a json paring object for: %s\n", rbuf );
+		bleat_printf( 0, "ERR: failed to create a json parsing object for: %s\n", rbuf );
 		free( rbuf );
 		return NULL;
 	}
 
 	if( (stuff = jw_string( jblob, "action" )) == NULL ) {
-		bleat_printf( 0, "error: request received without action: %s", rbuf );
+		bleat_printf( 0, "ERR: request received without action: %s", rbuf );
 		free( rbuf );
 		jw_nuke( jblob );
 		return NULL;
@@ -785,7 +786,7 @@ static req_t* vfd_read_request( parms_t* parms ) {
 
 	
 	if( (req = (req_t *) malloc( sizeof( *req ) )) == NULL ) {
-		bleat_printf( 0, "error: memory allocation error tying to alloc request for: %s", rbuf );
+		bleat_printf( 0, "ERR: memory allocation error tying to alloc request for: %s", rbuf );
 		free( rbuf );
 		jw_nuke( jblob );
 		return NULL;
@@ -823,7 +824,7 @@ static req_t* vfd_read_request( parms_t* parms ) {
 			break;	
 
 		default:
-			bleat_printf( 0, "error: unrecognised action in request: %s", rbuf );
+			bleat_printf( 0, "ERR: unrecognised action in request: %s", rbuf );
 			jw_nuke( jblob );
 			return NULL;
 			break;
@@ -1638,12 +1639,12 @@ main(int argc, char **argv)
 	bleat_printf( 0, "config dir set to: %s", g_parms->config_dir );
 
 	if( vfd_init_fifo( g_parms ) < 0 ) {
-		bleat_printf( 0, "abort: unable to initialise request fifo" );
+		bleat_printf( 0, "CRI: abort: unable to initialise request fifo" );
 		exit( 1 );
 	}
 
 	if( vfd_eal_init( g_parms ) < 0 ) {												// dpdk function returns -1 on error
-		bleat_printf( 0, "abort: unable to initialise dpdk eal environment" );
+		bleat_printf( 0, "CRI: abort: unable to initialise dpdk eal environment" );
 		exit( 1 );
 	}
 
@@ -1666,7 +1667,7 @@ main(int argc, char **argv)
 
 
 	  if(n_ports != running_config.num_ports) {
-		bleat_printf( 1, "warn: port count mismatch: config lists %d device has %d", running_config.num_ports, n_ports );
+		bleat_printf( 1, "WRN: port count mismatch: config lists %d device has %d", running_config.num_ports, n_ports );
 		traceLog(TRACE_ERROR, "ports found (%d) != ports requested (%d)\n", n_ports, running_config.num_ports);  
 	  }
 
@@ -1697,7 +1698,7 @@ main(int argc, char **argv)
 						  rte_socket_id());
 
 		if (mbuf_pool == NULL) {
-			bleat_printf( 0, "abort: mbfuf pool creation failed" );
+			bleat_printf( 0, "CRI: abort: mbfuf pool creation failed" );
 			rte_exit(EXIT_FAILURE, "Cannot create mbuf pool\n");
 		}
 
@@ -1706,7 +1707,7 @@ main(int argc, char **argv)
 	  u_int16_t portid;
 		for (portid = 0; portid < n_ports; portid++) {
 			if (port_init(portid, mbuf_pool) != 0) {
-				bleat_printf( 0, "abort: port initialisation failed: %d", (int) portid );
+				bleat_printf( 0, "CRI: abort: port initialisation failed: %d", (int) portid );
 				rte_exit(EXIT_FAILURE, "Cannot init port %"PRIu8 "\n", portid);
 			} else {
 				bleat_printf( 2, "port initialisation successful for port %d", portid );
@@ -1801,7 +1802,7 @@ main(int argc, char **argv)
 	g_parms->initialised = 1;								// safe to update nic now
 	vfd_add_all_vfs( g_parms, &running_config );			// read all existing config files and add the VFs to the config
 	if( vfd_update_nic( g_parms, &running_config ) != 0 ) {							// now that dpdk is initialised run the list and 'activate' everything
-		bleat_printf( 0, "abort: unable to initialise nic with base config:" );
+		bleat_printf( 0, "CRI: abort: unable to initialise nic with base config:" );
 		if( forreal ) {
 			rte_exit( EXIT_FAILURE, "initialisation failure, see log(s) in: %s\n", g_parms->log_dir );
 		} else {
