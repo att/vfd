@@ -1168,8 +1168,16 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 						rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag);
 	
 						// CAUTION: per meetingon 3/2/2016 the insert stag config option was removed and this setting mirrors the strip setting.
+						//			strip on receipt seems not a flag, so we must either hard set 0 (strip) or just what was in the list if
+						// 			the list has len==1. If list is bigger, we don't do anything.
 						bleat_printf( 2, "%s vf: %d set insert vlan tag %d", port->name, vf->num, vf->strip_stag );
-						rx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag);
+						if( vf->strip_stag ) {
+							rx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, 0 );			// insert no tag
+						} else {
+							if( vf->num_vlans == 1 ) {
+								rx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->vlans[0] );	// insert what should already be there (no strip)
+							}
+						}
 
 						bleat_printf( 2, "%s vf: %d set allow broadcast %d", port->name, vf->num, vf->allow_bcast );
 						set_vf_allow_bcast(port->rte_port_number, vf->num, vf->allow_bcast);

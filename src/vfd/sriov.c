@@ -198,12 +198,12 @@ rx_vlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id)
 
   reg_off += 4 * vf_id;
 
-  traceLog(TRACE_DEBUG, "rx_vlan_insert_set_on_queue(bar=0x%08X, vf_id=0x%x, on=0x%x)\n",
-      reg_off, vf_id, 0);
+  traceLog(TRACE_DEBUG, "rx_vlan_insert_set_on_queue: bar=0x%08X, vf_id=0x%x, vlan=%d",
+      reg_off, vf_id, vlan_id);
 
   uint32_t ctrl = port_pci_reg_read(port_id, reg_off);
 
-  traceLog(TRACE_DEBUG, "rx_vlan_insert_set_on_queue(bar=0x%08X, vf_id=0x%x, ctrl=0x%x)\n",
+  traceLog(TRACE_DEBUG, "rx_vlan_insert_set_on_queue: bar=0x%08X, vf_id=0x%x, ctrl=0x%x",
       reg_off, vf_id, ctrl);
 
 
@@ -216,7 +216,7 @@ rx_vlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id)
 
   port_pci_reg_write(port_id, reg_off, ctrl);
 
-  traceLog(TRACE_DEBUG, "rx_insert_set_on_queue(bar=0x%08X, vfid_id=%d, ctrl=0x%08X)\n",
+  traceLog(TRACE_DEBUG, "rx_insert_set_on_vf: bar=0x%08X, vfid_id=%d, ctrl=0x%08X",
       reg_off, vf_id, ctrl);
 }
 
