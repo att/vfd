@@ -1,6 +1,8 @@
 /*
 **
 ** az
+	useful doc:
+	http://www.intel.com/content/dam/doc/design-guide/82599-sr-iov-driver-companion-guide.pdf
 **
 */
 
@@ -187,37 +189,38 @@ rx_vlan_strip_set_on_queue(portid_t port_id, uint16_t queue_id, int on)
 
 
 
+/*
+	Set VLAN tag on transmission.  If no tag is to be inserted, then a VLAN 
+	ID of 0 must be passed.
+*/
 void
-rx_vlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id)
+tx_vlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id)
 {
 
-  struct rte_eth_dev_info dev_info;
-  rte_eth_dev_info_get(port_id, &dev_info);
+	struct rte_eth_dev_info dev_info;
+	rte_eth_dev_info_get(port_id, &dev_info);
 
-  uint32_t reg_off = 0x08000;
+	uint32_t reg_off = 0x08000;
 
-  reg_off += 4 * vf_id;
+	reg_off += 4 * vf_id;
 
-  traceLog(TRACE_DEBUG, "rx_vlan_insert_set_on_queue: bar=0x%08X, vf_id=0x%x, vlan=%d",
-      reg_off, vf_id, vlan_id);
+	traceLog(TRACE_DEBUG, "tx_vlan_insert_set_on_vf: bar=0x%08X, vf_id=%d, vlan=%d", reg_off, vf_id, vlan_id);
 
-  uint32_t ctrl = port_pci_reg_read(port_id, reg_off);
+	uint32_t ctrl = port_pci_reg_read(port_id, reg_off);
 
-  traceLog(TRACE_DEBUG, "rx_vlan_insert_set_on_queue: bar=0x%08X, vf_id=0x%x, ctrl=0x%x",
-      reg_off, vf_id, ctrl);
+	traceLog(TRACE_DEBUG, "tx_vlan_insert_set_on_vf: read: bar=0x%08X, vf_id=%d, ctrl=0x%x", reg_off, vf_id, ctrl);
 
 
-  if (vlan_id){
-    ctrl = vlan_id;
-    ctrl |= 0x40000000;
-  }
-  else
-    ctrl = 0;
+	if (vlan_id){
+		ctrl = vlan_id;
+		ctrl |= 0x40000000;
+	} else {
+		ctrl = 0;
+	}
 
-  port_pci_reg_write(port_id, reg_off, ctrl);
+	port_pci_reg_write(port_id, reg_off, ctrl);
 
-  traceLog(TRACE_DEBUG, "rx_insert_set_on_vf: bar=0x%08X, vfid_id=%d, ctrl=0x%08X",
-      reg_off, vf_id, ctrl);
+	traceLog(TRACE_DEBUG, "tx_insert_set_on_vf: set: bar=0x%08X, vfid_id=%d, ctrl=0x%08X", reg_off, vf_id, ctrl);
 }
 
 
@@ -234,32 +237,28 @@ rx_vlan_strip_set_on_vf(portid_t port_id, uint16_t vf_id, int on)
 
   reg_off += (0x40 * vf_id * queues_per_pool);
 
-  traceLog(TRACE_DEBUG, "rx_vlan_strip_set_on_vf(bar=0x%08X, vf_id=0x%x, # of Q's=0x%x)",
-      reg_off, vf_id, queues_per_pool);
+  traceLog(TRACE_DEBUG, "rx_vlan_strip_set_on_vf: bar=0x%08X, vf_id=%d, numq=%d)", reg_off, vf_id, queues_per_pool);
 
   uint32_t q;
   for(q = 0; q < queues_per_pool; ++q){
 
     reg_off += 0x40 * q;
 
-    traceLog(TRACE_DEBUG, "rx_vlan_strip_set_on_vf: bar=0x%08X, vf_id=0x%x, on=0x%x",
-        reg_off, vf_id, on);
+    traceLog(TRACE_DEBUG, "rx_vlan_strip_set_on_vf: q=%d bar=0x%08X, vf_id=%d, on=%d", q, reg_off, vf_id, on);
 
     uint32_t ctrl = port_pci_reg_read(port_id, reg_off);
 
-    traceLog(TRACE_DEBUG, "rx_vlan_strip_set_on_vf: bar=0x%08X, vf_id=0x%x, ctrl=0x%x",
-        reg_off, vf_id, ctrl);
+    traceLog(TRACE_DEBUG, "rx_vlan_strip_set_on_vf: read: q=%d bar=0x%08X, vf_id=%d, ctrl=0x%x", q, reg_off, vf_id, ctrl);
 
 
     if (on)
-      ctrl |= IXGBE_RXDCTL_VME;
+      ctrl |= IXGBE_RXDCTL_VME;				// vlan mode enable (strip flag)
     else
       ctrl &= ~IXGBE_RXDCTL_VME;
 
     port_pci_reg_write(port_id, reg_off, ctrl);    		// void -- no error to check
 
-    traceLog(TRACE_DEBUG, "rx_vlan_strip_set_on_vf(bar=0x%08X, vfid_id=%d, ctrl=0x%08X)\n",
-      reg_off, vf_id, ctrl);
+    traceLog(TRACE_DEBUG, "rx_vlan_strip_set_on_vf: set: q=%d bar=0x%08X, vfid_id=%d, ctrl=0x%08X)\n", q, reg_off, vf_id, ctrl);
   }
 }
 
@@ -339,7 +338,7 @@ set_vf_allow_untagged(portid_t port_id, uint16_t vf_id, int on)
 	int ret = rte_eth_dev_set_vf_rxmode(port_id, vf_id, rx_mode, (uint8_t) on);
 	
 	if (ret < 0)
-    traceLog(TRACE_INFO, "set_vf_allow_untagged(): bad VF receive mode parameter, return code = %d \n", ret);
+    	traceLog(TRACE_INFO, "set_vf_allow_untagged(): bad VF receive mode parameter, return code = %d \n", ret);
 }
 
 
@@ -352,11 +351,11 @@ set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  __attribute__((__
   ether_aton_r(mac, &mac_addr);
 
 	diag = rte_eth_dev_mac_addr_add(port_id, &mac_addr, vf);
-	if (diag == 0)
-		return;
-
-	traceLog(TRACE_ERROR, "rte_eth_dev_set_vf_vlan_filter for port_id=%d failed "
-	       "diag=%d\n", port_id, diag);
+	if (diag == 0) {
+		bleat_printf( 3, "set rx mac successful: port=%d vf=%d on/off=%d mac=%s", (int)port_id, (int)vf, on, mac );
+	} else {
+		bleat_printf( 0, "rte_eth_dev_mac_addr_add for port_id=%d failed " "diag=%d\n", port_id, diag);
+	}
 
 }
 
@@ -367,11 +366,11 @@ set_vf_rx_vlan(portid_t port_id, uint16_t vlan_id, uint64_t vf_mask, uint8_t on)
 	int diag;
 
 	diag = rte_eth_dev_set_vf_vlan_filter(port_id, vlan_id, vf_mask, on);
-	if (diag == 0)
-		return;
-
-	traceLog(TRACE_ERROR, "rte_eth_dev_set_vf_vlan_filter for port_id=%d failed "
-	       "diag=%d\n", port_id, diag);
+	if (diag == 0) {
+		bleat_printf( 3, "set vlan filter successful: port=%d vlan=%d on/off=%d", (int)port_id, (int) vlan_id, on );
+	} else {
+		bleat_printf( 0, "rte_eth_dev_set_vf_vlan_filter for port_id=%d failed " "diag=%d\n", port_id, diag);
+	}
 
 }
 
@@ -382,10 +381,11 @@ set_vf_vlan_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 	int diag;
 
 	diag = rte_eth_dev_set_vf_vlan_anti_spoof(port_id, vf, on);
-	if (diag == 0)
-		return;
-	traceLog(TRACE_ERROR, "rte_eth_dev_set_vf_vlan_anti_spoof for port_id=%d failed "
-	       "diag=%d vf=%d\n", port_id, diag, vf);
+	if (diag == 0) {
+		bleat_printf( 3, "set vlan antispoof successful: port=%d vf=%d on/off=%d", (int)port_id, (int)vf, on );
+	} else {
+		bleat_printf( 0, "rte_eth_dev_set_vf_vlan_anti_spoof for port_id=%d failed " "diag=%d vf=%d\n", port_id, diag, vf);
+	}
 
 }
 
@@ -396,10 +396,11 @@ set_vf_mac_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 	int diag;
 
 	diag = rte_eth_dev_set_vf_mac_anti_spoof(port_id, vf, on);
-	if (diag == 0)
-		return;
-	traceLog(TRACE_ERROR, "rte_eth_dev_set_vf_mac_anti_spoof for port_id=%d failed "
-	       "diag=%d vf=%d\n", port_id, diag, vf);
+	if (diag == 0) {
+		bleat_printf( 3, "set mac antispoof successful: port=%d vf=%d on/off=%d", (int)port_id, (int)vf, on );
+	} else {
+		bleat_printf( 0, "rte_eth_dev_set_vf_mac_anti_spoof for port_id=%d failed " "diag=%d vf=%d\n", port_id, diag, vf);
+	}
 
 }
 

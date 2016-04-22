@@ -317,7 +317,7 @@ void port_mtu_set(portid_t port_id, uint16_t mtu);
 void rx_vlan_strip_set(portid_t port_id, int on);
 void rx_vlan_strip_set_on_queue(portid_t port_id, uint16_t queue_id, int on);
 void rx_vlan_strip_set_on_vf(portid_t port_id, uint16_t vf_id, int on);
-void rx_vlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id);
+void tx_vlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id);
 
 void rx_vlan_filter_set(portid_t port_id, int on);
 void rx_vlan_all_filter_set(portid_t port_id, int on);
