@@ -1042,6 +1042,47 @@ static char*  gen_stats( struct sriov_conf_c* conf ) {
 }
 
 /*
+	Set up the insert and strip charastics on the NIC. The interface should ensure that
+	the right parameter combinations are set and reject an add request if not, but 
+	we are a bit parinoid and will help to enforce things here too.  If one VLAN is in
+	the list, then we allow strip_stag to control what we do. If multiple VLANs are in 
+	the list, then we don't strip nor insert.
+
+	Returns 0 on failure; 1 on success.
+*/
+static int vfd_set_ins_strip( struct sriov_port_s *port, struct vf_s *vf ) {
+    uint32_t vf_mask;
+
+	if( port == NULL || vf == NULL ) {
+		bleat_printf( 1, "cannot set strip/insert: port or vf pointers were nill" );
+		return 0;
+	}
+
+	vf_mask = VFN2MASK(vf->num);
+	if( vf->num_vlans == 1 ) {
+		bleat_printf( 2, "%s vf: %d set strip vlan tag %d", port->name, vf->num, vf->strip_stag );
+		rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag );	// if just one in the list, push through user strip option
+		set_vf_rx_vlan( port->rte_port_number, vf->vlans[0], vf_mask, vf->strip_stag );
+
+		if( vf->strip_stag ) {														// when stripping, we must also insert
+			bleat_printf( 2, "%s vf: %d set insert vlan tag with id %d", port->name, vf->num, vf->vlans[0] );
+			tx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->vlans[0] );
+		} else {
+			bleat_printf( 2, "%s vf: %d set insert vlan tag with id 0", port->name, vf->num );
+			tx_vlan_insert_set_on_vf( port->rte_port_number, vf->num, 0 );			// no strip, so no insert
+		}
+	} else {
+		bleat_printf( 2, "%s vf: %d vlan list contains %d entries; strip/insert turned off", port->name, vf->num, vf->num_vlans );
+		rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, 0 );					// if more than one vlan in the list force strip to be off
+		set_vf_rx_vlan( port->rte_port_number, vf->vlans[0], vf_mask, 0 );				// hard off
+		tx_vlan_insert_set_on_vf( port->rte_port_number, vf->num, 0 );					// and set insert to id 0
+	}
+
+	return 1;
+}
+	
+
+/*
 	Runs through the configuration and makes adjustments.  This is
 	a tweak of the original code (update_ports_config) inasmuch as the dynamic
 	changes to the configuration based on nova add/del requests are made to the
@@ -1154,8 +1195,6 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 					// TODO -- is there anything else that we need to clean up in the struct?
 				}
 
-				// set VLAN anti spoofing when VLAN filter is used
-						
 				if( vf->num >= 0 ) {
 					if( parms->forreal ) {
 						bleat_printf( 2, "%s vf: %d set anti-spoof %d", port->name, vf->num, vf->vlan_anti_spoof );
@@ -1164,22 +1203,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 						bleat_printf( 2, "%s vf: %d set mac-anti-spoof %d", port->name, vf->num, vf->mac_anti_spoof );
 						set_vf_mac_anti_spoofing(port->rte_port_number, vf->num, vf->mac_anti_spoof);
 	
-						bleat_printf( 2, "%s vf: %d set strip vlan tag %d", port->name, vf->num, vf->strip_stag );
-						rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag);
-	
-						// CAUTION: per meeting on 3/2/2016 the insert stag config option was removed and this setting mirrors the strip setting.
-						//			strip on receipt seems not a flag, so we must either hard set 0 (strip) or just what was in the list if
-						// 			the list has len==1. If list is bigger, we don't do anything.
-						/*
-						bleat_printf( 2, "%s vf: %d set insert vlan tag %d", port->name, vf->num, vf->strip_stag );
-						if( vf->strip_stag ) {
-							rx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, 0 );			// insert no tag (vlan id == 0)
-						} else {
-							if( vf->num_vlans == 1 ) {
-								rx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->vlans[0] );	// insert what should already be there (no strip)
-							}
-						}
-						*/
+						vfd_set_ins_strip( port, vf );				// set insert/strip options
 
 						bleat_printf( 2, "%s vf: %d set allow broadcast %d", port->name, vf->num, vf->allow_bcast );
 						set_vf_allow_bcast(port->rte_port_number, vf->num, vf->allow_bcast);
@@ -1383,6 +1407,7 @@ restore_vf_setings(uint8_t port_id, int vf_id) {
 	int on = 1;
 	int matched = 0;		// number matched for log
 
+	bleat_printf( 3, "restore settings begins" );
 	for (i = 0; i < running_config.num_ports; ++i){
 		struct sriov_port_s *port = &running_config.ports[i];
 
@@ -1435,12 +1460,17 @@ restore_vf_setings(uint8_t port_id, int vf_id) {
 				bleat_printf( 2, "refresh: %s vf: %d set mac-anti-spoof %d", port->name, vf->num, vf->mac_anti_spoof );
 				set_vf_mac_anti_spoofing(port->rte_port_number, vf->num, vf->mac_anti_spoof);
 
+				vfd_set_ins_strip( port, vf );				// set insert/strip options
+/*
+now wrapped in ins_strip()
 				bleat_printf( 2, "refresh: %s vf: %d set strip vlan tag %d", port->name, vf->num, vf->strip_stag );
 				rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag);
 		
 				bleat_printf( 2, "refresh: %s vf: %d set insert vlan tag %d", port->name, vf->num, vf->strip_stag );
 				//CAUTION: per 03/02/2016 meeting insert stag option removed from config; this mirrors the strip setting
-				rx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag);
+				tx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag);
+*/
+			
 
 
 				bleat_printf( 2, "refresh: %s vf: %d set allow broadcast %d", port->name, vf->num, vf->allow_bcast );
