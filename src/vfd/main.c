@@ -61,7 +61,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
 static char* gen_stats( struct sriov_conf_c* conf );
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-static const char* version = "v1.0/64216";
+static const char* version = "v1.0/64226";
 static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
 
 // --- callback/mailbox support - depend on global parms ---------------------------------------------------------
@@ -1061,8 +1061,8 @@ static int vfd_set_ins_strip( struct sriov_port_s *port, struct vf_s *vf ) {
 	vf_mask = VFN2MASK(vf->num);
 	if( vf->num_vlans == 1 ) {
 		bleat_printf( 2, "%s vf: %d set strip vlan tag %d", port->name, vf->num, vf->strip_stag );
-		rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag );	// if just one in the list, push through user strip option
 		set_vf_rx_vlan( port->rte_port_number, vf->vlans[0], vf_mask, vf->strip_stag );
+		rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag );	// if just one in the list, push through user strip option
 
 		if( vf->strip_stag ) {														// when stripping, we must also insert
 			bleat_printf( 2, "%s vf: %d set insert vlan tag with id %d", port->name, vf->num, vf->vlans[0] );

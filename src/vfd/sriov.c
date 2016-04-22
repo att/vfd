@@ -182,7 +182,7 @@ rx_vlan_strip_set_on_queue(portid_t port_id, uint16_t queue_id, int on)
 	if (diag < 0) {
 		traceLog(TRACE_DEBUG, "rx_vlan_strip_set_on_queue(port_pi=%d, queue_id=%d, on=%d) failed " "diag=%d\n", port_id, queue_id, on, diag);
 	} else {
-		bleat_printf( 3, "set vlan strip on queue successful: port=%d, q=%d val=%d", port_id, queue_id, on );
+		bleat_printf( 3, "set vlan strip on queue successful: port=%d, q=%d on/off=%d", port_id, queue_id, on );
 	}
 	
 }
@@ -282,7 +282,7 @@ rx_vlan_strip_set(portid_t port_id, int on)
 	if (diag < 0) {
 		traceLog(TRACE_INFO, "rx_vlan_strip_set(port_pi=%d, on=%d) failed, diag=%d\n", port_id, on, diag);
 	} else {
-		bleat_printf( 3, "set vlan strip successful: %d: v=%d", port_id, on );
+		bleat_printf( 3, "set vlan strip successful: %d: on/off=%d", port_id, on );
 	}
 }
 
@@ -296,7 +296,7 @@ set_vf_allow_bcast(portid_t port_id, uint16_t vf_id, int on)
 	if (ret < 0) {
     	traceLog(TRACE_INFO, "set_vf_allow_bcast(): bad VF receive mode parameter, return code = %d \n", ret);
 	} else {
-		bleat_printf( 3, "allow bcast successfully set for port/vf %d/%d v=%d", port_id, vf_id, on );
+		bleat_printf( 3, "allow bcast successfully set for port/vf %d/%d on/off=%d", port_id, vf_id, on );
 	}
 }
 
@@ -309,7 +309,7 @@ set_vf_allow_mcast(portid_t port_id, uint16_t vf_id, int on)
 	if (ret < 0) {
     	traceLog(TRACE_INFO, "set_vf_allow_mcast(): bad VF receive mode parameter, return code = %d \n", ret);
 	} else {
-		bleat_printf( 3, "allow mcast successfully set for port/vf %d/%d v=%d", port_id, vf_id, on );
+		bleat_printf( 3, "allow mcast successfully set for port/vf %d/%d on/off=%d", port_id, vf_id, on );
 	}
 }
 
@@ -322,7 +322,7 @@ set_vf_allow_un_ucast(portid_t port_id, uint16_t vf_id, int on)
 	if (ret < 0) {
     	traceLog(TRACE_INFO, "set_vf_allow_un_ucast(): bad VF receive mode parameter, return code = %d \n", ret);
 	} else {
-		bleat_printf( 3, "allow un-ucast successfully set for port/vf %d/%d v=%d", port_id, vf_id, on );
+		bleat_printf( 3, "allow un-ucast successfully set for port/vf %d/%d on/off=%d", port_id, vf_id, on );
 	}
 }
 
