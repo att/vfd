@@ -614,7 +614,7 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 
 		case IXGBE_VF_SET_VLAN:
 			// NOTE: we _always_ approve this.  This is the VMs setting of what will be an 'inner' vlan ID and thus we don't care
-			bleat_printf( 1, "vlan set event approved: port=%d vf=%d vlan=%d", port_id, vf, (int) p[1] );
+			bleat_printf( 1, "vlan set event approved: port=%d vf=%d vlan=%d (responding proceed)", port_id, vf, (int) p[1] );
 			*((int*) param) = RTE_ETH_MB_EVENT_PROCEED;
 
 			//traceLog(TRACE_DEBUG, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_VLAN");
@@ -636,28 +636,28 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			break;
 
 		case IXGBE_VF_SET_MACVLAN:
-			bleat_printf( 1, "set macvlan event received: port=%d", port_id );
+			bleat_printf( 1, "set macvlan event received: port=%d (responding nop+nak)", port_id );
 			*(int*) param =  RTE_ETH_MB_EVENT_NOOP_NACK;    /* noop & nack */
-			traceLog(TRACE_DEBUG, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
-					type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_MACVLAN");
+			traceLog(TRACE_DEBUG, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_MACVLAN");
 			traceLog(TRACE_DEBUG, "SETTING MAC_VLAN = %d\n", p[1]);
 			break;
 
 		case IXGBE_VF_API_NEGOTIATE:
-			bleat_printf( 1, "set negotiate event received: port=%d", port_id );
+			bleat_printf( 1, "set negotiate event received: port=%d (responding proceed)", port_id );
 			*(int*) param =  RTE_ETH_MB_EVENT_PROCEED;   /* do what's needed */
 			traceLog(TRACE_DEBUG, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
 				type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_API_NEGOTIATE");
 			break;
 
 		case IXGBE_VF_GET_QUEUES:
-			bleat_printf( 1, "get queues  event received: port=%d", port_id );
+			bleat_printf( 1, "get queues  event received: port=%d (responding proceed)", port_id );
 			*(int*) param =  RTE_ETH_MB_EVENT_PROCEED;   /* do what's needed */
 			traceLog(TRACE_DEBUG, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
 				type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_GET_QUEUES");
 			break;
 
 		default:
+			bleat_printf( 1, "unknown  event request received: port=%d (responding nop+nak)", port_id );
 			*(int*) param = RTE_ETH_MB_EVENT_NOOP_NACK;     /* noop & nack */
 			traceLog(TRACE_DEBUG, "Type: %d, Port: %d, VF: %d, OUT: %d, MBOX_TYPE: %d\n",
 				type, port_id, vf, *(uint32_t*) param, mbox_type);
