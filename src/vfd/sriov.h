@@ -38,9 +38,6 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 
-// apt-get install libbsd-dev needed
-//#include <sys/queue.h>
-
 #include <rte_alarm.h>
 #include <rte_common.h>
 #include <rte_byteorder.h>
@@ -365,22 +362,18 @@ int port_init(uint8_t port, struct rte_mempool *mbuf_pool);
 void restore_vf_setings_cb(__rte_unused void *param);
 
 
-int terminated;
-int restart;           
-
-
-u_int32_t cpu_mask;
+int terminated;				// set when a signal is received -- causes main loop to gracefully exit
 
 int debug;
-int traceLevel;			  // NORMAL == 5 level, INFO == 6
-int useSyslog;         // 0 send messages to stdout
+int traceLevel;			  // NORMAL == 5 level, INFO == 6  (deprecated)
+int useSyslog;         // 0 send messages to stdout			(deprecated)
 int logFacility;       // LOG_LOCAL0
 
 
 char *prog_name;
 char *fname;
 
-int     n_ports;
+int     n_ports;			// number of ports reported by hw/dpdk
 struct ether_addr addr;
 
 struct pstat
