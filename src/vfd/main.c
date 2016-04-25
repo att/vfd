@@ -22,6 +22,8 @@
 				19 Apr 2016 - Changed message when vetting the parm list to eal-init.
 				20 Apr 2016 - Removed newline after address in the stats output message.
 				21 Apr 2016 - Insert tag option now mirrors the setting for strip tag.
+				24 Apr 2016 - Redid signal handling to trap anything that has a default action
+							that isn't ignore; we must stop gracefully at all costs.
 */
 
 
@@ -147,6 +149,23 @@ int valid_mtu( int port, int mtu ) {
 	
 	bleat_printf( 1, "valid_mtu: mtu is not accptable for port/mtu %d/%d: %d", port, p->mtu, mtu );
 	return 0;
+}
+
+
+// ---------------------------------------------------------------------------------------------------------------
+/*
+	Close all open PF ports. We assume this releases memory pool allocation as well.  Called by
+	signal handlerers before caling abort() to core dump, and at end of normal processing.
+*/
+static void close_ports( void ) {
+	int i;
+
+	bleat_printf( 0, "closing ports" );
+	for( i = 0; i < n_ports; i++) {
+		bleat_printf( 0, "interrupt: closing port %d", i );
+		rte_eth_dev_close( i );
+	}
+	bleat_printf( 0, "ports closed" );
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1264,91 +1283,71 @@ static inline uint64_t RDTSC(void)
 // ---- signal managment (setup and handlers) ------------------------------------------------------------------
 
 
-static void
-sig_int(int sig)
-{
-  terminated = 1;
-  restart = 0;
+/*
+	Called for any signal that has a default terminate action so that we
+	force a cleanup before stopping. We'll call abort() for a few so that we
+	might get a usable core dump when needed. If we call abort(), rather than
+	just setting the terminated flag, we _must_ close the PFs gracefully or 
+	risk a machine crash.
+*/
+static void sig_int( int sig ) {
+	if( terminated ) {					// ignore concurrent signals
+		return;
+	}
+	terminated = 1;
 
-  int portid;
-  if (sig == SIGINT)  {
-		for (portid = 0; portid < n_ports; portid++) {
-			rte_eth_dev_close(portid);
-		}
+	switch( sig ) {
+		case SIGABRT:
+		case SIGFPE:
+		case SIGSEGV:
+				bleat_printf( 0, "signal caught (aborting): %d", sig );
+				close_ports();				// must attempt to do this else we potentially crash the machine
+				abort( );
+				break;
+
+		default:
+				bleat_printf( 0, "signal caught (terminating): %d", sig );
 	}
 
-  static int called = 0;
-
-  if(sig == 1) called = sig;
-
-  if(called)
-    return;
-  else called = 1;
-
-  traceLog(TRACE_NORMAL, "Received Interrupt signal\n");
+	return;
 }
 
-
-
+/*
+	Signals we choose to ignore drive this.
+*/
 static void
-sig_usr(int sig)
-{
-  terminated = 1;
-  restart = 1;
-
-  static int called = 0;
-
-  if(sig == 1) called = sig;
-
-  if(called)
-    return;
-  else called = 1;
-
-  traceLog(TRACE_NORMAL, "Restarting vfd");
-}
-
-
-static void
-sig_hup(int __attribute__((__unused__)) sig)
-{
-  restart = 1;
-
-	/*
-  int res = readConfigFile(fname);
-  if (res != 0) {
-    traceLog(TRACE_ERROR, "Can not read config file: %s\n", fname);
-  }
-
-  res = update_ports_config();
-  if (res != 0) {
-    traceLog(TRACE_ERROR, "Error updating ports configuration: %s\n", res);
-  }
-	*/
-
-  traceLog(TRACE_NORMAL, "Ignored HUP signal\n");
+sig_ign( int sig ) {
+	bleat_printf( 1, "signal ignored: %d", sig );
 }
 
 /*	
-	Setup all of the signal handling.
+	Setup all of the signal handling. Because a VFd exit without gracefully closing ports
+	seems to crash (all? most?) physical hosts, we must catch everything that has a default
+	action which is not ignore.  While mentioned on the man page, SIGEMT and SIGLOST seem 
+	unsupported in linux. 
 */
 static void set_signals( void ) {
-  struct sigaction sa;
+	struct sigaction sa;
+	int	sig_list[] = { SIGQUIT, SIGILL, SIGABRT, SIGFPE, SIGKILL, SIGSEGV, SIGPIPE,		// list of signals we trap
+       				SIGALRM, SIGTERM, SIGUSR1 , SIGUSR2, SIGBUS, SIGPROF, SIGSYS, 
+					SIGTRAP, SIGURG, SIGVTALRM, SIGXCPU, SIGXFSZ, SIGIO, SIGWINCH };
 
-	memset( &sa, 0, sizeof( sa ) );
-  sa.sa_handler = sig_int;
-  sigaction(SIGINT, &sa, NULL);
+	int i;
+	int nele;		// number of elements in the list
+	
+	sa.sa_handler = sig_ign;						// we ignore hup, so special function for this
+	if( sigaction( SIGHUP, &sa, NULL ) < 0 ) {
+		bleat_printf( 0, "WRN: unable to set signal trap for %d: %s", SIGHUP, strerror( errno ) );
+	}
 
-  sa.sa_handler = sig_int;
-  sigaction(SIGTERM, &sa, NULL);
-
-  sa.sa_handler = sig_int;
-  sigaction(SIGABRT, &sa, NULL);
-
-  sa.sa_handler = sig_hup;
-  sigaction(SIGHUP, &sa, NULL);
-
-  sa.sa_handler = sig_usr;
-  sigaction(SIGUSR1, &sa, NULL);
+	nele = (int) ( sizeof( sig_list )/sizeof( int ) );		// convert raw size to the number of elements
+	for( i = 0; i < nele; i ++ ) {
+		memset( &sa, 0, sizeof( sa ) );
+		sa.sa_handler = sig_int;				// all signals which default to term or core must be caught
+		if( sigaction( sig_list[i], &sa, NULL ) < 0 ) {
+			bleat_printf( 0, "WRN: unable to set signal trap for %d: %s", sig_list[i], strerror( errno ) );
+		}
+	}
 }
 
 //-----------------------------------------------------------------------------------------------------------------------
@@ -1569,6 +1568,7 @@ main(int argc, char **argv)
 	int		opt;
 	int		fd = -1;
 	int		l;							// length of something
+	int 	i;
 
   const char * main_help =
 	"\n"
@@ -1578,22 +1578,14 @@ main(int argc, char **argv)
   "\t -f        keep in 'foreground'\n"
   "\t -n        no-nic actions executed\n"
   "\t -p <file> parmm file (/etc/vfd/vfd.cfg)\n"
-  "\t -v <num>  Verbose (if num > 3 foreground) num - verbose level\n"
   "\t -s <num>  syslog facility 0-11 (log_kern - log_ftp) 16-23 (local0-local7) see /usr/include/sys/syslog.h\n"
 	"\t -h|?  Display this help screen\n";
 
 
 
-  //int devnum = 0;
-
- 	struct rte_mempool *mbuf_pool = NULL;
-	//unsigned n_ports;
-	
-  prog_name = strdup(argv[0]);
-  useSyslog = 1;
-
-	int i;
-
+	struct rte_mempool *mbuf_pool = NULL;
+	prog_name = strdup(argv[0]);
+ 	useSyslog = 1;
 
 	parm_file = strdup( "/etc/vfd/vfd.cfg" );				// set default before command line parsing as -p overrides
 
@@ -1605,15 +1597,6 @@ main(int argc, char **argv)
 		case 'f':
 			run_asynch = 0;
 			break;
-		
-		case 'v':
-		  traceLevel = atoi(optarg);
-
-		  if(traceLevel > 6) {
-		   useSyslog = 0;
-		   debug = 1;
-		  }
-		 break;
 		
 		case 'n':
 			forreal = 0;						// do NOT actually make calls to change the nic
@@ -1793,7 +1776,7 @@ main(int argc, char **argv)
 
 		bleat_printf( 2, "indexes were mapped" );
 	
-		set_signals();				// register signal handlers (reload, port reset on shutdown, etc)
+		set_signals();				// register signal handlers 
 
 	  gettimeofday(&st.startTime, NULL);
 
@@ -1881,19 +1864,20 @@ main(int argc, char **argv)
 		}
 	}		// end !terminated while
 
+	bleat_printf( 0, "terminating" );
+
 	if( fd >= 0 ) {
 		close(fd);
 	}
 
 	if( have_pipe  &&  g_parms->stats_path != NULL  && unlink( g_parms->stats_path ) != 0 ) {
 		bleat_printf( 1, "couldn't delete stats pipe" );
-		//traceLog(TRACE_ERROR, "can't delete pipe: %s\n", STATS_FILE);
 	}
 
-  gettimeofday(&st.endTime, NULL);
-  traceLog(TRACE_NORMAL, "Duration %.f sec\n", timeDelta(&st.endTime, &st.startTime));
+	close_ports();				// clean up the PFs
 
-  traceLog(TRACE_NORMAL, "sriovctl exit\n");
+  gettimeofday(&st.endTime, NULL);
+  bleat_printf( 1, "duration %.f sec\n", timeDelta(&st.endTime, &st.startTime));
 
   return EXIT_SUCCESS;
 }
