@@ -404,6 +404,18 @@ set_vf_mac_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 
 }
 
+void
+tx_set_loopback(portid_t port_id, u_int8_t on)
+{
+	uint32_t ctrl = port_pci_reg_read(port_id, IXGBE_PFDTXGSWC);
+	if (on) 
+		ctrl |= IXGBE_PFDTXGSWC_VT_LBEN;
+	else
+		ctrl &= ~IXGBE_PFDTXGSWC_VT_LBEN;
+	
+	port_pci_reg_write(port_id, IXGBE_PFDTXGSWC, ctrl);
+}
+
 /*
 	Return the link speed for the indicated port
 int nic_value_speed( uint8_t id ) {

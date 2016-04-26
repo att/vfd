@@ -1070,14 +1070,14 @@ static char*  gen_stats( struct sriov_conf_c* conf ) {
 	Returns 0 on failure; 1 on success.
 */
 static int vfd_set_ins_strip( struct sriov_port_s *port, struct vf_s *vf ) {
-    uint32_t vf_mask;
+  //  uint32_t vf_mask;
 
 	if( port == NULL || vf == NULL ) {
 		bleat_printf( 1, "cannot set strip/insert: port or vf pointers were nill" );
 		return 0;
 	}
 
-	vf_mask = VFN2MASK(vf->num);
+	//vf_mask = VFN2MASK(vf->num);
 	if( vf->num_vlans == 1 ) {
 		bleat_printf( 2, "%s vf: %d set strip vlan tag %d", port->name, vf->num, vf->strip_stag );
 		//set_vf_rx_vlan( port->rte_port_number, vf->vlans[0], vf_mask, vf->strip_stag ); // we have this called before calling vfd_set_ins_strip()
@@ -1135,6 +1135,13 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 
 	for (i = 0; i < conf->num_ports; ++i){							// run each port we know about
 		int ret;
+		
+		/*
+		* disable loop back, pin traffic between VM's on the same VLAN via TOR
+		* will need to have this functionality configurable
+		*/
+		tx_set_loopback(i, 0); 
+				
 		struct sriov_port_s *port = &conf->ports[i];
 
 		if( port->last_updated == ADDED ) {								// updated since last call, reconfigure

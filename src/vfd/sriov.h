@@ -360,7 +360,7 @@ void nic_stats_clear(portid_t port_id);
 int nic_stats_display(uint8_t port_id, char * buff, int blen);
 int port_init(uint8_t port, struct rte_mempool *mbuf_pool);
 void restore_vf_setings_cb(__rte_unused void *param);
-
+void tx_set_loopback(portid_t port_id, u_int8_t on);
 
 int terminated;				// set when a signal is received -- causes main loop to gracefully exit
 
