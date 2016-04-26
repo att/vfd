@@ -1381,18 +1381,6 @@ timeDelta(struct timeval * now, struct timeval * before)
 }
 
 
-void
-restore_vf_setings_cb(void *param){
-	struct reset_param_c *p_reset = (struct reset_param_c *) param;
-
-	bleat_printf( 1, "restore settings callback driven: p=%d vf=%d",  p_reset->port, p_reset->vf );
-	//traceLog(TRACE_DEBUG, "Restoring Settings, Port: %d, VF: %d", p_reset->port, p_reset->vf);
-	restore_vf_setings(p_reset->port, p_reset->vf);
-
-	free(param);
-}
-
-
 
 /*
 	This should work without change.
@@ -1689,6 +1677,14 @@ main(int argc, char **argv)
 
 	  traceLog(TRACE_NORMAL, "n_ports = %d\n", n_ports);
 
+		
+		static pthread_t tid;
+		TAILQ_INIT(&rq_head);
+		
+		int ret = pthread_create(&tid, NULL, (void *)process_refresh_queue, NULL);	
+		if (ret != 0)
+			rte_exit(EXIT_FAILURE, "Cannot create refresh_queue thread\n");
+	
 	 /*
 	  === (commented out in original -- left)
 	  const struct rte_memzone *mz;

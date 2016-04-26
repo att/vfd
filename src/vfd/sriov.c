@@ -416,6 +416,103 @@ tx_set_loopback(portid_t port_id, u_int8_t on)
 	port_pci_reg_write(port_id, IXGBE_PFDTXGSWC, ctrl);
 }
 
+
+int 
+is_rx_queue_on(portid_t port_id, uint16_t vf_id)
+{
+	/* check if first queue in the pool is active */
+	
+	struct rte_eth_dev *pf_dev = &rte_eth_devices[port_id];
+  uint32_t queues_per_pool = RTE_ETH_DEV_SRIOV(pf_dev).nb_q_per_pool;
+	queues_per_pool = 2;
+	
+  uint32_t reg_off = 0x01028;
+  
+  reg_off += (0x40 * vf_id * queues_per_pool);
+	
+  uint32_t ctrl = port_pci_reg_read(port_id, reg_off);
+
+  traceLog(TRACE_DEBUG, "RX_QUEUS_ENA, bar=0x%08X, vfid_id=%d, ctrl=0x%08X)\n", reg_off, vf_id, ctrl);
+	
+	if( ctrl & 0x2000000)
+		return 1;
+	else
+		return 0;
+}
+
+
+static rte_spinlock_t rte_refresh_q_lock = RTE_SPINLOCK_INITIALIZER;
+
+void 
+add_refresh_queue(u_int8_t port_id, uint16_t vf_id)
+{
+	
+	struct rq_entry *refresh_item;
+	
+	//printf("add_refresh_queue\n");
+	
+	/* look for refresh request and update enabled status if already there */ 
+	rte_spinlock_lock(&rte_refresh_q_lock);
+	TAILQ_FOREACH(refresh_item, &rq_head, rq_entries) {
+		if (refresh_item->port_id == port_id && refresh_item->vf_id == vf_id){
+			if (!refresh_item->enabled)
+				refresh_item->enabled = is_rx_queue_on(port_id, vf_id);
+			
+			rte_spinlock_unlock(&rte_refresh_q_lock);
+			return;
+		}
+	}
+	
+	rte_spinlock_unlock(&rte_refresh_q_lock);
+	
+	refresh_item = malloc(sizeof(*refresh_item));
+	if (refresh_item == NULL) 
+		rte_exit(EXIT_FAILURE, "add_refresh_queue(): Can not allocate memory\n");
+
+	refresh_item->port_id = port_id;
+	refresh_item->vf_id = vf_id;
+	refresh_item->enabled = is_rx_queue_on(port_id, vf_id);
+	
+	
+	rte_spinlock_lock(&rte_refresh_q_lock);
+	TAILQ_INSERT_TAIL(&rq_head, refresh_item, rq_entries);	
+	rte_spinlock_unlock(&rte_refresh_q_lock);
+}
+
+void
+process_refresh_queue(void)
+{
+	while(1) {
+		
+		usleep(200000);
+		struct rq_entry *refresh_item;;
+		
+		rte_spinlock_lock(&rte_refresh_q_lock);
+		TAILQ_FOREACH(refresh_item, &rq_head, rq_entries){
+			
+			//printf("checking the queue:  PORT: %d, VF: %d, Enabled: %d\n", refresh_item->port_id, refresh_item->vf_id, refresh_item->enabled);
+			/* check if item's q is enabled, update VF and remove item from queue */
+			if(refresh_item->enabled){
+				printf("updating VF: %d\n", refresh_item->vf_id);
+
+				restore_vf_setings(refresh_item->port_id, refresh_item->vf_id);
+				
+				TAILQ_REMOVE(&rq_head, refresh_item, rq_entries);
+				free(refresh_item);
+			}   
+			else
+			{
+				refresh_item->enabled = is_rx_queue_on(refresh_item->port_id, refresh_item->vf_id);
+				//printf("updating item:  PORT: %d, VF: %d, Enabled: %d\n", refresh_item->port_id, refresh_item->vf_id, refresh_item->enabled);
+			}			
+		}
+		
+		//printf("Nothing to update\n");
+		rte_spinlock_unlock(&rte_refresh_q_lock);
+	}
+}
+
+
 /*
 	Return the link speed for the indicated port
 int nic_value_speed( uint8_t id ) {
@@ -568,22 +665,16 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 	uint16_t mbox_type = (p[0] >> 16) & 0xffff;
 
 
-	struct reset_param_c *p_reset = malloc(sizeof(struct reset_param_c));
-	if(p_reset == NULL)
-		rte_exit(EXIT_FAILURE, "vf_msb_event_callback(): Can not allocate memory\n");
-
 	/* check & process VF to PF mailbox message */
 	switch (mbox_type) {
 		case IXGBE_VF_RESET:
 			bleat_printf( 1, "reset event received: port=%d", port_id );
-			p_reset->port = port_id;
-			p_reset->vf = vf;
-	
-			rte_eal_alarm_set(RESTORE_DELAY * US_PER_S, restore_vf_setings_cb, (void *)p_reset);
 
 			*(int*) param = RTE_ETH_MB_EVENT_NOOP_ACK;     /* noop & ack */
 			traceLog(TRACE_DEBUG, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
 				type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_RESET");
+				
+			add_refresh_queue(port_id, vf);
 			break;
 
 		case IXGBE_VF_SET_MAC_ADDR:
@@ -603,6 +694,8 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 					new_mac->addr_bytes[2], new_mac->addr_bytes[3],
 					new_mac->addr_bytes[4], new_mac->addr_bytes[5]);
 			}
+			
+			add_refresh_queue(port_id, vf);
 			break;
 
 		case IXGBE_VF_SET_MULTICAST:

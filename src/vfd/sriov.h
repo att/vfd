@@ -60,6 +60,7 @@
 #include <rte_ether.h>
 #include <rte_ethdev.h>
 #include <rte_string_fns.h>
+#include <rte_spinlock.h>
 
 #include "../lib/dpdk/drivers/net/ixgbe/base/ixgbe_mbx.h"
 
@@ -249,12 +250,6 @@ struct sriov_conf_c
 } sriov_config;
 
 
-struct reset_param_c
-{
-  uint32_t  port;
-  uint32_t  vf;
-};
-
 
 struct sriov_conf_c running_config;
 
@@ -359,7 +354,6 @@ void nic_stats_clear(portid_t port_id);
 //void nic_stats_display(uint8_t port_id);
 int nic_stats_display(uint8_t port_id, char * buff, int blen);
 int port_init(uint8_t port, struct rte_mempool *mbuf_pool);
-void restore_vf_setings_cb(__rte_unused void *param);
 void tx_set_loopback(portid_t port_id, u_int8_t on);
 
 int terminated;				// set when a signal is received -- causes main loop to gracefully exit
@@ -416,5 +410,20 @@ int check_mcast_mbox(uint32_t * mb);
 // callback validation support 
 int valid_mtu( int port, int mtu );
 int valid_vlan( int port, int vfid, int vlan );
+
+
+struct rq_entry 
+{
+	uint8_t	port_id;
+	uint16_t vf_id;
+  uint8_t enabled;
+
+	TAILQ_ENTRY(rq_entry) rq_entries;
+};
+
+TAILQ_HEAD(, rq_entry) rq_head;
+void add_refresh_queue(u_int8_t port_id, uint16_t vf_id);
+void process_refresh_queue(void);
+int is_rx_queue_on(portid_t port_id, uint16_t vf_id);
 
 #endif /* _SRIOV_H_ */
