@@ -63,7 +63,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
 static char* gen_stats( struct sriov_conf_c* conf );
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-static const char* version = "v1.0/64226";
+static const char* version = "v1.0/64286";
 static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
 
 // --- callback/mailbox support - depend on global parms ---------------------------------------------------------
@@ -1070,30 +1070,25 @@ static char*  gen_stats( struct sriov_conf_c* conf ) {
 	Returns 0 on failure; 1 on success.
 */
 static int vfd_set_ins_strip( struct sriov_port_s *port, struct vf_s *vf ) {
-    uint32_t vf_mask;
-
 	if( port == NULL || vf == NULL ) {
 		bleat_printf( 1, "cannot set strip/insert: port or vf pointers were nill" );
 		return 0;
 	}
 
-	vf_mask = VFN2MASK(vf->num);
 	if( vf->num_vlans == 1 ) {
 		bleat_printf( 2, "%s vf: %d set strip vlan tag %d", port->name, vf->num, vf->strip_stag );
-		set_vf_rx_vlan( port->rte_port_number, vf->vlans[0], vf_mask, vf->strip_stag );
-		rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag );	// if just one in the list, push through user strip option
+		rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag );			// if just one in the list, push through user strip option
 
-		if( vf->strip_stag ) {														// when stripping, we must also insert
+		if( vf->strip_stag ) {																// when stripping, we must also insert
 			bleat_printf( 2, "%s vf: %d set insert vlan tag with id %d", port->name, vf->num, vf->vlans[0] );
 			tx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->vlans[0] );
 		} else {
 			bleat_printf( 2, "%s vf: %d set insert vlan tag with id 0", port->name, vf->num );
-			tx_vlan_insert_set_on_vf( port->rte_port_number, vf->num, 0 );			// no strip, so no insert
+			tx_vlan_insert_set_on_vf( port->rte_port_number, vf->num, 0 );					// no strip, so no insert
 		}
 	} else {
 		bleat_printf( 2, "%s vf: %d vlan list contains %d entries; strip/insert turned off", port->name, vf->num, vf->num_vlans );
 		rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, 0 );					// if more than one vlan in the list force strip to be off
-		set_vf_rx_vlan( port->rte_port_number, vf->vlans[0], vf_mask, 0 );				// hard off
 		tx_vlan_insert_set_on_vf( port->rte_port_number, vf->num, 0 );					// and set insert to id 0
 	}
 
@@ -1135,6 +1130,13 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 
 	for (i = 0; i < conf->num_ports; ++i){							// run each port we know about
 		int ret;
+		
+		/*
+		* disable loop back, pin traffic between VM's on the same VLAN via TOR
+		* will need to have this functionality configurable
+		*/
+		tx_set_loopback(i, 0); 
+				
 		struct sriov_port_s *port = &conf->ports[i];
 
 		if( port->last_updated == ADDED ) {								// updated since last call, reconfigure
@@ -1173,7 +1175,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 						int vlan = vf->vlans[v];
 						bleat_printf( 2, "delete vlan: %s vf=%d vlan=%d", port->pciid, vf->num, vlan );
 						if( parms->forreal )
-							set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, 0);
+							set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, 0);		// remove the vlan id from the list
 					}
 				} else {
 					//traceLog(TRACE_DEBUG, "ADDING VLANS, VF: %d ", vf->num);
@@ -1182,7 +1184,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 						int vlan = vf->vlans[v];
 						bleat_printf( 2, "add vlan: %s vf=%d vlan=%d", port->pciid, vf->num, vlan );
 						if( parms->forreal )
-							set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, on);
+							set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, on );		// add the vlan id to the list
 					}
 				}
 
@@ -1371,18 +1373,6 @@ timeDelta(struct timeval * now, struct timeval * before)
     -- delta_seconds;
   }
   return((double)(delta_seconds * 1000) + (double)delta_microseconds/1000);
-}
-
-
-void
-restore_vf_setings_cb(void *param){
-	struct reset_param_c *p_reset = (struct reset_param_c *) param;
-
-	bleat_printf( 1, "restore settings callback driven: p=%d vf=%d",  p_reset->port, p_reset->vf );
-	//traceLog(TRACE_DEBUG, "Restoring Settings, Port: %d, VF: %d", p_reset->port, p_reset->vf);
-	restore_vf_setings(p_reset->port, p_reset->vf);
-
-	free(param);
 }
 
 
@@ -1682,6 +1672,14 @@ main(int argc, char **argv)
 
 	  traceLog(TRACE_NORMAL, "n_ports = %d\n", n_ports);
 
+		
+		static pthread_t tid;
+		TAILQ_INIT(&rq_head);
+		
+		int ret = pthread_create(&tid, NULL, (void *)process_refresh_queue, NULL);	
+		if (ret != 0)
+			rte_exit(EXIT_FAILURE, "Cannot create refresh_queue thread\n");
+	
 	 /*
 	  === (commented out in original -- left)
 	  const struct rte_memzone *mz;
