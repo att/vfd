@@ -266,6 +266,10 @@ extern vf_config_t*	read_config( char* fname ) {
 		} else {
 			vfc->link_status = strdup( "auto" );
 		}
+
+		if(  (stuff = jw_string( jblob, "vm_mac" )) ) {
+			vfc->vm_mac = strdup( stuff );
+		}
 	
 		if( (vfc->nvlans = jw_array_len( jblob, "vlans" )) > 0 ) {						// pick up values from the json array
 			vfc->vlans = malloc( sizeof( *vfc->vlans ) * vfc->nvlans );

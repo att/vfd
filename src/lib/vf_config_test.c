@@ -42,6 +42,7 @@ int main( int argc, char** argv ) {
 		fprintf( stderr, "\tallow_un_ucast: %d\n", vfc->allow_un_ucast );
 		fprintf( stderr, "\tantispoof_mac: %d\n", vfc->antispoof_mac );
 		fprintf( stderr, "\tantispoof_vlan: %d\n", vfc->antispoof_vlan );
+		fprintf( stderr, "\tvm_mac: %s\n", vfc->vm_mac );
 		fprintf( stderr, "\tlink_status: %s\n", vfc->link_status );
 
 		fprintf( stderr, "\tnvlans: %d\n", vfc->nvlans );
