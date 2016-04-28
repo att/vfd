@@ -432,10 +432,12 @@ is_rx_queue_on(portid_t port_id, uint16_t vf_id)
 	
   uint32_t ctrl = port_pci_reg_read(port_id, reg_off);
 
-  traceLog(TRACE_DEBUG, "RX_QUEUS_ENA, bar=0x%08X, vfid_id=%d, ctrl=0x%08X)\n", reg_off, vf_id, ctrl);
+  bleat_printf( 5, "RX_QUEUS_ENA, bar=0x%08X, port=%d vfid_id=%d, ctrl=0x%08X)", port_id, reg_off, vf_id, ctrl);		// these happen too frequently if a VM goes away; only if really verbose
 	
-	if( ctrl & 0x2000000)
+	if( ctrl & 0x2000000) {
+  		bleat_printf( 3, "first queue active: bar=0x%08X, port=%d vfid_id=%d, ctrl=0x%08X)", reg_off, port_id, vf_id, ctrl);
 		return 1;
+	}
 	else
 		return 0;
 }
@@ -493,7 +495,7 @@ process_refresh_queue(void)
 			//printf("checking the queue:  PORT: %d, VF: %d, Enabled: %d\n", refresh_item->port_id, refresh_item->vf_id, refresh_item->enabled);
 			/* check if item's q is enabled, update VF and remove item from queue */
 			if(refresh_item->enabled){
-				printf("updating VF: %d\n", refresh_item->vf_id);
+				bleat_printf( 3, "refresh item enabled: updating VF: %d", refresh_item->vf_id);
 
 				restore_vf_setings(refresh_item->port_id, refresh_item->vf_id);
 				
