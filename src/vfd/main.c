@@ -24,6 +24,8 @@
 				21 Apr 2016 - Insert tag option now mirrors the setting for strip tag.
 				24 Apr 2016 - Redid signal handling to trap anything that has a default action
 							that isn't ignore; we must stop gracefully at all costs.
+				29 Apr 2016 - Removed redundant code in restore_vf_setings(); now calls 
+							update_nic() function.
 */
 
 
@@ -39,6 +41,7 @@
 #define ADDED	1				// updated states
 #define DELETED (-1)
 #define UNCHANGED 0
+#define RESET	2
 
 #define RT_NOP	0				// request types
 #define RT_ADD	1
@@ -1243,11 +1246,11 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 			}
 
 			if( parms->forreal ) {
-				traceLog(TRACE_DEBUG, "SET PROMISCUOUS: %d, VF: %d ", port->rte_port_number, vf->num);
+				traceLog(TRACE_DEBUG, "set promiscuous: %d, VF: %d ", port->rte_port_number, vf->num);
 				uint16_t rx_mode = 0;
 		
 		
-				// az says: figure this out if we have to update it every time we change VLANS/MACS
+				// az says: figure out if we have to update it every time we change VLANS/MACS
 				// 			or once when update ports config
 				rte_eth_promiscuous_enable(port->rte_port_number);
 				rte_eth_allmulticast_enable(port->rte_port_number);
@@ -1393,7 +1396,7 @@ void
 restore_vf_setings(uint8_t port_id, int vf_id) {
 	dump_sriov_config(running_config);
 	int i;
-	int on = 1;
+	//int on = 1;
 	int matched = 0;		// number matched for log
 
 	bleat_printf( 3, "restore settings begins" );
@@ -1402,94 +1405,24 @@ restore_vf_setings(uint8_t port_id, int vf_id) {
 
 		if (port_id == port->rte_port_number){
 
-		int y;
-		for(y = 0; y < port->num_vfs; ++y){
-			struct vf_s *vf = &port->vfs[y];
+			int y;
+			for(y = 0; y < port->num_vfs; ++y){
+				struct vf_s *vf = &port->vfs[y];
 
-			if(vf_id == vf->num){
-				uint32_t vf_mask = VFN2MASK(vf->num);
+				if(vf_id == vf->num){
+					//uint32_t vf_mask = VFN2MASK(vf->num);
 
-				matched++;									// for bleat message at end
-
-				int v;
-				for(v = 0; v < vf->num_vlans; ++v) {			// for refresh, we'll turn them off first
-					int vlan = vf->vlans[v];
-
-					set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, 0);
-				}
-	
-				for(v = 0; v < vf->num_vlans; ++v) {				// enable vlan ids set from config
-					int vlan = vf->vlans[v];
-
-					bleat_printf( 2, "refresh: %s vf: %d set vlan %d", port->name, vf->num, vlan );
-					set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, on);
-				}
-	
-				int m;
-				for(m = 0; m < vf->num_macs; ++m) {					// for refresh we'll disable them first
-					char *mac = vf->macs[m];
-
-					set_vf_rx_mac(port->rte_port_number, mac, vf->num, 0);
-				}
-
-				char *mac;
-				for(m = 0; m < vf->num_macs; ++m) {					// enable all mac addresses in the list
-					mac = vf->macs[m];
-
-					bleat_printf( 2, "refresh: %s vf: %d enable mac %s", port->name, vf->num, mac );
-					set_vf_rx_mac(port->rte_port_number, mac, vf->num, 1);
-				}
-
-
-				// set VLAN anti spoofing when VLAN filter is used
-
-				bleat_printf( 2, "refresh: %s vf: %d set anti-spoof %d", port->name, vf->num, vf->vlan_anti_spoof );
-				set_vf_vlan_anti_spoofing(port->rte_port_number, vf->num, vf->vlan_anti_spoof);
-			
-				bleat_printf( 2, "refresh: %s vf: %d set mac-anti-spoof %d", port->name, vf->num, vf->mac_anti_spoof );
-				set_vf_mac_anti_spoofing(port->rte_port_number, vf->num, vf->mac_anti_spoof);
-
-				vfd_set_ins_strip( port, vf );				// set insert/strip options
-/*
-now wrapped in ins_strip()
-				bleat_printf( 2, "refresh: %s vf: %d set strip vlan tag %d", port->name, vf->num, vf->strip_stag );
-				rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag);
-		
-				bleat_printf( 2, "refresh: %s vf: %d set insert vlan tag %d", port->name, vf->num, vf->strip_stag );
-				//CAUTION: per 03/02/2016 meeting insert stag option removed from config; this mirrors the strip setting
-				tx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag);
-*/
-			
-
-
-				bleat_printf( 2, "refresh: %s vf: %d set allow broadcast %d", port->name, vf->num, vf->allow_bcast );
-				set_vf_allow_bcast(port->rte_port_number, vf->num, vf->allow_bcast);
-
-				bleat_printf( 2, "refresh: %s vf: %d set allow multicast %d", port->name, vf->num, vf->allow_mcast );
-				set_vf_allow_mcast(port->rte_port_number, vf->num, vf->allow_mcast);
-
-				bleat_printf( 2, "refresh: %s vf: %d set allow un-ucast %d", port->name, vf->num, vf->allow_un_ucast );
-				set_vf_allow_un_ucast(port->rte_port_number, vf->num, vf->allow_un_ucast);
-
-				rte_eth_promiscuous_enable(port->rte_port_number);
-				rte_eth_allmulticast_enable(port->rte_port_number);
-				int ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
-
-				// don't accept untagged frames
-				uint16_t rx_mode = 0;
-				rx_mode |= ETH_VMDQ_ACCEPT_UNTAG;
-				ret = rte_eth_dev_set_vf_rxmode(port->rte_port_number, vf->num, rx_mode, !on);
-		
-				if (ret < 0)
-					traceLog(TRACE_DEBUG, "set_vf_allow_untagged(): bad VF receive mode parameter, return code = %d \n", ret);    					
-
-					// TODO -- should be safe to return here -- shouldn't be but one to match
+					matched++;															// for bleat message at end
+					vf->last_updated = RESET;											// flag for update_nic()
+					if( vfd_update_nic( g_parms, &running_config ) != 0 ) {				// now that dpdk is initialised run the list and 'activate' everything
+						bleat_printf( 0, "WRN: reset of port %d vf %d failed", port_id, vf_id );
+					}
 				}
 			}
 		}
 	}
 
-	bleat_printf( 1, "refresh for  port=%d vf=%d matched %d vfs in the config", port_id, vf_id, matched );
+	bleat_printf( 1, "restore for  port=%d vf=%d matched %d vfs in the config", port_id, vf_id, matched );
 }
 
 
@@ -1548,8 +1481,8 @@ dump_sriov_config(struct sriov_conf_c sriov_config)
 int
 main(int argc, char **argv)
 {
-	__attribute__((__unused__))	int ignored;				// ignored return code to keep compiler from whining
-	char*	parm_file = NULL;							// default in /etc, -p overrieds
+	__attribute__((__unused__))	int ignored;	// ignored return code to keep compiler from whining
+	char*	parm_file = NULL;					// default in /etc, -p overrieds
 	char	log_file[1024];				// buffer to build full log file in
 	char	run_asynch = 1;				// -f sets off to keep attached to tty
 	int		forreal = 1;				// -n sets to 0 to keep us from actually fiddling the nic
@@ -1580,7 +1513,7 @@ main(int argc, char **argv)
 	parm_file = strdup( "/etc/vfd/vfd.cfg" );				// set default before command line parsing as -p overrides
 
   // Parse command line options
-  while ( (opt = getopt(argc, argv, "fhnv:p:s:")) != -1)			// f,c  dropped
+  while ( (opt = getopt(argc, argv, "fhnv:p:s:")) != -1)
   {
     switch (opt)
     {
@@ -1618,7 +1551,7 @@ main(int argc, char **argv)
 
 
 	if( (g_parms = read_parms( parm_file )) == NULL ) {						// get overall configuration (includes list of pciids we manage)
-		fprintf( stderr, "unable to read configuration from %s: %s\n", parm_file, strerror( errno ) );
+		fprintf( stderr, "CRI: unable to read configuration from %s: %s\n", parm_file, strerror( errno ) );
 		exit( 1 );
 	}
 
@@ -1655,11 +1588,8 @@ main(int argc, char **argv)
 		bleat_printf( 1, "starting rte initialisation" );
 		rte_set_log_type(RTE_LOGTYPE_PMD && RTE_LOGTYPE_PORT, 0);
 		
-		traceLog(TRACE_INFO, "LOG LEVEL = %d, LOG TYPE = %d\n", rte_get_log_level(), rte_log_cur_msg_logtype());
-
-		
+		traceLog(TRACE_INFO, "log level = %d, log type = %d\n", rte_get_log_level(), rte_log_cur_msg_logtype());
 		rte_set_log_level( g_parms->dpdk_init_log_level );
-		
 
 		n_ports = rte_eth_dev_count();
 		bleat_printf( 1, "hardware reports %d ports", n_ports );
@@ -1667,18 +1597,16 @@ main(int argc, char **argv)
 
 	  if(n_ports != running_config.num_ports) {
 		bleat_printf( 1, "WRN: port count mismatch: config lists %d device has %d", running_config.num_ports, n_ports );
-		traceLog(TRACE_ERROR, "ports found (%d) != ports requested (%d)\n", n_ports, running_config.num_ports);
 	  }
 
-	  traceLog(TRACE_NORMAL, "n_ports = %d\n", n_ports);
-
-		
 		static pthread_t tid;
 		TAILQ_INIT(&rq_head);
 		
 		int ret = pthread_create(&tid, NULL, (void *)process_refresh_queue, NULL);	
-		if (ret != 0)
+		if (ret != 0) {
+			bleat_printf( 0, "CRI: abort: cannot crate refresh_queue thread" );
 			rte_exit(EXIT_FAILURE, "Cannot create refresh_queue thread\n");
+		}
 	
 	 /*
 	  === (commented out in original -- left)
@@ -1722,7 +1650,6 @@ main(int argc, char **argv)
 		}
 		bleat_printf( 2, "port initialisation complete" );
 	
-
 	
 		bleat_printf( 1, "looping over %d ports to map indexes", n_ports );
 	  int port;
@@ -1741,13 +1668,9 @@ main(int argc, char **argv)
 
 
 
-		//traceLog(TRACE_INFO, "Driver Name: %s, Index %d, Pkts rx: %lu, ", dev_info.driver_name, dev_info.if_index, st.pcount);
-		bleat_printf( 1, "driver: %s, Index %d, Pkts rx: %lu, ", dev_info.driver_name, dev_info.if_index, st.pcount);
-		
-		//traceLog(TRACE_INFO, "PCI: %04X:%02X:%02X.%01X, Max VF's: %d, Numa: %d\n\n", dev_info.pci_dev->addr.domain, dev_info.pci_dev->addr.bus, dev_info.pci_dev->addr.devid, dev_info.pci_dev->addr.function, dev_info.max_vfs, dev_info.pci_dev->numa_node);
+		bleat_printf( 1, "driver: %s, index %d, pkts rx: %lu", dev_info.driver_name, dev_info.if_index, st.pcount);
 		bleat_printf( 1, "pci: %04X:%02X:%02X.%01X, max VF's: %d, numa: %d", dev_info.pci_dev->addr.domain, dev_info.pci_dev->addr.bus,
 				dev_info.pci_dev->addr.devid , dev_info.pci_dev->addr.function, dev_info.max_vfs, dev_info.pci_dev->numa_node);
-
 				
 		/*
 		 * rte could enumerate ports differently than in config files
@@ -1778,15 +1701,9 @@ main(int argc, char **argv)
 
 	  gettimeofday(&st.startTime, NULL);
 
-	  traceLog(TRACE_NORMAL, "starting sriovctl loop\n");
-	
-
-	  //update_ports_config();
-
 		if( g_parms->stats_path != NULL  ) {
 			if(  mkfifo( g_parms->stats_path, 0666) != 0) {
 				bleat_printf( 2, "creattion of stats pipe failed: %s", g_parms->stats_path, strerror( errno ) );
-				//traceLog(TRACE_ERROR, "can't create pipe: %s, %d\n", STATS_FILE, errno);
 			} else {
 				bleat_printf( 2, "created stats pipe: %s", g_parms->stats_path );
 				have_pipe = 1;
@@ -1795,20 +1712,14 @@ main(int argc, char **argv)
 			bleat_printf( 2, "stats pipe not created, not defined in g_parms" );
 		}
 
-	  /*
-		FILE * dump = fopen("/tmp/pci_dump.txt", "w");
-		rte_eal_pci_dump(dump);
-		fclose (dump);
-		*/
-
 		bleat_printf( 1, "dpdk setup complete" );
 	} else {
 		bleat_printf( 1, "no action mode: skipped dpdk setup, signal initialisation, and device discovery" );
 	}
 
-	g_parms->initialised = 1;								// safe to update nic now
-	vfd_add_all_vfs( g_parms, &running_config );			// read all existing config files and add the VFs to the config
-	if( vfd_update_nic( g_parms, &running_config ) != 0 ) {							// now that dpdk is initialised run the list and 'activate' everything
+	g_parms->initialised = 1;											// safe to update nic now
+	vfd_add_all_vfs( g_parms, &running_config );						// read all existing config files and add the VFs to the config
+	if( vfd_update_nic( g_parms, &running_config ) != 0 ) {				// now that dpdk is initialised run the list and 'activate' everything
 		bleat_printf( 0, "CRI: abort: unable to initialise nic with base config:" );
 		if( forreal ) {
 			rte_exit( EXIT_FAILURE, "initialisation failure, see log(s) in: %s\n", g_parms->log_dir );
@@ -1829,6 +1740,7 @@ main(int argc, char **argv)
 	if( forreal ) {
 		rte_set_log_level( g_parms->dpdk_log_level );
 	}
+
 	while(!terminated)
 	{
 		usleep(50000);			// .5s

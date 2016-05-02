@@ -61,9 +61,10 @@ typedef struct {
 	int		antispoof_mac;	//	bool -- forced to true but here for future
 	int		antispoof_vlan;	//	bool -- forced to true but here for future
 	char*	link_status;	// on, off, auto
+	char*	vm_mac;			// the mac to force onto the VF (optional)
 	int*	vlans;			// array of vlan IDs
 	int		nvlans;			// number of vlans allocated
-	char**	macs;			// array of mac addresses
+	char**	macs;			// array of mac addresses (filter)
 	int		nmacs;			// number of mac addresses
 	float	rate;			// percentage of the total link speed this to be confined to (rate limiting)
 	// ignoring mirrors right now
