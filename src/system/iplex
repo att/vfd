@@ -9,6 +9,7 @@
     Mod:        2016 3 Mar - Created script
                 2016 11 Mar - Add ping, verbose functionality
                 2016 17 Mar - Add logging functionality
+                2016 25 Apr - Cleanup code
 """
 
 __doc__ = """ iplex
@@ -19,7 +20,6 @@ __doc__ = """ iplex
     iplex ping
     iplex -h | --help
     iplex --version
-
     Options:
         -h, --help      show this help message and exit
         --version       show version and exit
@@ -36,12 +36,11 @@ import ast
 import time
 from logging.handlers import RotatingFileHandler
 
-LOG_DIR = '/var/log/vfd'
 VFD_CONFIG = '/etc/vfd/vfd.cfg'
 
 # logging
-def setup_logging(logfile):
-    handler = RotatingFileHandler(os.path.join(LOG_DIR, logfile), maxBytes=200000, backupCount=20)
+def setup_logging(logfile, config_data):
+    handler = RotatingFileHandler(os.path.join(config_data["log_dir"], logfile), maxBytes=200000, backupCount=20)
     log_formatter = logging.Formatter('%(asctime)s  %(process)s %(levelname)s %(name)s [-] %(message)s')
     handler.setFormatter(log_formatter)
     log = logging.getLogger('iplex')
@@ -77,14 +76,14 @@ class Iplex(object):
     def add(self, port_id):
         self.filename = self.__validate_file(port_id)
         self.resp_fifo = self.__create_fifo()
-        msg = self.__request_message('add', self.filename, self.resp_fifo)
+        msg = self.__request_message('add')
         self.__write_read_fifo(msg)
         return
 
     def delete(self, port_id):
         self.filename = self.__validate_file(port_id)
         self.resp_fifo = self.__create_fifo()
-        msg = self.__request_message('delete', self.filename, self.resp_fifo)
+        msg = self.__request_message('delete')
         self.__write_read_fifo(msg)
         return
 
@@ -94,21 +93,21 @@ class Iplex(object):
         else:
             self.filename = self.__validate_file(port_id)
         self.resp_fifo = self.__create_fifo()
-        msg = self.__request_message('show', self.filename, self.resp_fifo)
+        msg = self.__request_message('show')
         self.__write_read_fifo(msg)
         return
 
     def verbose(self):
         self.filename=None
         self.resp_fifo = self.__create_fifo()
-        msg = self.__request_message('verbose', self.filename, self.resp_fifo)
+        msg = self.__request_message('verbose')
         self.__write_read_fifo(msg)
         return
 
     def ping(self):
         self.filename = None
         self.resp_fifo = self.__create_fifo()
-        msg = self.__request_message('ping', self.filename, self.resp_fifo)
+        msg = self.__request_message('ping')
         self.__write_read_fifo(msg)
         return
 
@@ -122,14 +121,14 @@ class Iplex(object):
 
     # validate file whether vf config resides at /var/lib/vfd/config
     def __validate_file(self, port_id):
-        filename = port_id
-        if os.path.isfile(os.path.join(self.config_data['config_dir'], self.options['<port-id>'])+'.json'):
-            filename = os.path.join(self.config_data['config_dir'], self.options['<port-id>'])+'.json'
+        filename = None
+        if os.path.isfile(os.path.join(self.config_data['config_dir'], port_id)+'.json'):
+            filename = os.path.join(self.config_data['config_dir'], port_id)+'.json'
             self.log.info("valid vf config file: %s", filename)
             return filename
         else:
             self.__errMsg("VF config for {} doesn't exist".format(port_id))
-            self.log.error("VF config for %s doesn't exist", filename)
+            self.log.error("VF config for %s doesn't exist", port_id)
             sys.exit(1)
 
     # Create private fifo
@@ -144,14 +143,14 @@ class Iplex(object):
         return resp_fifo
 
     # Build the request message
-    def __request_message(self, action, filename, resp_fifo):
+    def __request_message(self, action):
         msg = {}
         msg["action"] = action
         msg["params"] = {}
-        if filename is not None:
-            msg["params"]["filename"] = filename
+        if self.filename is not None:
+            msg["params"]["filename"] = self.filename
         msg["params"]["loglevel"] = int(self.options["--loglevel"])
-        msg["params"]["r_fifo"] = resp_fifo
+        msg["params"]["r_fifo"] = self.resp_fifo
         self.log.info("REQUEST MESSAGE: %s", msg)
         return json.dumps(msg)
 
@@ -192,8 +191,8 @@ class Iplex(object):
 
 if __name__ == '__main__':
     options = docopt(__doc__, version='1.1')
-    log = setup_logging('iplex.log')
     config_data = read_config()
+    log = setup_logging('iplex.log', config_data)
     iplex = Iplex(config_data, options, log)
     if options['add']:
         iplex.add(options['<port-id>'])
@@ -206,3 +205,4 @@ if __name__ == '__main__':
     else:
         if options['show']:
             iplex.show(options['<port-id>'], options['all'])
+

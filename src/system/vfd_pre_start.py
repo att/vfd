@@ -2,13 +2,13 @@
 # vi: sw=4 ts=4:
 
 """
-	Mnemonic:		vfd_pre_start.py
-	Abstract:		This script calls the 'dpdk_nic_bind' script to bind PF's and VF's to vfio-pci
-    	Date:		7 April 2016
-    	Author:		Dhanunjaya Naidu Ravada (dr3662@att.com)
-    	Mod:		2016 7 Apr - Created script
-    				2016 8 Apr - fix to index out of bound error
-    				2016 22 Apr - remove unloading ixgbevf driver
+    Mnemonic:       vfd_pre_start.py
+    Abstract:       This script calls the 'dpdk_nic_bind' script to bind PF's and VF's to vfio-pci
+    Date:           April 2016
+    Author:         Dhanunjaya Naidu Ravada (dr3662@att.com)
+    Mod:            2016 7 Apr - Created script
+                    2016 8 Apr - fix to index out of bound error
+                    2016 22 Apr - remove unloading ixgbevf driver
 """
 
 import subprocess
@@ -18,8 +18,8 @@ import logging
 from logging.handlers import RotatingFileHandler
 import os
 
-VFD_CONFIG='/etc/vfd/vfd.cfg'
-SYS_DIR="/sys/devices"
+VFD_CONFIG = '/etc/vfd/vfd.cfg'
+SYS_DIR = "/sys/devices"
 LOG_DIR = '/var/log/vfd'
 
 # global pciids list
