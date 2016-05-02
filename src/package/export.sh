@@ -18,6 +18,8 @@ function build_it
 {
 	(
 		set -e
+        cd $src_dir/src/lib
+        git clone https://github.com/att/dpdk.git -b vf-agent-dpdk
 		cd $src_dir/src/lib/dpdk
 		echo "building dpdk...."
 		make install T=x86_64-native-linuxapp-gcc
