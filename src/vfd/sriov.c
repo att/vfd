@@ -420,6 +420,7 @@ tx_set_loopback(portid_t port_id, u_int8_t on)
 int 
 is_rx_queue_on(portid_t port_id, uint16_t vf_id)
 {
+	static int	count = 0;
 	/* check if first queue in the pool is active */
 	
 	struct rte_eth_dev *pf_dev = &rte_eth_devices[port_id];
@@ -437,9 +438,13 @@ is_rx_queue_on(portid_t port_id, uint16_t vf_id)
 	if( ctrl & 0x2000000) {
   		bleat_printf( 3, "first queue active: bar=0x%08X, port=%d vfid_id=%d, ctrl=0x%08X)", reg_off, port_id, vf_id, ctrl);
 		return 1;
-	}
-	else
+	} else {
+		if( (count % 50 ) == 0 ) {
+  			bleat_printf( 2, "still pending: first queue not active: bar=0x%08X, port=%d vfid_id=%d, ctrl=0x%08X)", reg_off, port_id, vf_id, ctrl);
+		}
+		count++;
 		return 0;
+	}
 }
 
 
@@ -474,11 +479,30 @@ add_refresh_queue(u_int8_t port_id, uint16_t vf_id)
 	refresh_item->port_id = port_id;
 	refresh_item->vf_id = vf_id;
 	refresh_item->enabled = is_rx_queue_on(port_id, vf_id);
-	
+	bleat_printf( 2, "adding refresh to queue for %d/%d", port_id, vf_id );
 	
 	rte_spinlock_lock(&rte_refresh_q_lock);
 	TAILQ_INSERT_TAIL(&rq_head, refresh_item, rq_entries);	
 	rte_spinlock_unlock(&rte_refresh_q_lock);
+}
+
+/*
+	If a queued block for port/vf exists, mark it enabled.
+*/
+static void enable_refresh_queue(u_int8_t port_id, uint16_t vf_id)
+{
+	struct rq_entry *refresh_item;
+	
+	bleat_printf( 3, "enable is looking for: %d %d", port_id, vf_id );
+	rte_spinlock_lock(&rte_refresh_q_lock);
+	TAILQ_FOREACH(refresh_item, &rq_head, rq_entries) {
+		if (refresh_item->port_id == port_id && refresh_item->vf_id == vf_id){
+			bleat_printf( 2, "enabling %d/%d", port_id, vf_id );
+			refresh_item->enabled = 1;
+		}
+	}
+	rte_spinlock_unlock(&rte_refresh_q_lock);
+	return;
 }
 
 void
@@ -487,7 +511,7 @@ process_refresh_queue(void)
 	while(1) {
 		
 		usleep(200000);
-		struct rq_entry *refresh_item;;
+		struct rq_entry *refresh_item;
 		
 		rte_spinlock_lock(&rte_refresh_q_lock);
 		TAILQ_FOREACH(refresh_item, &rq_head, rq_entries){
@@ -495,7 +519,7 @@ process_refresh_queue(void)
 			//printf("checking the queue:  PORT: %d, VF: %d, Enabled: %d\n", refresh_item->port_id, refresh_item->vf_id, refresh_item->enabled);
 			/* check if item's q is enabled, update VF and remove item from queue */
 			if(refresh_item->enabled){
-				bleat_printf( 3, "refresh item enabled: updating VF: %d", refresh_item->vf_id);
+				bleat_printf( 2, "refresh item enabled: updating VF: %d", refresh_item->vf_id);
 
 				restore_vf_setings(refresh_item->port_id, refresh_item->vf_id);
 				
@@ -689,7 +713,7 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			struct ether_addr *new_mac = (struct ether_addr *)(&p[1]);
 			
 			if (is_valid_assigned_ether_addr(new_mac)) {
-				traceLog(TRACE_DEBUG, "SETTING MAC, VF %u, MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
+				traceLog(TRACE_DEBUG, "setting mac, vf %u, MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
 					" %02" PRIx8 " %02" PRIx8 " %02" PRIx8 "\n",
 					(uint32_t)vf,
 					new_mac->addr_bytes[0], new_mac->addr_bytes[1],
@@ -710,7 +734,7 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			new_mac = (struct ether_addr *)(&p[1]);
 
 			if (is_valid_assigned_ether_addr(new_mac)) {
-				traceLog(TRACE_DEBUG, "SETTING MCAST, VF %u, MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
+				traceLog(TRACE_DEBUG, "setting mcast, vf %u, MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
 					" %02" PRIx8 " %02" PRIx8 " %02" PRIx8 "\n",
 					(uint32_t)vf,
 					new_mac->addr_bytes[0], new_mac->addr_bytes[1],
@@ -725,7 +749,7 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			*((int*) param) = RTE_ETH_MB_EVENT_PROCEED;
 
 			//traceLog(TRACE_DEBUG, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_VLAN");
-			//traceLog(TRACE_DEBUG, "SETTING VLAN ID = %d\n", p[1]);
+			//traceLog(TRACE_DEBUG, "setting vlan id = %d\n", p[1]);
 			break;
 
 		case IXGBE_VF_SET_LPE:
@@ -739,14 +763,18 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			}
 
 			//traceLog(TRACE_DEBUG, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_LPE");
-			//traceLog(TRACE_DEBUG, "SETTING MTU = %d\n", p[1]);
+			//traceLog(TRACE_DEBUG, "setting mtu = %d\n", p[1]);
 			break;
 
 		case IXGBE_VF_SET_MACVLAN:
 			bleat_printf( 1, "set macvlan event received: port=%d (responding nop+nak)", port_id );
 			*(int*) param =  RTE_ETH_MB_EVENT_NOOP_NACK;    /* noop & nack */
-			traceLog(TRACE_DEBUG, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_MACVLAN");
-			traceLog(TRACE_DEBUG, "SETTING MAC_VLAN = %d\n", p[1]);
+			traceLog(TRACE_DEBUG, "type: %d, port: %d, vf: %d, out: %d, _T: %s ", type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_MACVLAN");
+			traceLog(TRACE_DEBUG, "setting mac_vlan = %d\n", p[1]);
+			//bleat_printf( 3, "calling enable with: %d %d", port_id, vf );
+
+			// ### this is a hack, but until we see a queue ready everywhere/everytime we assume we can enable things when we see this message
+			enable_refresh_queue( port_id, vf );
 			break;
 
 		case IXGBE_VF_API_NEGOTIATE:
