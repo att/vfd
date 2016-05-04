@@ -1338,7 +1338,7 @@ sig_ign( int sig ) {
 */
 static void set_signals( void ) {
 	struct sigaction sa;
-	int	sig_list[] = { SIGQUIT, SIGILL, SIGABRT, SIGFPE, SIGKILL, SIGSEGV, SIGPIPE,		// list of signals we trap
+	int	sig_list[] = { SIGQUIT, SIGILL, SIGABRT, SIGFPE, SIGSEGV, SIGPIPE,				// list of signals we trap
        				SIGALRM, SIGTERM, SIGUSR1 , SIGUSR2, SIGBUS, SIGPROF, SIGSYS, 
 					SIGTRAP, SIGURG, SIGVTALRM, SIGXCPU, SIGXFSZ, SIGIO, SIGWINCH };
 
