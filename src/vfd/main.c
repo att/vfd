@@ -1154,7 +1154,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 	
 				ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
 				if (ret < 0)
-					traceLog(TRACE_ERROR, "bad unicast hash table parameter, return code = %d \n", ret);
+					bleat_printf( 0, "ERR: bad unicast hash table parameter, return code = %d \n", ret);
 	
 			} else {
 				bleat_printf( 1, "port update commands not sent (forreal is off): %s/%s",  port->name, port->pciid );
@@ -1185,7 +1185,6 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 							set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, 0);		// remove the vlan id from the list
 					}
 				} else {
-					//traceLog(TRACE_DEBUG, "ADDING VLANS, VF: %d ", vf->num);
 					int v;
 					for(v = 0; v < vf->num_vlans; ++v) {
 						int vlan = vf->vlans[v];
@@ -1251,7 +1250,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 
 			if( vf->num >= 0 ) {
 				if( parms->forreal ) {
-					traceLog(TRACE_DEBUG, "set promiscuous: %d, VF: %d ", port->rte_port_number, vf->num);
+					bleat_printf( 3, "set promiscuous: %d, VF: %d ", port->rte_port_number, vf->num);
 					uint16_t rx_mode = 0;
 			
 			
@@ -1267,7 +1266,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 					ret = rte_eth_dev_set_vf_rxmode(port->rte_port_number, vf->num, rx_mode, !on);
 			
 					if (ret < 0)
-						traceLog(TRACE_DEBUG, "set_vf_allow_untagged(): bad VF receive mode parameter, return code = %d \n", ret);
+						bleat_printf( 3, "set_vf_allow_untagged(): bad VF receive mode parameter, return code = %d \n", ret);
 				} else {
 					bleat_printf( 1, "skipped end round updates to port: %s", port->pciid );
 				}
@@ -1555,6 +1554,7 @@ main(int argc, char **argv)
 		fprintf( stderr, "CRI: unable to read configuration from %s: %s\n", parm_file, strerror( errno ) );
 		exit( 1 );
 	}
+	free( parm_file );
 
 	g_parms->forreal = forreal;												// fill in command line captured things that are passed in parms
 
@@ -1567,6 +1567,7 @@ main(int argc, char **argv)
 	} else {
 		bleat_printf( 2, "-f supplied, staying attached to tty" );
 	}
+	free( log_file );
 	bleat_set_lvl( g_parms->init_log_level );											// set default level
 	bleat_printf( 0, "VFD initialising" );
 	bleat_printf( 0, "config dir set to: %s", g_parms->config_dir );
@@ -1588,7 +1589,7 @@ main(int argc, char **argv)
 		bleat_printf( 1, "starting rte initialisation" );
 		rte_set_log_type(RTE_LOGTYPE_PMD && RTE_LOGTYPE_PORT, 0);
 		
-		traceLog(TRACE_INFO, "log level = %d, log type = %d\n", rte_get_log_level(), rte_log_cur_msg_logtype());
+		bleat_printf( 2, "log level = %d, log type = %d\n", rte_get_log_level(), rte_log_cur_msg_logtype());
 		rte_set_log_level( g_parms->dpdk_init_log_level );
 
 		n_ports = rte_eth_dev_count();
@@ -1689,7 +1690,10 @@ main(int argc, char **argv)
 		bleat_printf( 1, "no action mode: skipped dpdk setup, signal initialisation, and device discovery" );
 	}
 
-	g_parms->initialised = 1;											// safe to update nic now
+	if( g_parms->forreal ) {
+		g_parms->initialised = 1;											// safe to update nic now, but only if in forreal mode
+	}
+
 	vfd_add_all_vfs( g_parms, &running_config );						// read all existing config files and add the VFs to the config
 	if( vfd_update_nic( g_parms, &running_config ) != 0 ) {				// now that dpdk is initialised run the list and 'activate' everything
 		bleat_printf( 0, "CRI: abort: unable to initialise nic with base config:" );
