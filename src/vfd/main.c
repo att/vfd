@@ -51,6 +51,8 @@
 #define RT_VERBOSE 5
 #define RT_DUMP 6
 
+#define BUF_1K	1024			// simple buffer size constants
+
 // --- local structs --------------------------------------------------------------------------------------------
 
 typedef struct request {
@@ -370,7 +372,7 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 	int	hole = -1;						// first hole in the list;
 	struct sriov_port_s* port = NULL;	// reference to a single port in the config
 	struct vf_s*	vf;		// point at the vf we need to fill in
-	char mbuf[1024];					// message buffer if we fail
+	char mbuf[BUF_1K];					// message buffer if we fail
 	int tot_vlans = 0;					// must count vlans and macs to ensure limit not busted
 	int tot_macs = 0;
 	
@@ -643,7 +645,7 @@ static int vfd_del_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 	int	i;
 	int vidx;							// index into the vf array
 	struct sriov_port_s* port = NULL;	// reference to a single port in the config
-	char mbuf[1024];					// message buffer if we fail
+	char mbuf[BUF_1K];					// message buffer if we fail
 	
 	if( conf == NULL || fname == NULL ) {
 		bleat_printf( 0, "vfd_del_vf called with nil config or filename pointer" );
@@ -737,7 +739,7 @@ static int vfd_del_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 */
 static void vfd_response( char* rpipe, int state, const char* msg ) {
 	int 	fd;
-	char	buf[1024];
+	char	buf[BUF_1K];
 	unsigned int		len = 0;
 
 	if( rpipe == NULL ) {
@@ -1133,14 +1135,16 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 
 	for (i = 0; i < conf->num_ports; ++i){							// run each port we know about
 		int ret;
-		
+		struct sriov_port_s* port;
+
+
+		port = &conf->ports[i];
+
 		/*
 		* disable loop back, pin traffic between VM's on the same VLAN via TOR
 		* will need to have this functionality configurable
 		*/
 		tx_set_loopback(i, 0); 
-				
-		struct sriov_port_s *port = &conf->ports[i];
 
 		if( port->last_updated == ADDED ) {								// updated since last call, reconfigure
 			if( parms->forreal ) {
@@ -1245,29 +1249,30 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 				vf->last_updated = UNCHANGED;				// mark processed
 			}
 
-			if( parms->forreal ) {
-				traceLog(TRACE_DEBUG, "set promiscuous: %d, VF: %d ", port->rte_port_number, vf->num);
-				uint16_t rx_mode = 0;
-		
-		
-				// az says: figure out if we have to update it every time we change VLANS/MACS
-				// 			or once when update ports config
-				rte_eth_promiscuous_enable(port->rte_port_number);
-				rte_eth_allmulticast_enable(port->rte_port_number);
-				ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
-		
-		
-				// don't accept untagged frames
-				rx_mode |= ETH_VMDQ_ACCEPT_UNTAG;
-				ret = rte_eth_dev_set_vf_rxmode(port->rte_port_number, vf->num, rx_mode, !on);
-		
-				if (ret < 0)
-					traceLog(TRACE_DEBUG, "set_vf_allow_untagged(): bad VF receive mode parameter, return code = %d \n", ret);
-			} else {
-				bleat_printf( 1, "skipped end round updates to port: %s", port->pciid );
+			if( vf->num >= 0 ) {
+				if( parms->forreal ) {
+					traceLog(TRACE_DEBUG, "set promiscuous: %d, VF: %d ", port->rte_port_number, vf->num);
+					uint16_t rx_mode = 0;
+			
+			
+					// az says: figure out if we have to update it every time we change VLANS/MACS
+					// 			or once when update ports config
+					rte_eth_promiscuous_enable(port->rte_port_number);
+					rte_eth_allmulticast_enable(port->rte_port_number);
+					ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
+			
+			
+					// don't accept untagged frames
+					rx_mode |= ETH_VMDQ_ACCEPT_UNTAG;
+					ret = rte_eth_dev_set_vf_rxmode(port->rte_port_number, vf->num, rx_mode, !on);
+			
+					if (ret < 0)
+						traceLog(TRACE_DEBUG, "set_vf_allow_untagged(): bad VF receive mode parameter, return code = %d \n", ret);
+				} else {
+					bleat_printf( 1, "skipped end round updates to port: %s", port->pciid );
+				}
 			}
 		}				// end for each vf on this port
-
     }     // end for each port
 
 	return 0;
@@ -1483,15 +1488,12 @@ main(int argc, char **argv)
 {
 	__attribute__((__unused__))	int ignored;	// ignored return code to keep compiler from whining
 	char*	parm_file = NULL;					// default in /etc, -p overrieds
-	char	log_file[1024];				// buffer to build full log file in
+	char*	log_file;							// buffer to build full log file in
 	char	run_asynch = 1;				// -f sets off to keep attached to tty
 	int		forreal = 1;				// -n sets to 0 to keep us from actually fiddling the nic
-	char	buff[1024];					// scratch write buffer
-	int		have_pipe = 0;				// false if we didn't open the stats pipe
 	int		opt;
 	int		fd = -1;
-	int		l;							// length of something
-	int 	i;
+
 
   const char * main_help =
 	"\n"
@@ -1504,13 +1506,12 @@ main(int argc, char **argv)
   "\t -s <num>  syslog facility 0-11 (log_kern - log_ftp) 16-23 (local0-local7) see /usr/include/sys/syslog.h\n"
 	"\t -h|?  Display this help screen\n";
 
-
-
 	struct rte_mempool *mbuf_pool = NULL;
 	prog_name = strdup(argv[0]);
  	useSyslog = 1;
 
 	parm_file = strdup( "/etc/vfd/vfd.cfg" );				// set default before command line parsing as -p overrides
+	log_file = (char *) malloc( sizeof( char ) * BUF_1K );
 
   // Parse command line options
   while ( (opt = getopt(argc, argv, "fhnv:p:s:")) != -1)
@@ -1557,7 +1558,7 @@ main(int argc, char **argv)
 
 	g_parms->forreal = forreal;												// fill in command line captured things that are passed in parms
 
-	snprintf( log_file, sizeof( log_file ), "%s/vfd.log", g_parms->log_dir );
+	snprintf( log_file, BUF_1K, "%s/vfd.log", g_parms->log_dir );
 	if( run_asynch ) {
 		bleat_printf( 1, "setting log to: %s", log_file );
 		bleat_printf( 3, "detaching from tty (daemonise)" );
@@ -1583,7 +1584,6 @@ main(int argc, char **argv)
 														// set up config structs. these always succeeed (see notes in README)
 	vfd_add_ports( g_parms, &running_config );			// add the pciid info from parms to the ports list (must do before dpdk init, config file adds wait til after)
 
-
 	if( g_parms->forreal ) {										// begin dpdk setup and device discovery
 		bleat_printf( 1, "starting rte initialisation" );
 		rte_set_log_type(RTE_LOGTYPE_PMD && RTE_LOGTYPE_PORT, 0);
@@ -1595,9 +1595,13 @@ main(int argc, char **argv)
 		bleat_printf( 1, "hardware reports %d ports", n_ports );
 
 
-	  if(n_ports != running_config.num_ports) {
-		bleat_printf( 1, "WRN: port count mismatch: config lists %d device has %d", running_config.num_ports, n_ports );
-	  }
+		if(n_ports < running_config.num_ports) {
+			bleat_printf( 1, "WRN: port count mismatch: config lists %d device has %d", running_config.num_ports, n_ports );
+		} else {
+	  		if (n_ports > running_config.num_ports ) {
+				bleat_printf( 1, "CRI: abort: config file reports more devices than dpdk reports: cfg=%d ndev=%d", running_config.num_ports, n_ports );
+			}
+		}
 
 		static pthread_t tid;
 		TAILQ_INIT(&rq_head);
@@ -1608,22 +1612,6 @@ main(int argc, char **argv)
 			rte_exit(EXIT_FAILURE, "Cannot create refresh_queue thread\n");
 		}
 	
-	 /*
-	  === (commented out in original -- left)
-	  const struct rte_memzone *mz;
-
-		bleat_printf( 1, "setting memory zones" );
-	  mz = rte_memzone_reserve(IF_PORT_INFO, sizeof(struct ifrate_s), rte_socket_id(), 0);
-		if (mz == NULL)
-			rte_exit(EXIT_FAILURE, "Cannot reserve memory zone for port information\n");
-	  memset(mz->addr, 0, sizeof(struct ifrate_s));
-	
-
-	  ifrate_stats = mz->addr;
-	
-	  bleat_printf( 1, "rate stats addr: %p", (void *)ifrate_stats);		// converted from plain printf
-	  ==== */
-
 		bleat_printf( 1, "creating memory pool" );
 		// Creates a new mempool in memory to hold the mbufs.
 		mbuf_pool = rte_pktmbuf_pool_create("sriovctl", NUM_MBUFS * n_ports,
@@ -1657,16 +1645,12 @@ main(int argc, char **argv)
 		struct rte_eth_dev_info dev_info;
 		rte_eth_dev_info_get(port, &dev_info);
 		
-		//struct ether_addr addr;
 		rte_eth_macaddr_get(port, &addr);
-		//traceLog(TRACE_INFO, "Port: %u, MAC: %02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ", ",
 		bleat_printf( 1,  "mapping port: %u, MAC: %02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ", ",
 			(unsigned)port,
 			addr.addr_bytes[0], addr.addr_bytes[1],
 			addr.addr_bytes[2], addr.addr_bytes[3],
 			addr.addr_bytes[4], addr.addr_bytes[5]);
-
-
 
 		bleat_printf( 1, "driver: %s, index %d, pkts rx: %lu", dev_info.driver_name, dev_info.if_index, st.pcount);
 		bleat_printf( 1, "pci: %04X:%02X:%02X.%01X, max VF's: %d, numa: %d", dev_info.pci_dev->addr.domain, dev_info.pci_dev->addr.bus,
@@ -1694,23 +1678,11 @@ main(int argc, char **argv)
 		}
 	  }
 
-
 		bleat_printf( 2, "indexes were mapped" );
 	
 		set_signals();				// register signal handlers 
 
-	  gettimeofday(&st.startTime, NULL);
-
-		if( g_parms->stats_path != NULL  ) {
-			if(  mkfifo( g_parms->stats_path, 0666) != 0) {
-				bleat_printf( 2, "creattion of stats pipe failed: %s", g_parms->stats_path, strerror( errno ) );
-			} else {
-				bleat_printf( 2, "created stats pipe: %s", g_parms->stats_path );
-				have_pipe = 1;
-			}
-		} else {
-			bleat_printf( 2, "stats pipe not created, not defined in g_parms" );
-		}
+		gettimeofday(&st.startTime, NULL);
 
 		bleat_printf( 1, "dpdk setup complete" );
 	} else {
@@ -1728,13 +1700,6 @@ main(int argc, char **argv)
 		}
 	}
 	
-	if( have_pipe ) {
-		fd = open( g_parms->stats_path, O_NONBLOCK | O_RDWR);		// must open non-block or it hangs until there is a reader
-		if( fd < 0 ) {
-			bleat_printf( 1, "could not open stats pipe: %s: %s", g_parms->stats_path, strerror( errno ) );
-		}
-	}
-
 	bleat_printf( 1, "initialisation complete, setting bleat level to %d; starting to looop", g_parms->log_level );
 	bleat_set_lvl( g_parms->log_level );					// initialisation finished, set log level to running level
 	if( forreal ) {
@@ -1747,41 +1712,12 @@ main(int argc, char **argv)
 
 		while( vfd_req_if( g_parms, &running_config, 0 ) ); 				// process _all_ pending requests before going on
 
-		if( bleat_will_it( 3 ) ) {
-			if( g_parms->forreal  && have_pipe && fd >= 0 ) {				//TODO -- drop this in favour of show stats?
-				l = snprintf(buff, sizeof( buff ), "%s %18s %10s %10s %10s %10s %10s %10s %10s %10s %10s\n", "Iface", "Link", "Speed", "Duplex", "RX pkts", "RX bytes",
-						"RX errors", "RX dropped", "TX pkts", "TX bytes", "TX errors");
-   	
-				ignored = write(fd, buff,  l );
-   	
-				for (i = 0; i < n_ports; ++i)
-				{
-					struct rte_eth_dev_info dev_info;
-					rte_eth_dev_info_get(i, &dev_info);			
-	
-					l = snprintf(buff, sizeof( buff ), "%04X:%02X:%02X.%01X",
-							dev_info.pci_dev->addr.domain,
-							dev_info.pci_dev->addr.bus,
-							dev_info.pci_dev->addr.devid,
-							dev_info.pci_dev->addr.function);
-								
-					ignored = write(fd, buff, l );
-     					
-					l = nic_stats_display(i, buff, sizeof( buff ) );
-					ignored = write(fd, buff, l );
-				}
-			}
-		}
 	}		// end !terminated while
 
 	bleat_printf( 0, "terminating" );
 
 	if( fd >= 0 ) {
 		close(fd);
-	}
-
-	if( have_pipe  &&  g_parms->stats_path != NULL  && unlink( g_parms->stats_path ) != 0 ) {
-		bleat_printf( 1, "couldn't delete stats pipe" );
 	}
 
 	close_ports();				// clean up the PFs
