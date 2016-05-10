@@ -7,6 +7,7 @@
 
 	Mods:		10 Mar 2016 : Added support for additional parm file values.
 				01 Apr 2016 : Support variable mtu for each pciid in the parm file.
+				10 May 2016 : Add keep boolien from main config.
 */
 
 #include <fcntl.h>
@@ -123,6 +124,7 @@ extern parms_t* read_parms( char* fname ) {
 		parms->log_level = jw_missing( jblob, "log_level" ) ? 0 : (int) jw_value( jblob, "log_level" );
 		parms->init_log_level = jw_missing( jblob, "init_log_level" ) ? 1 : (int) jw_value( jblob, "init_log_level" );
 		parms->log_keep = jw_missing( jblob, "log_keep" ) ? 30 : (int) jw_value( jblob, "log_keep" );
+		parms->delete_keep = jw_missing( jblob, "delete_keep" ) ? 0 : (int) jw_value( jblob, "delete_keep" );
 
 		if( jw_missing( jblob, "default_mtu" ) ) {			// could be an old install using deprecated mtu, so look for that and default if neither is there
 			def_mtu = jw_missing( jblob, "mtu" ) ? 9000 : (int) jw_value( jblob, "mtu" );
@@ -242,8 +244,12 @@ extern vf_config_t*	read_config( char* fname ) {
 
 		memset( vfc, 0, sizeof( *vfc ) );						// pointers default to nil
 
-		vfc->antispoof_mac = 1;				// these are forced to 1 regardless of what was in json
-		vfc->antispoof_vlan = 1;
+		//vfc->antispoof_mac = 1;				// these are forced to 1 regardless of what was in json
+		//vfc->antispoof_vlan = 1;
+
+		vfc->antispoof_mac = jw_missing( jblob, "antispoof_mac" ) ? 0 : (int) jw_value( jblob, "antispoof_mac" );
+		vfc->antispoof_vlan = jw_missing( jblob, "antispoof_vlan" ) ? 0 : (int) jw_value( jblob, "antispoof_vlan" );
+		vfc->allow_untagged = jw_missing( jblob, "allow_untagged" ) ? 0 : (int) jw_value( jblob, "allow_untagged" );
 
 		vfc->strip_stag = jw_missing( jblob, "strip_stag" ) ? 0 : (int) jw_value( jblob, "strip_stag" );
 		vfc->allow_bcast = jw_missing( jblob, "allow_bcast" ) ? 1 : (int) jw_value( jblob, "allow_bcast" );
