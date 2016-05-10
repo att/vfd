@@ -1,9 +1,13 @@
 /*
-**
-** az
+	Mnemonic:	sriov.c
+	Abstract: 	The direct interface between VFd and the DPDK library.
+	Date:		February 2016
+	Author:		Alex Zelezniak
+
+	Mods:		06 May 2016 - Added some doc and changed port_init() to return rather
+					than to exit.
 	useful doc:
-	http://www.intel.com/content/dam/doc/design-guide/82599-sr-iov-driver-companion-guide.pdf
-**
+				 http://www.intel.com/content/dam/doc/design-guide/82599-sr-iov-driver-companion-guide.pdf
 */
 
 #include "vfdlib.h"
@@ -188,7 +192,7 @@ rx_vlan_strip_set_on_queue(portid_t port_id, uint16_t queue_id, int on)
 
 
 /*
-	Set VLAN tag on transmission.  If no tag is to be inserted, then a VLAN 
+	Set VLAN tag on transmission.  If no tag is to be inserted, then a VLAN
 	ID of 0 must be passed.
 */
 void
@@ -231,7 +235,7 @@ rx_vlan_strip_set_on_vf(portid_t port_id, uint16_t vf_id, int on)
 
   uint32_t queues_per_pool = dev_info.vmdq_queue_num / dev_info.max_vmdq_pools;
 
-  uint32_t reg_off = 0x01028;
+  uint32_t reg_off = 0x01028;						// receive descriptor control reg (pg527/597)
 
   reg_off += (0x40 * vf_id * queues_per_pool);
 
@@ -406,7 +410,7 @@ void
 tx_set_loopback(portid_t port_id, u_int8_t on)
 {
 	uint32_t ctrl = port_pci_reg_read(port_id, IXGBE_PFDTXGSWC);
-	if (on) 
+	if (on)
 		ctrl |= IXGBE_PFDTXGSWC_VT_LBEN;
 	else
 		ctrl &= ~IXGBE_PFDTXGSWC_VT_LBEN;
@@ -414,19 +418,95 @@ tx_set_loopback(portid_t port_id, u_int8_t on)
 	port_pci_reg_write(port_id, IXGBE_PFDTXGSWC, ctrl);
 }
 
+/*
+	Check the state of the split receive control register
+*/
+int get_split_ctlreg( portid_t port_id, uint16_t vf_id ) {
+	
+	uint32_t reg_off = 0x01014; 							// split receive control regs (pg598)
 
-int 
-is_rx_queue_on(portid_t port_id, uint16_t vf_id)
+	if( vf_id > 63  ) {				// this offset good only for 0-63; we won't support 64-127
+		return 0;
+	}
+
+	reg_off += (0x40 * vf_id );
+	
+	return (int) port_pci_reg_read( port_id, reg_off );
+}
+
+/*
+	Set/reset the enable drop bit in the split receive control register. State is either 1 (on) or 0 (off).
+*/
+void set_split_erop( portid_t port_id, uint16_t vf_id, int state ) {
+	
+	uint32_t reg_off = 0x01014; 							// split receive control regs (pg598)
+	uint32_t reg_value;
+
+	if( vf_id > 63  ) {				// this offset good only for 0-63; we won't support 64-127
+		return;
+	}
+
+	reg_off += (0x40 * vf_id );
+	
+	reg_value =  port_pci_reg_read( port_id, reg_off );
+
+	if( state ) {
+		reg_value |= IXGBE_SRRCTL_DROP_EN;								// turn on the enable bit
+	} else {
+		reg_value &= ~IXGBE_SRRCTL_DROP_EN;								// turn off the enable bit
+	}
+
+	bleat_printf( 2, "setting split receive drop for port %d vf %d to %d", port_id, vf_id, state );
+	port_pci_reg_write( port_id, reg_off, reg_value );
+}
+
+/*
+	Set/reset the queue drop enable bit for all pools. State is either 1 (on) or 0 (off).
+*/
+void set_queue_drop( portid_t port_id, int state ) {
+	int 		i;
+	uint32_t reg_off;
+	uint32_t reg_value;							// value to write into the register
+
+
+	reg_off = 0x02f04; 							// PF queue drop enable register (pg728)
+	
+	bleat_printf( 2, "setting queue drop for port %d on all queues to: %d", port_id, (state & 0x01) );
+	for( i = 0; i < 128; i++ ) {
+		reg_value = IXGBE_QDE_WRITE | (i << IXGBE_QDE_IDX_SHIFT) | (state & 0x01);
+
+		port_pci_reg_write( port_id, reg_off, reg_value );
+	}
+}
+
+// --------------- pending reset support ----------------------------------------------------------------------
+/*
+	The refresh queue is where VFd manages queued reset requests. When we receive
+	a mailbox message to reset, we must wait for the tx/rx queues on the virtual
+	device to show ready before we can actually reset them. These functions
+	are used to manage the queued reset requests until it is ok to actually
+	execute them.
+
+	When a reset is received, the device is checkecked and if not ready the reset
+	is added to the queue. If there is already a reset queued, the new one is ignored.
+	Periodically we test each device associated with a reset on our queue to see if
+	the tx/rx queues are ready and if they are we allow the reset to happen.
+*/
+/*
+	Check to see if the NIC tx/rx queues are on for the pf/vf pair.
+	Returns 1 if the queues are "ready".
+*/
+int
+is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter )
 {
-	static int	count = 0;
 	/* check if first queue in the pool is active */
 	
 	struct rte_eth_dev *pf_dev = &rte_eth_devices[port_id];
   uint32_t queues_per_pool = RTE_ETH_DEV_SRIOV(pf_dev).nb_q_per_pool;
-	queues_per_pool = 2;
+	//queues_per_pool = 2;
 	
-  uint32_t reg_off = 0x01028;
-  
+  uint32_t reg_off = 0x01028; 							// receive descriptor control reg (pg527/597)
+
   reg_off += (0x40 * vf_id * queues_per_pool);
 	
   uint32_t ctrl = port_pci_reg_read(port_id, reg_off);
@@ -437,10 +517,10 @@ is_rx_queue_on(portid_t port_id, uint16_t vf_id)
   		bleat_printf( 3, "first queue active: bar=0x%08X, port=%d vfid_id=%d, ctrl=0x%08X)", reg_off, port_id, vf_id, ctrl);
 		return 1;
 	} else {
-		if( (count % 50 ) == 0 ) {
-  			bleat_printf( 2, "still pending: first queue not active: bar=0x%08X, port=%d vfid_id=%d, ctrl=0x%08X)", reg_off, port_id, vf_id, ctrl);
+		if( (*mcounter % 100 ) == 0 ) {
+  			bleat_printf( 4, "still pending: first queue not active: bar=0x%08X, port=%d vfid_id=%d, ctrl=0x%08x q/pool=%d", reg_off, port_id, vf_id, ctrl, (int) RTE_ETH_DEV_SRIOV(pf_dev).nb_q_per_pool);
 		}
-		count++;
+		(*mcounter)++;
 		return 0;
 	}
 }
@@ -448,18 +528,23 @@ is_rx_queue_on(portid_t port_id, uint16_t vf_id)
 
 static rte_spinlock_t rte_refresh_q_lock = RTE_SPINLOCK_INITIALIZER;
 
-void 
+/*
+	Add a reset event to our queue.  We will pop it and update the nic
+	when the pf/vf queues are ready. If a reset for the pf/vf is already on
+	the queue then we do nothing.
+*/
+void
 add_refresh_queue(u_int8_t port_id, uint16_t vf_id)
 {
 	
 	struct rq_entry *refresh_item;
 	
-	/* look for refresh request and update enabled status if already there */ 
+	/* look for refresh request and update enabled status if already there */
 	rte_spinlock_lock(&rte_refresh_q_lock);
 	TAILQ_FOREACH(refresh_item, &rq_head, rq_entries) {
 		if (refresh_item->port_id == port_id && refresh_item->vf_id == vf_id){
 			if (!refresh_item->enabled)
-				refresh_item->enabled = is_rx_queue_on(port_id, vf_id);
+				refresh_item->enabled = is_rx_queue_on(port_id, vf_id, &refresh_item->mcounter );
 			
 			rte_spinlock_unlock(&rte_refresh_q_lock);
 			return;
@@ -469,12 +554,13 @@ add_refresh_queue(u_int8_t port_id, uint16_t vf_id)
 	rte_spinlock_unlock(&rte_refresh_q_lock);
 	
 	refresh_item = malloc(sizeof(*refresh_item));
-	if (refresh_item == NULL) 
+	if (refresh_item == NULL)
 		rte_exit(EXIT_FAILURE, "add_refresh_queue(): Can not allocate memory\n");
 
 	refresh_item->port_id = port_id;
 	refresh_item->vf_id = vf_id;
-	refresh_item->enabled = is_rx_queue_on(port_id, vf_id);
+	refresh_item->mcounter = 0;
+	refresh_item->enabled = is_rx_queue_on(port_id, vf_id, &refresh_item->mcounter );
 	bleat_printf( 2, "adding refresh to queue for %d/%d", port_id, vf_id );
 	
 	rte_spinlock_lock(&rte_refresh_q_lock);
@@ -483,7 +569,12 @@ add_refresh_queue(u_int8_t port_id, uint16_t vf_id)
 }
 
 /*
-	If a queued block for port/vf exists, mark it enabled.
+	If a queued block for port/vf exists, mark it enabled. This is a hack.
+	There are observed cases where the VF tx/rx queues never show ready. This
+	function will force the pending reset to be dispatchable regardless of
+	what the state of the NIC is.  This funciton is called when we receive a
+	mailbox message which we interpret as meaning that the device is up and
+	in a 'ready' state.
 */
 static void enable_refresh_queue(u_int8_t port_id, uint16_t vf_id)
 {
@@ -501,6 +592,13 @@ static void enable_refresh_queue(u_int8_t port_id, uint16_t vf_id)
 	return;
 }
 
+
+/*
+	This is executed in it's own thread and is responsible for checking the
+	queue of pending resets. If a pending reset becomes 'enabled' then
+	the reset is 'executed' by invoking the restore_vf_setings() function
+	and the reset is removed from our queue.
+*/
 void
 process_refresh_queue(void)
 {
@@ -521,10 +619,10 @@ process_refresh_queue(void)
 				
 				TAILQ_REMOVE(&rq_head, refresh_item, rq_entries);
 				free(refresh_item);
-			}   
+			} 
 			else
 			{
-				refresh_item->enabled = is_rx_queue_on(refresh_item->port_id, refresh_item->vf_id);
+				refresh_item->enabled = is_rx_queue_on(refresh_item->port_id, refresh_item->vf_id, &refresh_item->mcounter );
 				//printf("updating item:  PORT: %d, VF: %d, Enabled: %d\n", refresh_item->port_id, refresh_item->vf_id, refresh_item->enabled);
 			}			
 		}
@@ -533,6 +631,7 @@ process_refresh_queue(void)
 	}
 }
 
+// -----------------------------------------------------------------------------------------------------------------------------
 
 /*
 	Return the link speed for the indicated port
@@ -573,6 +672,11 @@ nic_stats_display(uint8_t port_id, char * buff, int bsize)
     status, link.link_speed, link.link_duplex, stats.ipackets, stats.ibytes, stats.ierrors, stats.imissed, stats.opackets, stats.obytes, stats.oerrors);
 }
 
+/*
+	Initialise a device (port).
+	Return 0 if there were no errors, 1 otherwise.  The calling programme should
+	not continue if this function returns anything but 0.
+*/
 int
 port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_pool)
 {
@@ -582,16 +686,18 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 	uint16_t q;
 
 	if (port >= rte_eth_dev_count()) {
-			bleat_printf( 0, "port >= rte_eth_dev_count");
-   		exit(EXIT_FAILURE);
+		bleat_printf( 0, "CRI: abort: port >= rte_eth_dev_count");
+   		//exit(EXIT_FAILURE);
+		return 1;
 	}
 
 
 	// Configure the Ethernet device.
 	retval = rte_eth_dev_configure(port, rx_rings, tx_rings, &port_conf);
 	if (retval != 0) {
-			bleat_printf( 0, "Can not configure port %u, retval %d", port, retval);
-   		exit(EXIT_FAILURE);
+		bleat_printf( 0, "CRI: abort: can not configure port %u, retval %d", port, retval);
+   		//exit(EXIT_FAILURE);
+		return 1;
 	}
 
 
@@ -604,8 +710,9 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 	for (q = 0; q < rx_rings; q++) {
 		retval = rte_eth_rx_queue_setup(port, q, RX_RING_SIZE, rte_eth_dev_socket_id(port), NULL, mbuf_pool);
 		if (retval < 0) {
-			bleat_printf( 0, "Can not setup rx queue, port %u", port);
-   		exit(EXIT_FAILURE);
+			bleat_printf( 0, "CRI: abort: can not setup rx queue, port %u", port);
+   			//exit(EXIT_FAILURE);
+			return 1;
 		}
 	}
 
@@ -613,8 +720,9 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 	for (q = 0; q < tx_rings; q++) {
 		retval = rte_eth_tx_queue_setup(port, q, TX_RING_SIZE, rte_eth_dev_socket_id(port), NULL);
 		if (retval < 0) {
-			bleat_printf( 0, "Can not setup tx queue, port %u", port);
-   		exit(EXIT_FAILURE);
+			bleat_printf( 0, "CRI: abort: can not setup tx queue, port %u", port);
+   			//exit(EXIT_FAILURE);
+			return 1;
 		}
 	}
 
@@ -622,16 +730,16 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 	// Start the Ethernet port.
 	retval = rte_eth_dev_start(port);
 	if (retval < 0) {
-		bleat_printf( 0, "Can not start port %u", port);
-  	exit(EXIT_FAILURE);
+		bleat_printf( 0, "CRI: abort: can not start port %u", port);
+  		//exit(EXIT_FAILURE);
+		return 1;
 	}
 	
 
 	// Display the port MAC address.
 	struct ether_addr addr;
 	rte_eth_macaddr_get(port, &addr);
-	bleat_printf( 3,  "Port %u MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
-			   " %02" PRIx8 " %02" PRIx8 " %02" PRIx8 "",
+	bleat_printf( 3,  "port_init: port %u MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8 " %02" PRIx8 " %02" PRIx8 " %02" PRIx8 "",
 			(unsigned)port,
 			addr.addr_bytes[0], addr.addr_bytes[1],
 			addr.addr_bytes[2], addr.addr_bytes[3],
@@ -895,6 +1003,42 @@ daemonize(  char* pid_fname )
   }
 }
 
+/*
+	Called when a dump request is received from iplex. Writes general things about each port
+	into the log.
+*/
+void dump_dev_info( int num_ports  ) {
+	int i;
+	struct rte_eth_dev_info dev_info;
+
+	for( i = 0; i < num_ports; i++ ) {
+		rte_eth_dev_info_get( i, &dev_info );
+	
+		bleat_printf( 0, "port=%d driver_name = %s", i, dev_info.driver_name);
+		bleat_printf( 0, "port=%d if_index = %d", i, dev_info.if_index);
+		bleat_printf( 0, "port=%d min_rx_bufsize = %d", i, dev_info.min_rx_bufsize);
+		bleat_printf( 0, "port=%d max_rx_pktlen = %d", i, dev_info.max_rx_pktlen);
+		bleat_printf( 0, "port=%d max_rx_queues = %d", i, dev_info.max_rx_queues);
+		bleat_printf( 0, "port=%d max_tx_queues = %d", i, dev_info.max_tx_queues);
+		bleat_printf( 0, "port=%d max_mac_addrs = %d", i, dev_info.max_mac_addrs);
+		bleat_printf( 0, "port=%d max_hash_mac_addrs = %d", i, dev_info.max_hash_mac_addrs);
+
+		// Maximum number of hash MAC addresses for MTA and UTA.
+		bleat_printf( 0, "port=%d max_vfs = %d", i, dev_info.max_vfs);
+		bleat_printf( 0, "port=%d max_vmdq_pools = %d", i, dev_info.max_vmdq_pools);
+		bleat_printf( 0, "port=%d rx_offload_capa = %d", i, dev_info.rx_offload_capa);
+		bleat_printf( 0, "port=%d reta_size = %d", i, dev_info.reta_size);
+
+		// Device redirection table size, the total number of entries.
+		bleat_printf( 0, "port=%d hash_key_size = %d", i, dev_info.hash_key_size);
+
+		///Bit mask of RSS offloads, the bit offset also means flow type
+		bleat_printf( 0, "port=%d flow_type_rss_offloads = %lu", i, dev_info.flow_type_rss_offloads);
+		bleat_printf( 0, "port=%d vmdq_queue_base = %d", i, dev_info.vmdq_queue_base);
+		bleat_printf( 0, "port=%d vmdq_queue_num = %d", i, dev_info.vmdq_queue_num);
+		bleat_printf( 0, "port=%d vmdq_pool_base = %d", i, dev_info.vmdq_pool_base);
+	}
+}
 
 
 
