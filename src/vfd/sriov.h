@@ -64,7 +64,7 @@
 
 #include "../lib/dpdk/drivers/net/ixgbe/base/ixgbe_mbx.h"
 
-#define RX_RING_SIZE 64
+#define RX_RING_SIZE 128
 #define TX_RING_SIZE 64
 #define NUM_MBUFS 512
 #define MBUF_SIZE (800 + sizeof(struct rte_mbuf) + RTE_PKTMBUF_HEADROOM)
@@ -332,6 +332,9 @@ int start_port(portid_t pid);
 void stop_port(portid_t pid);
 void close_port(portid_t pid);
 
+int get_split_ctlreg( portid_t port_id, uint16_t vf_id );
+void set_queue_drop( portid_t port_id, int state );
+void set_split_erop( portid_t port_id, uint16_t vf_id, int state );
 
 int port_is_started(portid_t port_id);
 void set_vf_allow_bcast(portid_t port_id, uint16_t vf_id, int on);
@@ -399,6 +402,7 @@ void detachFromTerminal( void );
 void traceLog(int eventTraceLevel, const char * file, int line, const char * format, ...);
 int readConfigFile(char *fname);
 void dump_sriov_config(struct sriov_conf_c config);
+void dump_dev_info( int num_ports );
 int update_ports_config(void);
 
 
@@ -412,11 +416,16 @@ int valid_mtu( int port, int mtu );
 int valid_vlan( int port, int vfid, int vlan );
 
 
+/*
+	Manages a reset for a port/vf pair. These are queued when a reset is received
+	by callback/mbox message until the VF's queues are ready.
+*/
 struct rq_entry 
 {
 	uint8_t	port_id;
 	uint16_t vf_id;
-  uint8_t enabled;
+	uint8_t enabled;
+	int		mcounter;			// message counter so as not to flood the log
 
 	TAILQ_ENTRY(rq_entry) rq_entries;
 };
@@ -424,6 +433,6 @@ struct rq_entry
 TAILQ_HEAD(, rq_entry) rq_head;
 void add_refresh_queue(u_int8_t port_id, uint16_t vf_id);
 void process_refresh_queue(void);
-int is_rx_queue_on(portid_t port_id, uint16_t vf_id);
+int is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter );
 
 #endif /* _SRIOV_H_ */
