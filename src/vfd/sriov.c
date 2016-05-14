@@ -662,15 +662,91 @@ nic_stats_display(uint8_t port_id, char * buff, int bsize)
   rte_eth_link_get_nowait(port_id, &link);
 	rte_eth_stats_get(port_id, &stats);
 
+	spoffed[port_id] += port_pci_reg_read(port_id, 0x08780);
+	
+			
   char status[5];
   if(!link.link_status)
     stpcpy(status, "DOWN");
   else
     stpcpy(status, "UP  ");
 
-  return snprintf(buff, bsize, "        %s %10"PRIu16" %10"PRIu16" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64"\n",
-    status, link.link_speed, link.link_duplex, stats.ipackets, stats.ibytes, stats.ierrors, stats.imissed, stats.opackets, stats.obytes, stats.oerrors);
+  return snprintf(buff, bsize, "        %s %10"PRIu16" %10"PRIu16" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu32"\n",
+    status, link.link_speed, link.link_duplex, stats.ipackets, stats.ibytes, stats.ierrors, stats.imissed, stats.opackets, stats.obytes, stats.oerrors, spoffed[port_id]);
 }
+
+/*
+*  prints VF statistics
+* 
+*/
+int 
+vf_stats_display(uint8_t port_id, uint32_t pf_ari, uint32_t vf, char * buff, int bsize)
+{
+
+	// TODO we probably have to validate max VF's here
+	
+	uint32_t new_ari;
+	struct rte_pci_addr vf_pci_addr;
+	
+
+	new_ari = pf_ari + vf_offfset + (vf * vf_stride);
+	
+	vf_pci_addr.domain = 0;
+	vf_pci_addr.bus = (new_ari >> 8) & 0xff;
+	vf_pci_addr.devid = (new_ari >> 3) & 0x1f;
+	vf_pci_addr.function = new_ari & 0x7;
+
+				
+	uint32_t	rx_pkts = port_pci_reg_read(port_id, IXGBE_PVFGPRC(vf));
+	uint64_t	rx_ol = port_pci_reg_read(port_id, IXGBE_PVFGORC_LSB(vf));
+	uint64_t	rx_oh = port_pci_reg_read(port_id, IXGBE_PVFGORC_MSB(vf));
+	uint64_t	rx_octets = (rx_oh << 32) |	rx_ol;		// 36 bit only counter
+	
+	uint32_t	tx_pkts = port_pci_reg_read(port_id, IXGBE_PVFGPTC(vf));
+	uint64_t	tx_ol = port_pci_reg_read(port_id, IXGBE_PVFGOTC_LSB(vf));
+	uint64_t	tx_oh = port_pci_reg_read(port_id, IXGBE_PVFGOTC_MSB(vf));
+	uint64_t	tx_octets = (tx_oh << 32) |	tx_ol;		// 36 bit only counter
+		
+
+	return 	snprintf(buff, bsize, "%s   %2d    %04X:%02X:%02X.%01X %44"PRIu32" %10"PRIu64" %32"PRIu32" %10"PRIu64"\n",
+				"vf",
+				vf,
+				vf_pci_addr.domain, 
+				vf_pci_addr.bus, 
+				vf_pci_addr.devid, 
+				vf_pci_addr.function,
+				rx_pkts, 
+				rx_octets, 
+				tx_pkts, 
+				tx_octets);
+}
+
+
+/*
+  dumps all LAN ID's configured 
+  to be used for debugging  
+  or to check if number of vlans doesn't exceed MAX (64)
+*/
+int 
+dump_vlvf_entry(portid_t port_id)
+{
+	uint32_t res;
+	uint32_t ix;
+	uint32_t count = 0;
+	
+
+	for (ix = 1; ix < IXGBE_VLVF_ENTRIES; ix++) {
+		res = port_pci_reg_read(port_id, IXGBE_VLVF(ix));
+		if( 0 != (res & 0xfff))
+		{
+			count++;
+			printf("VLAN ID = %d\n", res & 0xfff);
+		}
+	}
+
+	return count;
+}
+
 
 /*
 	Initialise a device (port).
