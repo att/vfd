@@ -54,6 +54,7 @@
 #define RT_DUMP 6
 
 #define BUF_1K	1024			// simple buffer size constants
+#define BUF_10K BUF_1K * 10
 
 // --- local structs --------------------------------------------------------------------------------------------
 
@@ -742,7 +743,8 @@ static int vfd_del_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 */
 static void vfd_response( char* rpipe, int state, const char* msg ) {
 	int 	fd;
-	char	buf[BUF_1K];
+	//char	buf[BUF_1K]; // to small :-(
+	char	buf[BUF_10K];
 	unsigned int		len = 0;
 
 	if( rpipe == NULL ) {
@@ -1018,31 +1020,33 @@ static char*  gen_stats( struct sriov_conf_c* conf ) {
 	char*	rbuf;			// buffer to return
 	int		rblen = 0;		// lenght
 	int		rbidx = 0;
-	char	buf[8192];
+	char	buf[BUF_SIZE];
 	int		l;
 	int		i;
 	struct rte_eth_dev_info dev_info;
 
-	rblen = 8192;
+	rblen = BUF_SIZE;
 	rbuf = (char *) malloc( sizeof( char ) * rblen );
 	if( !rbuf ) {
 		return NULL;
 	}
 
-	rbidx = snprintf( rbuf, 8192, "%s %18s %10s %10s %10s %10s %10s %10s %10s %10s %10s\n",
-			"Iface", "Link", "Speed", "Duplex", "RX pkts", "RX bytes", "RX errors", "RX dropped", "TX pkts", "TX bytes", "TX errors");
+	rbidx = snprintf( rbuf, BUF_SIZE, "%s %14s %10s %10s %10s %10s %10s %10s %10s %10s %10s %10s\n",
+			"\nPF/VF  ID    PCIID", "Link", "Speed", "Duplex", "RX pkts", "RX bytes", "RX errors", "RX dropped", "TX pkts", "TX bytes", "TX errors", "Spoffed");
 	
 	for( i = 0; i < conf->num_ports; ++i ) {
 		rte_eth_dev_info_get( conf->ports[i].rte_port_number, &dev_info );				// must use port number that we mapped during initialisation
 
-		l = snprintf( buf, sizeof( buf ), "%04X:%02X:%02X.%01X",
+		l = snprintf( buf, sizeof( buf ), "%s   %4d    %04X:%02X:%02X.%01X",
+					"pf",
+					conf->ports[i].rte_port_number,
 					dev_info.pci_dev->addr.domain,
 					dev_info.pci_dev->addr.bus,
 					dev_info.pci_dev->addr.devid,
 					dev_info.pci_dev->addr.function);
 							
 		if( l + rbidx > rblen ) {
-			rblen += 8192;
+			rblen += BUF_SIZE;
 			rbuf = (char *) realloc( rbuf, sizeof( char ) * rblen );
 			if( !rbuf ) {
 				return NULL;
@@ -1050,11 +1054,12 @@ static char*  gen_stats( struct sriov_conf_c* conf ) {
 		}
 
 		strcat( rbuf+rbidx,  buf );
-		rbidx += l;
-     				
+		rbidx += l;		
+   				
 		l = nic_stats_display( conf->ports[i].rte_port_number, buf, sizeof( buf ) );
+
 		if( l + rbidx > rblen ) {
-			rblen += 8192 + l;
+			rblen += BUF_SIZE + l;
 			rbuf = (char *) realloc( rbuf, sizeof( char ) * rblen );
 			if( !rbuf ) {
 				return NULL;
@@ -1062,9 +1067,44 @@ static char*  gen_stats( struct sriov_conf_c* conf ) {
 		}
 		strcat( rbuf+rbidx,  buf );
 		rbidx += l;
+		
+		
+		// pack PCI ARI into 32bit to be used to get VF's ARI later 
+		uint32_t pf_ari = dev_info.pci_dev->addr.bus << 8 | dev_info.pci_dev->addr.devid << 3 | dev_info.pci_dev->addr.function;
+		
+		//iterate over active (configured) VF's only ?
+		int * vf_arr = malloc(sizeof(int) * conf->ports[i].num_vfs);
+		int v;
+		for (v = 0; v < conf->ports[i].num_vfs; v++)
+			vf_arr[v] = conf->ports[i].vfs[v].num;
+
+		// sort vf numbers
+		qsort(vf_arr, conf->ports[i].num_vfs, sizeof(int), cmp_vfs);
+		
+		for (v = 0; v < conf->ports[i].num_vfs; v++)
+		{
+			l = vf_stats_display(conf->ports[i].rte_port_number, pf_ari, vf_arr[v], buf, sizeof( buf ));
+			
+			if( l + rbidx > rblen ) {
+				rblen += BUF_SIZE + l;
+				rbuf = (char *) realloc( rbuf, sizeof( char ) * rblen );
+				if( !rbuf ) {
+					printf("realloc ERROR");
+					return NULL;
+				}
+			}
+			strcat( rbuf+rbidx,  buf );
+			rbidx += l;
+		}
 	}
 
 	return rbuf;
+}
+
+int 
+cmp_vfs (const void * a, const void * b)
+{
+   return ( *(const int*)a - *(const int*)b );
 }
 
 /*
@@ -1704,6 +1744,15 @@ main(int argc, char **argv)
 		}
 	  }
 
+
+		// read PCI config to get VM offset and stride 
+		struct rte_eth_dev *pf_dev = &rte_eth_devices[0];
+		uint32_t pci_control_r;  
+		rte_eal_pci_read_config(pf_dev->pci_dev, &pci_control_r, 32, 0x174);
+		vf_offfset = pci_control_r & 0x0ffff;
+		vf_stride = pci_control_r >> 16;
+
+	
 		bleat_printf( 2, "indexes were mapped" );
 	
 		set_signals();				// register signal handlers 

@@ -127,6 +127,8 @@ typedef uint16_t streamid_t;
 
 #define VFN2MASK(N) (1U << (N))
 
+#define BUF_SIZE 1024
+
 
 static const struct rte_eth_conf port_conf_default = {
 	.rxmode = { 
@@ -354,8 +356,10 @@ int set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_m
 void get_ethertype_filter(uint8_t port_id, uint16_t index);
 
 void nic_stats_clear(portid_t port_id);
-//void nic_stats_display(uint8_t port_id);
 int nic_stats_display(uint8_t port_id, char * buff, int blen);
+int vf_stats_display(uint8_t port_id, uint32_t pf_ari, uint32_t vf, char * buff, int bsize);
+int dump_vlvf_entry(portid_t port_id);
+
 int port_init(uint8_t port, struct rte_mempool *mbuf_pool);
 void tx_set_loopback(portid_t port_id, u_int8_t on);
 
@@ -404,6 +408,7 @@ int readConfigFile(char *fname);
 void dump_sriov_config(struct sriov_conf_c config);
 void dump_dev_info( int num_ports );
 int update_ports_config(void);
+int cmp_vfs (const void * a, const void * b);
 
 
 void lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
@@ -415,7 +420,12 @@ int check_mcast_mbox(uint32_t * mb);
 int valid_mtu( int port, int mtu );
 int valid_vlan( int port, int vfid, int vlan );
 
+// will keep PCI First VF offset and Stride here
+uint16_t vf_offfset;
+uint16_t vf_stride;
 
+// this array holds # of spoffed packets per PF
+uint32_t spoffed[MAX_PORTS];
 /*
 	Manages a reset for a port/vf pair. These are queued when a reset is received
 	by callback/mbox message until the VF's queues are ready.
