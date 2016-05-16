@@ -1031,13 +1031,13 @@ static char*  gen_stats( struct sriov_conf_c* conf ) {
 		return NULL;
 	}
 
-	rbidx = snprintf( rbuf, BUF_SIZE, "%s %18s %10s %10s %10s %10s %10s %10s %10s %10s %10s %10s\n",
-			"\nPF/VF      PCIID", "Link", "Speed", "Duplex", "RX pkts", "RX bytes", "RX errors", "RX dropped", "TX pkts", "TX bytes", "TX errors", "Spoffed");
+	rbidx = snprintf( rbuf, BUF_SIZE, "%s %14s %10s %10s %10s %10s %10s %10s %10s %10s %10s %10s\n",
+			"\nPF/VF  ID    PCIID", "Link", "Speed", "Duplex", "RX pkts", "RX bytes", "RX errors", "RX dropped", "TX pkts", "TX bytes", "TX errors", "Spoffed");
 	
 	for( i = 0; i < conf->num_ports; ++i ) {
 		rte_eth_dev_info_get( conf->ports[i].rte_port_number, &dev_info );				// must use port number that we mapped during initialisation
 
-		l = snprintf( buf, sizeof( buf ), "%s   %2d    %04X:%02X:%02X.%01X",
+		l = snprintf( buf, sizeof( buf ), "%s   %4d    %04X:%02X:%02X.%01X",
 					"pf",
 					conf->ports[i].rte_port_number,
 					dev_info.pci_dev->addr.domain,

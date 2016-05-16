@@ -503,7 +503,8 @@ is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter )
 	
 	struct rte_eth_dev *pf_dev = &rte_eth_devices[port_id];
   uint32_t queues_per_pool = RTE_ETH_DEV_SRIOV(pf_dev).nb_q_per_pool;
-	//queues_per_pool = 2;
+	queues_per_pool = 2;											// if we don't have RSS or DCB enabled number of queues is 2 per pool ?
+	
 	
   uint32_t reg_off = 0x01028; 							// receive descriptor control reg (pg527/597)
 
@@ -511,7 +512,7 @@ is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter )
 	
   uint32_t ctrl = port_pci_reg_read(port_id, reg_off);
 
-  bleat_printf( 5, "RX_QUEUS_ENA, bar=0x%08X, port=%d vfid_id=%d, ctrl=0x%08X)", port_id, reg_off, vf_id, ctrl);		// these happen too frequently if a VM goes away; only if really verbose
+  bleat_printf( 5, "RX_QUEUS_ENA, bar=0x%08X, port=%d vfid_id=%d, ctrl=0x%08X)", reg_off, port_id, vf_id, ctrl);		// these happen too frequently if a VM goes away; only if really verbose
 	
 	if( ctrl & 0x2000000) {
   		bleat_printf( 3, "first queue active: bar=0x%08X, port=%d vfid_id=%d, ctrl=0x%08X)", reg_off, port_id, vf_id, ctrl);
@@ -671,7 +672,7 @@ nic_stats_display(uint8_t port_id, char * buff, int bsize)
   else
     stpcpy(status, "UP  ");
 
-  return snprintf(buff, bsize, "        %s %10"PRIu16" %10"PRIu16" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu32"\n",
+  return snprintf(buff, bsize, "    %s %10"PRIu16" %10"PRIu16" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu32"\n",
     status, link.link_speed, link.link_duplex, stats.ipackets, stats.ibytes, stats.ierrors, stats.imissed, stats.opackets, stats.obytes, stats.oerrors, spoffed[port_id]);
 }
 
@@ -706,15 +707,23 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, uint32_t vf, char * buff, int
 	uint64_t	tx_ol = port_pci_reg_read(port_id, IXGBE_PVFGOTC_LSB(vf));
 	uint64_t	tx_oh = port_pci_reg_read(port_id, IXGBE_PVFGOTC_MSB(vf));
 	uint64_t	tx_octets = (tx_oh << 32) |	tx_ol;		// 36 bit only counter
-		
+	
+	
+	char status[5];
+	int mcounter = 0;
+  if(!is_rx_queue_on(port_id, vf, &mcounter ))
+    stpcpy(status, "DOWN");
+  else
+    stpcpy(status, "UP  ");
 
-	return 	snprintf(buff, bsize, "%s   %2d    %04X:%02X:%02X.%01X %44"PRIu32" %10"PRIu64" %32"PRIu32" %10"PRIu64"\n",
+	return 	snprintf(buff, bsize, "%s   %4d    %04X:%02X:%02X.%01X    %s %32"PRIu32" %10"PRIu64" %32"PRIu32" %10"PRIu64"\n",
 				"vf",
 				vf,
 				vf_pci_addr.domain, 
 				vf_pci_addr.bus, 
 				vf_pci_addr.devid, 
 				vf_pci_addr.function,
+				status,
 				rx_pkts, 
 				rx_octets, 
 				tx_pkts, 
