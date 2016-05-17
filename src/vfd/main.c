@@ -1081,8 +1081,7 @@ static char*  gen_stats( struct sriov_conf_c* conf ) {
 		// sort vf numbers
 		qsort(vf_arr, conf->ports[i].num_vfs, sizeof(int), cmp_vfs);
 		
-		for (v = 0; v < conf->ports[i].num_vfs; v++)
-		{
+		for (v = 0; v < conf->ports[i].num_vfs; v++) {
 			l = vf_stats_display(conf->ports[i].rte_port_number, pf_ari, vf_arr[v], buf, sizeof( buf ));
 			
 			if( l + rbidx > rblen ) {
@@ -1095,7 +1094,8 @@ static char*  gen_stats( struct sriov_conf_c* conf ) {
 			}
 			strcat( rbuf+rbidx,  buf );
 			rbidx += l;
-		}
+		}		
+		free(vf_arr);
 	}
 
 	return rbuf;

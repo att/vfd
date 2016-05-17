@@ -505,7 +505,6 @@ is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter )
   uint32_t queues_per_pool = RTE_ETH_DEV_SRIOV(pf_dev).nb_q_per_pool;
 	queues_per_pool = 2;											// if we don't have RSS or DCB enabled number of queues is 2 per pool ?
 	
-	
   uint32_t reg_off = 0x01028; 							// receive descriptor control reg (pg527/597)
 
   reg_off += (0x40 * vf_id * queues_per_pool);
