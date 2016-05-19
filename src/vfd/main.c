@@ -1118,7 +1118,7 @@ static char*  gen_stats( struct sriov_conf_c* conf ) {
 		// pack PCI ARI into 32bit to be used to get VF's ARI later 
 		uint32_t pf_ari = dev_info.pci_dev->addr.bus << 8 | dev_info.pci_dev->addr.devid << 3 | dev_info.pci_dev->addr.function;
 		
-		//iterate over active (configured) VF's only ?
+		//iterate over active (configured) VF's only
 		int * vf_arr = malloc(sizeof(int) * conf->ports[i].num_vfs);
 		int v;
 		for (v = 0; v < conf->ports[i].num_vfs; v++)
@@ -1140,8 +1140,6 @@ static char*  gen_stats( struct sriov_conf_c* conf ) {
 				strcat( rbuf+rbidx,  buf );
 				rbidx += l;
 			}
-			strcat( rbuf+rbidx,  buf );
-			rbidx += l;
 		}		
 		free(vf_arr);
 	}
