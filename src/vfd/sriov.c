@@ -6,6 +6,9 @@
 
 	Mods:		06 May 2016 - Added some doc and changed port_init() to return rather
 					than to exit.
+				18 May 2016 - Verify vlan is configured for the port/vf before acking it; nak
+					if it is not. 
+				19 May 2016 - Added check for VF range in print function.
 	useful doc:
 				 http://www.intel.com/content/dam/doc/design-guide/82599-sr-iov-driver-companion-guide.pdf
 */
@@ -676,14 +679,23 @@ nic_stats_display(uint8_t port_id, char * buff, int bsize)
 }
 
 /*
-*  prints VF statistics
+*	prints VF statistics
+	Returns number of characters placd into buff, or -1 if error (vf not in use
+	or out of range).  The parm ivf is the virtual function number which is maintained
+	as integer in our datstructs allowing -1 to indicate an uninstalled/delted VF.
+	It is converted to uint32 for calculations here. 
 * 
 */
 int 
-vf_stats_display(uint8_t port_id, uint32_t pf_ari, uint32_t vf, char * buff, int bsize)
+vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsize)
 {
+	uint32_t vf;
 
-	// TODO we probably have to validate max VF's here
+	if( ivf < 0 || ivf > 31 ) {
+		return -1;
+	}
+
+	vf = (uint32_t) ivf;						// unsinged for rest
 	
 	uint32_t new_ari;
 	struct rte_pci_addr vf_pci_addr;
@@ -934,8 +946,14 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 
 		case IXGBE_VF_SET_VLAN:
 			// NOTE: we _always_ approve this.  This is the VMs setting of what will be an 'inner' vlan ID and thus we don't care
-			bleat_printf( 1, "vlan set event approved: port=%d vf=%d vlan=%d (responding proceed)", port_id, vf, (int) p[1] );
-			*((int*) param) = RTE_ETH_MB_EVENT_PROCEED;
+			if( valid_vlan( port_id, vf, (int) p[1] ) ) {
+				bleat_printf( 1, "vlan set event approved: port=%d vf=%d vlan=%d (responding noop-ack)", port_id, vf, (int) p[1] );
+				//*((int*) param) = RTE_ETH_MB_EVENT_PROCEED;
+				*(int*) param = RTE_ETH_MB_EVENT_NOOP_ACK;     // good rc to VM while not changing anything 
+			} else {
+				bleat_printf( 1, "vlan set event rejected; vlan not not configured: port=%d vf=%d vlan=%d (responding noop-ack)", port_id, vf, (int) p[1] );
+				*(int*) param = RTE_ETH_MB_EVENT_NOOP_NACK;     // VM should see failure
+			}
 
 			//bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_VLAN");
 			//bleat_printf( 3, "setting vlan id = %d", p[1]);

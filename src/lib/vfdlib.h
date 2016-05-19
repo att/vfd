@@ -29,15 +29,14 @@ typedef struct {
 	int		dpdk_init_log_level;	// log level for dpdk during initialisation
 	char*	fifo_path;      // path to fifo that cli will write to
 	int		log_keep;       // number of days of logs to keep (do we need this?)
+	int		delete_keep;	// if true we will keep the deleted config files in the confid directory (marked with trailing -)
 	char*	config_dir;     // directory where nova writes pf config files
 	char*	stats_path;		// filename where we might dump stats
 	char*	pid_fname;		// if we daemonise we should write our pid here.
 	char*	cpu_mask;		// should be something like 0x04, but could be decimal.  string so it can have lead 0x
-	//int		mtu;			// default mtu applied to all pciids that don't specifiy it specifically
 
 							// these things have no defaults
 	int		npciids;		// number of pciids specified for us to configure
-	//char**	pciids;			// array of pciids that we are to configure (no default)
 	pfdef_t*	pciids;		// list of the pciid and mtu settings from the config file. 
 
 
@@ -60,6 +59,7 @@ typedef struct {
 	int		allow_un_ucast;	// bool
 	int		antispoof_mac;	//	bool -- forced to true but here for future
 	int		antispoof_vlan;	//	bool -- forced to true but here for future
+	int		allow_untagged;	//	bool -- forced to true but here for future
 	char*	link_status;	// on, off, auto
 	char*	vm_mac;			// the mac to force onto the VF (optional)
 	int*	vlans;			// array of vlan IDs

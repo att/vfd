@@ -4,6 +4,8 @@
 	Abstract:	Simple bleater to write verbose messages.
 	Author:		E. Scott Daniels
 	Date:		09 March 2016
+
+	Mods:		10 May2016 - fix comment
 */
 
 #include <fcntl.h>
@@ -150,7 +152,7 @@ extern time_t bleat_next_roll( ) {
 	Returns 0 if good; !0 otherwise. If ad_flag is true then we add
 	a datestamp to the log file and cause the log to roll at midnght.
 	Add flag is a cycle value 86400 causes the file to be cycled every
-	midnight, n*6300 causes it to be cycled every n hours (offset off of 
+	midnight, n*3600 causes it to be cycled every n hours (offset off of 
 	midnight), and n*60 causes it to be cycled every n minutes). File names
 	are suffixed with a suitble date/time stamp when ad_flag >0. 
 */

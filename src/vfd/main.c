@@ -28,6 +28,7 @@
 							update_nic() function.
 				06 May 2016 - Added some messages to dump output. Now forces the drop packet if
 							no descriptor available on both port (all queues) and VFs.
+				13 May 2016 - Deletes config files unless keep option in the master parm file is on.
 */
 
 
@@ -71,7 +72,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
 static char* gen_stats( struct sriov_conf_c* conf );
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-static const char* version = "v1.0/65106";
+static const char* version = "v1.0/65186";
 static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
 
 // --- callback/mailbox support - depend on global parms ---------------------------------------------------------
@@ -166,12 +167,16 @@ int valid_mtu( int port, int mtu ) {
 	signal handlerers before caling abort() to core dump, and at end of normal processing.
 */
 static void close_ports( void ) {
-	int i;
+	int 	i;
+	//char	dev_name[1024];
 
 	bleat_printf( 0, "closing ports" );
 	for( i = 0; i < n_ports; i++) {
 		bleat_printf( 0, "interrupt: closing port %d", i );
+		rte_eth_dev_stop( i );
 		rte_eth_dev_close( i );
+		//rte_eth_dev_detach( i, dev_name );
+		//bleat_printf( 2, "device closed and detached: %s", dev_name );
 	}
 	bleat_printf( 0, "ports closed" );
 }
@@ -269,7 +274,7 @@ static int vfd_eal_init( parms_t* parms ) {
 	argv[3] = strdup( "-n" );
 	argv[4] = strdup( "4" );
 		
-	argv[5] = strdup( "–m" );
+	argv[5] = strdup( "-m" );
 	argv[6] = strdup( "50" );
 	
 	argv[7] = strdup( "--file-prefix" );
@@ -371,6 +376,7 @@ static void vfd_add_ports( parms_t* parms, struct sriov_conf_c* conf ) {
 static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 	vf_config_t* vfc;					// raw vf config file contents	
 	int	i;
+	int j;
 	int vidx;							// index into the vf array
 	int	hole = -1;						// first hole in the list;
 	struct sriov_port_s* port = NULL;	// reference to a single port in the config
@@ -541,6 +547,34 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 		return 0;
 	}
 
+	for( i = 0; i < vfc->nvlans-1; i++ ) { 				// check for dups in the vlan/mac arrays
+		for( j = i+1; j < vfc->nvlans; j++ ) {
+			if( vfc->vlans[i] == vfc->vlans[j] ) {			// dup
+				snprintf( mbuf, sizeof( mbuf ), "dupliate VLAN in list: %d", vfc->vlans[i] );
+				bleat_printf( 1, "vf not added: %s", mbuf );
+				if( reason ) {
+					*reason = strdup( mbuf );
+				}
+				free_config( vfc );
+				return 0;
+			}
+		}
+	}
+	for( i = 0; i < vfc->nmacs-1; i++ ) {
+		for( j = i+1; j < vfc->nmacs; j++ ) {
+			if( strcmp( vfc->macs[i], vfc->macs[j] ) == 0 ) {			// dup
+				snprintf( mbuf, sizeof( mbuf ), "dupliate MAC in list: %s", vfc->macs[i] );
+				bleat_printf( 1, "vf not added: %s", mbuf );
+				if( reason ) {
+					*reason = strdup( mbuf );
+				}
+				free_config( vfc );
+				return 0;
+			}
+		}
+	}
+
+
 	// CAUTION: if we fail because of a parm error it MUST happen before here!
 	if( vidx == port->num_vfs ) {		// inserting at end, bump the num we have used
 		port->num_vfs++;
@@ -644,7 +678,7 @@ static void vfd_add_all_vfs(  parms_t* parms, struct sriov_conf_c* conf ) {
 	but on restart we'd recreate it, or worse have a conflict with something that
 	was added.
 */
-static int vfd_del_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
+static int vfd_del_vf( parms_t* parms, struct sriov_conf_c* conf, char* fname, char** reason ) {
 	vf_config_t* vfc;					// raw vf config file contents	
 	int	i;
 	int vidx;							// index into the vf array
@@ -669,15 +703,27 @@ static int vfd_del_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 		return 0;
 	}
 
-	snprintf( mbuf, sizeof( mbuf ), "%s-", fname );						// for now we move it aside; may want to delete it later
-	if( rename( fname, mbuf ) < 0 ) {
-		snprintf( mbuf, sizeof( mbuf ), "unable to delete config file: %s: %s", fname, strerror( errno ) );
-		bleat_printf( 1, "vfd_del_vf failed: %s", mbuf );
-		if( reason ) {
-			*reason = strdup( mbuf );
+	if( parms->delete_keep ) {											// need to keep the old by renaming it with a trailing -
+		snprintf( mbuf, sizeof( mbuf ), "%s-", fname );
+		if( rename( fname, mbuf ) < 0 ) {
+			snprintf( mbuf, sizeof( mbuf ), "unable to rename config file: %s: %s", fname, strerror( errno ) );
+			bleat_printf( 1, "vfd_del_vf failed: %s", mbuf );
+			if( reason ) {
+				*reason = strdup( mbuf );
+			}
+			free_config( vfc );
+			return 0;
 		}
-		free_config( vfc );
-		return 0;
+	} else {
+		if( unlink( fname ) < 0 ) {
+			snprintf( mbuf, sizeof( mbuf ), "unable to delete config file: %s: %s", fname, strerror( errno ) );
+			bleat_printf( 1, "vfd_del_vf failed: %s", mbuf );
+			if( reason ) {
+				*reason = strdup( mbuf );
+			}
+			free_config( vfc );
+			return 0;
+		}
 	}
 
 	bleat_printf( 2, "del: config data: name: %s", vfc->name );
@@ -801,7 +847,7 @@ static req_t* vfd_read_request( parms_t* parms ) {
 	}
 
 	if( (jblob = jw_new( rbuf )) == NULL ) {
-		bleat_printf( 0, "ERR: failed to create a json parsing object for: %s\n", rbuf );
+		bleat_printf( 0, "ERR: failed to create a json parsing object for: %s", rbuf );
 		free( rbuf );
 		return NULL;
 	}
@@ -945,7 +991,7 @@ static int vfd_req_if( parms_t *parms, struct sriov_conf_c* conf, int forever ) 
 					}
 
 					bleat_printf( 1, "deleting vf from file: %s", mbuf );
-					if( vfd_del_vf( conf, req->resource, &reason ) ) {		// successfully updated internal struct
+					if( vfd_del_vf( parms, conf, req->resource, &reason ) ) {		// successfully updated internal struct
 						if( vfd_update_nic( parms, conf ) == 0 ) {			// nic update was good too
 							snprintf( mbuf, sizeof( mbuf ), "vf deleted successfully: %s", req->resource );
 							vfd_response( req->resp_fifo, 0, mbuf );
@@ -1008,7 +1054,7 @@ static int vfd_req_if( parms_t *parms, struct sriov_conf_c* conf, int forever ) 
 			sleep( 1 );
 	} while( forever );
 
-	return req_handled;			// true if we did something -- more frequent recall if we did?
+	return req_handled;			// true if we did something -- more frequent recall if we did
 }
 
 // ----------------- actual nic management ------------------------------------------------------------------------------------
@@ -1032,7 +1078,7 @@ static char*  gen_stats( struct sriov_conf_c* conf ) {
 	}
 
 	rbidx = snprintf( rbuf, BUF_SIZE, "%s %14s %10s %10s %10s %10s %10s %10s %10s %10s %10s %10s\n",
-			"\nPF/VF  ID    PCIID", "Link", "Speed", "Duplex", "RX pkts", "RX bytes", "RX errors", "RX dropped", "TX pkts", "TX bytes", "TX errors", "Spoffed");
+			"\nPF/VF  ID    PCIID", "Link", "Speed", "Duplex", "RX pkts", "RX bytes", "RX errors", "RX dropped", "TX pkts", "TX bytes", "TX errors", "Spoofed");
 	
 	for( i = 0; i < conf->num_ports; ++i ) {
 		rte_eth_dev_info_get( conf->ports[i].rte_port_number, &dev_info );				// must use port number that we mapped during initialisation
@@ -1082,15 +1128,17 @@ static char*  gen_stats( struct sriov_conf_c* conf ) {
 		qsort(vf_arr, conf->ports[i].num_vfs, sizeof(int), cmp_vfs);
 		
 		for (v = 0; v < conf->ports[i].num_vfs; v++) {
-			l = vf_stats_display(conf->ports[i].rte_port_number, pf_ari, vf_arr[v], buf, sizeof( buf ));
-			
-			if( l + rbidx > rblen ) {
-				rblen += BUF_SIZE + l;
-				rbuf = (char *) realloc( rbuf, sizeof( char ) * rblen );
-				if( !rbuf ) {
-					printf("realloc ERROR");
-					return NULL;
+			if( (l = vf_stats_display(conf->ports[i].rte_port_number, pf_ari, vf_arr[v], buf, sizeof( buf ))) > 0 ) {  // < 0 out of range, not in use
+				if( l + rbidx > rblen ) {
+					rblen += BUF_SIZE + l;
+					rbuf = (char *) realloc( rbuf, sizeof( char ) * rblen );
+					if( !rbuf ) {
+						bleat_printf( 0, "gen_stats: realloc ERROR");
+						return NULL;
+					}
 				}
+				strcat( rbuf+rbidx,  buf );
+				rbidx += l;
 			}
 			strcat( rbuf+rbidx,  buf );
 			rbidx += l;
@@ -1123,7 +1171,7 @@ static int vfd_set_ins_strip( struct sriov_port_s *port, struct vf_s *vf ) {
 	}
 
 	if( vf->num_vlans == 1 ) {
-		bleat_printf( 2, "%s vf: %d set strip vlan tag %d", port->name, vf->num, vf->strip_stag );
+		bleat_printf( 2, "pf: %s vf: %d set strip vlan tag %d", port->name, vf->num, vf->strip_stag );
 		rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag );			// if just one in the list, push through user strip option
 
 		if( vf->strip_stag ) {																// when stripping, we must also insert
@@ -1179,7 +1227,6 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 		int ret;
 		struct sriov_port_s* port;
 
-
 		port = &conf->ports[i];
 
 		/*
@@ -1199,7 +1246,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 	
 				ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
 				if (ret < 0)
-					bleat_printf( 0, "ERR: bad unicast hash table parameter, return code = %d \n", ret);
+					bleat_printf( 0, "ERR: bad unicast hash table parameter, return code = %d", ret);
 	
 			} else {
 				bleat_printf( 1, "port update commands not sent (forreal is off): %s/%s",  port->name, port->pciid );
@@ -1218,7 +1265,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 
 			vf_mask = VFN2MASK(vf->num);
 
-			if( vf->last_updated != UNCHANGED ) {					// this vf was changed (add/del), reconfigure it
+			if( vf->last_updated != UNCHANGED ) {					// this vf was changed (add/del/reset), reconfigure it
 				const char* reason;
 
 				switch( vf->last_updated ) {
@@ -1321,7 +1368,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 					ret = rte_eth_dev_set_vf_rxmode(port->rte_port_number, vf->num, rx_mode, !on);
 			
 					if (ret < 0)
-						bleat_printf( 3, "set_vf_allow_untagged(): bad VF receive mode parameter, return code = %d \n", ret);
+						bleat_printf( 3, "set_vf_allow_untagged(): bad VF receive mode parameter, return code = %d", ret);
 				} else {
 					bleat_printf( 1, "skipped end round updates to port: %s", port->pciid );
 				}
@@ -1654,7 +1701,7 @@ main(int argc, char **argv)
 		bleat_printf( 1, "starting rte initialisation" );
 		rte_set_log_type(RTE_LOGTYPE_PMD && RTE_LOGTYPE_PORT, 0);
 		
-		bleat_printf( 2, "log level = %d, log type = %d\n", rte_get_log_level(), rte_log_cur_msg_logtype());
+		bleat_printf( 2, "log level = %d, log type = %d", rte_get_log_level(), rte_log_cur_msg_logtype());
 		rte_set_log_level( g_parms->dpdk_init_log_level );
 
 		n_ports = rte_eth_dev_count();
