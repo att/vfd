@@ -376,6 +376,7 @@ static void vfd_add_ports( parms_t* parms, struct sriov_conf_c* conf ) {
 static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 	vf_config_t* vfc;					// raw vf config file contents	
 	int	i;
+	int j;
 	int vidx;							// index into the vf array
 	int	hole = -1;						// first hole in the list;
 	struct sriov_port_s* port = NULL;	// reference to a single port in the config
@@ -545,6 +546,34 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 		free_config( vfc );
 		return 0;
 	}
+
+	for( i = 0; i < vfc->nvlans-1; i++ ) { 				// check for dups in the vlan/mac arrays
+		for( j = i+1; j < vfc->nvlans; j++ ) {
+			if( vfc->vlans[i] == vfc->vlans[j] ) {			// dup
+				snprintf( mbuf, sizeof( mbuf ), "dupliate VLAN in list: %d", vfc->vlans[i] );
+				bleat_printf( 1, "vf not added: %s", mbuf );
+				if( reason ) {
+					*reason = strdup( mbuf );
+				}
+				free_config( vfc );
+				return 0;
+			}
+		}
+	}
+	for( i = 0; i < vfc->nmacs-1; i++ ) {
+		for( j = i+1; j < vfc->nmacs; j++ ) {
+			if( strcmp( vfc->macs[i], vfc->macs[j] ) == 0 ) {			// dup
+				snprintf( mbuf, sizeof( mbuf ), "dupliate MAC in list: %s", vfc->macs[i] );
+				bleat_printf( 1, "vf not added: %s", mbuf );
+				if( reason ) {
+					*reason = strdup( mbuf );
+				}
+				free_config( vfc );
+				return 0;
+			}
+		}
+	}
+
 
 	// CAUTION: if we fail because of a parm error it MUST happen before here!
 	if( vidx == port->num_vfs ) {		// inserting at end, bump the num we have used
@@ -1025,7 +1054,7 @@ static int vfd_req_if( parms_t *parms, struct sriov_conf_c* conf, int forever ) 
 			sleep( 1 );
 	} while( forever );
 
-	return req_handled;			// true if we did something -- more frequent recall if we did?
+	return req_handled;			// true if we did something -- more frequent recall if we did
 }
 
 // ----------------- actual nic management ------------------------------------------------------------------------------------
@@ -1049,7 +1078,7 @@ static char*  gen_stats( struct sriov_conf_c* conf ) {
 	}
 
 	rbidx = snprintf( rbuf, BUF_SIZE, "%s %14s %10s %10s %10s %10s %10s %10s %10s %10s %10s %10s\n",
-			"\nPF/VF  ID    PCIID", "Link", "Speed", "Duplex", "RX pkts", "RX bytes", "RX errors", "RX dropped", "TX pkts", "TX bytes", "TX errors", "Spoffed");
+			"\nPF/VF  ID    PCIID", "Link", "Speed", "Duplex", "RX pkts", "RX bytes", "RX errors", "RX dropped", "TX pkts", "TX bytes", "TX errors", "Spoofed");
 	
 	for( i = 0; i < conf->num_ports; ++i ) {
 		rte_eth_dev_info_get( conf->ports[i].rte_port_number, &dev_info );				// must use port number that we mapped during initialisation
@@ -1099,15 +1128,17 @@ static char*  gen_stats( struct sriov_conf_c* conf ) {
 		qsort(vf_arr, conf->ports[i].num_vfs, sizeof(int), cmp_vfs);
 		
 		for (v = 0; v < conf->ports[i].num_vfs; v++) {
-			l = vf_stats_display(conf->ports[i].rte_port_number, pf_ari, vf_arr[v], buf, sizeof( buf ));
-			
-			if( l + rbidx > rblen ) {
-				rblen += BUF_SIZE + l;
-				rbuf = (char *) realloc( rbuf, sizeof( char ) * rblen );
-				if( !rbuf ) {
-					printf("realloc ERROR");
-					return NULL;
+			if( (l = vf_stats_display(conf->ports[i].rte_port_number, pf_ari, vf_arr[v], buf, sizeof( buf ))) > 0 ) {  // < 0 out of range, not in use
+				if( l + rbidx > rblen ) {
+					rblen += BUF_SIZE + l;
+					rbuf = (char *) realloc( rbuf, sizeof( char ) * rblen );
+					if( !rbuf ) {
+						bleat_printf( 0, "gen_stats: realloc ERROR");
+						return NULL;
+					}
 				}
+				strcat( rbuf+rbidx,  buf );
+				rbidx += l;
 			}
 			strcat( rbuf+rbidx,  buf );
 			rbidx += l;
@@ -1140,7 +1171,7 @@ static int vfd_set_ins_strip( struct sriov_port_s *port, struct vf_s *vf ) {
 	}
 
 	if( vf->num_vlans == 1 ) {
-		bleat_printf( 2, "%s vf: %d set strip vlan tag %d", port->name, vf->num, vf->strip_stag );
+		bleat_printf( 2, "pf: %s vf: %d set strip vlan tag %d", port->name, vf->num, vf->strip_stag );
 		rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag );			// if just one in the list, push through user strip option
 
 		if( vf->strip_stag ) {																// when stripping, we must also insert
@@ -1196,7 +1227,6 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 		int ret;
 		struct sriov_port_s* port;
 
-
 		port = &conf->ports[i];
 
 		/*
@@ -1235,7 +1265,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 
 			vf_mask = VFN2MASK(vf->num);
 
-			if( vf->last_updated != UNCHANGED ) {					// this vf was changed (add/del), reconfigure it
+			if( vf->last_updated != UNCHANGED ) {					// this vf was changed (add/del/reset), reconfigure it
 				const char* reason;
 
 				switch( vf->last_updated ) {

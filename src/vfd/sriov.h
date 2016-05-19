@@ -357,7 +357,7 @@ void get_ethertype_filter(uint8_t port_id, uint16_t index);
 
 void nic_stats_clear(portid_t port_id);
 int nic_stats_display(uint8_t port_id, char * buff, int blen);
-int vf_stats_display(uint8_t port_id, uint32_t pf_ari, uint32_t vf, char * buff, int bsize);
+int vf_stats_display(uint8_t port_id, uint32_t pf_ari, int vf, char * buff, int bsize);
 int dump_vlvf_entry(portid_t port_id);
 
 int port_init(uint8_t port, struct rte_mempool *mbuf_pool);
