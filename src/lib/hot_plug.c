@@ -2,8 +2,12 @@
 
 /*
 	Mnemonic:	hot_plug.c
-	Abstract:	Functions to allow VFd to 'hot plug' (remove or add) a device given 
-				a set of parms in the config file. 
+	Abstract:	Functions that allow the creator of a VF configuration file
+				to have a command executed just after VFd restart, and just
+				before VFd shutdown.  This allows for a device to be hot-unplugged, 
+				reinserted, etc. if it is necessary. Some drivers must have the device
+				removed/added by the virtulalisation manager in order for the VM to 
+				continue working after VFd has been restarted. 
 	Author:		E. Scott Daniels
 	Date:		26 May 2016
 
@@ -27,63 +31,25 @@
 
 
 /*
-	Run virsh detach-device with the supplied parameters. The parameters
-	may not contian a ';' as this could allow command stacking/chaining
-	which we consider to be an attack.  If the string contains a ';' then
-	the command is not executed.
-
-	Returns -1 if the command could not be executed, otherwise returns the 
-	return code from the system() call.
+	Run the user command as the user given (e.g. sudo -u user command).
 */
-int virsh_detach( char* parms ) {
+int user_cmd( uid_t uid, char* cmd ) {
 	char*	cmd_buf;
 	int		cmd_len;
 	int		rc;
 
-	if( strchr( parms, ';' ) != NULL ) {
+	if( uid < 0 ) {
 		return -1;
 	}
 
-	cmd_len = strlen( parms ) + 128;
+	cmd_len = strlen( cmd ) + 128;
 	cmd_buf = (char *) malloc( sizeof( char ) * cmd_len ); 
 	if( cmd_buf == NULL ) {
 		return -1;
 	}
 
-	snprintf( cmd_buf, cmd_len, "virsh detach-device %s", parms );
+	snprintf( cmd_buf, cmd_len, "sudo -u '#%d' %s", uid, cmd );
 	rc =  system( cmd_buf );
 	free( cmd_buf );
 	return rc;
 }
-
-
-/*
-	Run virsh attach-interface with the supplied parameters. The parameters
-	may not contian a ';' as this could allow command stacking/chaining
-	which we consider to be an attack.  If the string contains a ';' then
-	the command is not executed.
-
-	Returns -1 if the command could not be executed, otherwise returns the 
-	return code from the system() call.
-*/
-int virsh_attach( char* parms ) {
-	char*	cmd_buf;
-	int		cmd_len;
-	int		rc;
-
-	if( strchr( parms, ';' ) != NULL ) {
-		return -1;
-	}
-
-	cmd_len = strlen( parms ) + 128;
-	cmd_buf = (char *) malloc( sizeof( char ) * cmd_len ); 
-	if( cmd_buf == NULL ) {
-		return -1;
-	}
-
-	snprintf( cmd_buf, cmd_len, "virsh attach-interface %s", parms );
-	rc =  system( cmd_buf );
-	free( cmd_buf );
-	return rc;
-}
-

@@ -19,15 +19,12 @@ int main( int argc, char** argv ) {
 	int	rc;
 
 	if( argc < 3 ) {
-		fprintf( stderr, "usage: %s detach-parms attach-parms\n", argv[0] );
+		fprintf( stderr, "usage: %s user-id command string\n", argv[0] );
 		exit( 1 );
 	}
 
-	rc = virsh_detach( argv[1] );
+	rc = user_cmd( atoi( argv[1] ), argv[2] );
 	fprintf( stderr, "rc from detach: %d\n", rc );
-
-	rc = virsh_attach( argv[2] );
-	fprintf( stderr, "rc from attach: %d\n", rc );
 
 	exit( rc );		// bad exit if we failed a test
 }

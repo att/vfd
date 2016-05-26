@@ -118,6 +118,9 @@ extern int bleat_will_it( int l );
 extern int bleat_set_log( char* fname, int add_date );
 extern void bleat_printf( int level, const char* fmt, ... );
 
+//---------------- hot_plug -------------------------------------------------------------------------------
+extern int user_cmd( uid_t uid, char* cmd );
+
 //---------------- jwrapper -------------------------------------------------------------------------------
 extern void jw_nuke( void* st );
 extern void* jw_new( char* json );
