@@ -17,7 +17,7 @@ binaries = jwrapper_test parm_file_test list_test fifo_test bleat_test
 all: libvfd.a
 
 lib = libvfd.a
-lib_src = jwrapper symtab config ng_flowmgr fifo list_files bleat
+lib_src = jwrapper symtab config ng_flowmgr fifo list_files bleat hot_plug
 $(lib): $(lib_src:=.o)
 	ar r $(lib) $^
 
@@ -40,6 +40,9 @@ bleat_test:	bleat_test.c $(lib)
 
 list_test:	list_test.c $(lib)
 	$(cc) $(cflags) list_test.c -o list_test -L. -lvfd $(jsmn_lib)
+
+hot_plug:	hot_plug.c $(lib)
+	$(cc) $(cflags) hot_plug.c -o hot_plug -L. -lvfd $(jsmn_lib)
 
 
 tests: $(binaries)

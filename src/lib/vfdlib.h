@@ -50,6 +50,7 @@ typedef struct {
 	vf config file data
 */
 typedef struct {
+	uid_t	owner;			// user id that owns the file (used for pre/post command execution)
 	char*	name;			// nova supplied name or id; mostly ignored by us, but possibly useful
 	char*	pciid;			// physical interface id (0000:07:00.1)
 	int		vfid;			// the vf on the pf 1-32
@@ -61,6 +62,8 @@ typedef struct {
 	int		antispoof_vlan;	//	bool -- forced to true but here for future
 	int		allow_untagged;	//	bool -- forced to true but here for future
 	char*	link_status;	// on, off, auto
+	char*	start_cb;		// external command/script to execute on the owner's behalf after we start up
+	char*	stop_cb;		// external command/script to execute on the owner's behalf just before we shutdown
 	char*	vm_mac;			// the mac to force onto the VF (optional)
 	int*	vlans;			// array of vlan IDs
 	int		nvlans;			// number of vlans allocated
@@ -114,6 +117,9 @@ extern void bleat_pop_lvl( void );
 extern int bleat_will_it( int l );
 extern int bleat_set_log( char* fname, int add_date );
 extern void bleat_printf( int level, const char* fmt, ... );
+
+//---------------- hot_plug -------------------------------------------------------------------------------
+extern int user_cmd( uid_t uid, char* cmd );
 
 //---------------- jwrapper -------------------------------------------------------------------------------
 extern void jw_nuke( void* st );
