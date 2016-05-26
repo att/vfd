@@ -346,8 +346,11 @@ set_vf_allow_untagged(portid_t port_id, uint16_t vf_id, int on)
     	bleat_printf( 1, "set_vf_allow_untagged(): bad VF receive mode parameter, return code = %dn", ret);
 }
 
-
-
+/*
+	Add one mac to the receive mac filter whitelist.  Only the traffic sent to the dest macs in the
+	list will be passed to the VF.
+	
+*/
 void
 set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  __attribute__((__unused__)) uint8_t on)
 {
@@ -906,8 +909,7 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 
 		case IXGBE_VF_SET_MAC_ADDR:
 			bleat_printf( 1, "setmac event received: port=%d", port_id );
-			*(int*) param = RTE_ETH_MB_EVENT_PROCEED;    /* do what's needed */
-			//*(int*) param = RTE_ETH_MB_EVENT_NOOP_ACK;     /* noop & ack */
+			*(int*) param = RTE_ETH_MB_EVENT_PROCEED;    						// do what's needed
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
 				type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_MAC_ADDR");
 			

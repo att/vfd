@@ -29,6 +29,7 @@
 				06 May 2016 - Added some messages to dump output. Now forces the drop packet if
 							no descriptor available on both port (all queues) and VFs.
 				13 May 2016 - Deletes config files unless keep option in the master parm file is on.
+				26 May 2016 - Added validation for vlan ids in range and valid mac strings.
 */
 
 
@@ -72,8 +73,59 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
 static char* gen_stats( struct sriov_conf_c* conf );
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-static const char* version = "v1.0/65186";
+static const char* version = "v1.0/65266";
 static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
+
+// --- misc support ----------------------------------------------------------------------------------------------
+
+/*
+	Validate the string passed in contains a plausable MAC address of the form:
+		hh:hh:hh:hh:hh:hh
+
+	Returns -1 if invalid, 0 if ok.
+*/
+
+static int is_valid_mac_str( char* mac ) {
+	char*	dmac;				// dup so we can bugger it
+	char*	tok;				// pointer at token
+	char*	strtp = NULL;		// strtok_r reference
+	int		ccount = 0;
+	
+
+	if( strlen( mac ) < 17 ) {
+		return -1;
+	}
+
+	for( tok = mac; *tok; tok++ ) {
+		if( ! isxdigit( *tok ) ) {
+			if( *tok != ':' ) {				// invalid character
+				return -1;
+			} else {
+				ccount++;					// count colons to ensure right number of tokens
+			}
+		}
+	}
+
+	if( ccount != 5 ) {				// bad number of colons
+		return -1;
+	}
+	
+	if( (dmac = strdup( mac )) == NULL ) {
+		return -1;							// shouldn't happen, but be parinoid
+	}
+
+	tok = strtok_r( dmac, ":", &strtp );
+	while( tok ) {
+		if( atoi( tok ) > 255 ) {			// can't be negative or sign would pop earlier check
+			free( dmac );
+			return -1;
+		}
+		tok = strtok_r( NULL, ":", &strtp );
+	}
+	free( dmac );
+
+	return 0;
+}
 
 // --- callback/mailbox support - depend on global parms ---------------------------------------------------------
 
@@ -525,18 +577,6 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 		return 0;
 	}
 
-	for( i = 0; i < vfc->nmacs; i++ ) {					// do we need to vet the address is plausable x:x:x form?
-		if( strlen( vfc->macs[i] ) > 17 ) {
-			snprintf( mbuf, sizeof( mbuf ), "invalid mac address: %s", vfc->macs[i] );
-			bleat_printf( 1, "vf not added: %s", mbuf );
-			if( reason ) {
-				*reason = strdup( mbuf );
-			}
-			free_config( vfc );
-			return 0;
-		}
-	}
-
 	if( vfc->strip_stag  &&  vfc->nvlans > 1 ) {		// one vlan is allowed when stripping
 		snprintf( mbuf, sizeof( mbuf ), "conflicting options: strip_stag may not be supplied with a list of vlan ids" );
 		bleat_printf( 1, "vf not added: %s", mbuf );
@@ -547,10 +587,21 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 		return 0;
 	}
 
-	for( i = 0; i < vfc->nvlans-1; i++ ) { 				// check for dups in the vlan/mac arrays
-		for( j = i+1; j < vfc->nvlans; j++ ) {
-			if( vfc->vlans[i] == vfc->vlans[j] ) {			// dup
-				snprintf( mbuf, sizeof( mbuf ), "dupliate VLAN in list: %d", vfc->vlans[i] );
+														// check vlan and mac arrays for duplicate values and bad things
+	if( vfc->nvlans == 1 ) {							// no need for a dup check, just a range check
+		if( vfc->vlans[0] < 0 || vfc->vlans[0] > 4095 ) {
+			snprintf( mbuf, sizeof( mbuf ), "invalid vlan id: %d", vfc->vlans[0] );
+			bleat_printf( 1, "vf not added: %s", mbuf );
+			if( reason ) {
+				*reason = strdup( mbuf );
+			}
+			free_config( vfc );
+			return 0;
+		}
+	} else {
+		for( i = 0; i < vfc->nvlans-1; i++ ) {
+			if( vfc->vlans[i] < 0 || vfc->vlans[i] > 4095 ) {			// range check
+				snprintf( mbuf, sizeof( mbuf ), "invalid vlan id: %d", vfc->vlans[i] );
 				bleat_printf( 1, "vf not added: %s", mbuf );
 				if( reason ) {
 					*reason = strdup( mbuf );
@@ -558,18 +609,53 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 				free_config( vfc );
 				return 0;
 			}
+	
+			for( j = i+1; j < vfc->nvlans; j++ ) {
+				if( vfc->vlans[i] == vfc->vlans[j] ) {					// dup check
+					snprintf( mbuf, sizeof( mbuf ), "dupliate vlan in list: %d", vfc->vlans[i] );
+					bleat_printf( 1, "vf not added: %s", mbuf );
+					if( reason ) {
+						*reason = strdup( mbuf );
+					}
+					free_config( vfc );
+					return 0;
+				}
+			}
 		}
 	}
-	for( i = 0; i < vfc->nmacs-1; i++ ) {
-		for( j = i+1; j < vfc->nmacs; j++ ) {
-			if( strcmp( vfc->macs[i], vfc->macs[j] ) == 0 ) {			// dup
-				snprintf( mbuf, sizeof( mbuf ), "dupliate MAC in list: %s", vfc->macs[i] );
+
+	if( vfc->nmacs == 1 ) {											// only need range check if one
+		if( is_valid_mac_str( vfc->macs[0] ) < 0 ) {
+			snprintf( mbuf, sizeof( mbuf ), "invalid mac in list: %s", vfc->macs[0] );
+			bleat_printf( 1, "vf not added: %s", mbuf );
+			if( reason ) {
+				*reason = strdup( mbuf );
+			}
+			free_config( vfc );
+			return 0;
+		}
+	} else {
+		for( i = 0; i < vfc->nmacs-1; i++ ) {
+			if( is_valid_mac_str( vfc->macs[i] ) < 0 ) {					// range check
+				snprintf( mbuf, sizeof( mbuf ), "invalid mac in list: %s", vfc->macs[i] );
 				bleat_printf( 1, "vf not added: %s", mbuf );
 				if( reason ) {
 					*reason = strdup( mbuf );
 				}
 				free_config( vfc );
 				return 0;
+			}
+
+			for( j = i+1; j < vfc->nmacs; j++ ) {
+				if( strcmp( vfc->macs[i], vfc->macs[j] ) == 0 ) {			// dup check
+					snprintf( mbuf, sizeof( mbuf ), "dupliate mac in list: %s", vfc->macs[i] );
+					bleat_printf( 1, "vf not added: %s", mbuf );
+					if( reason ) {
+						*reason = strdup( mbuf );
+					}
+					free_config( vfc );
+					return 0;
+				}
 			}
 		}
 	}
