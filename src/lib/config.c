@@ -38,16 +38,24 @@
 	Returns a pointer to the buffer, or NULL. Caller must free.
 	Terminates the buffer with a nil character for string processing.
 
+
+	If uid is not a nil pointer, then the user number of the owner of the file
+	is returned to the caller via this pointer.
+
 	If we cannot stat the file, we assume it's empty or missing and return
 	an empty buffer, as opposed to a NULL, so the caller can generate defaults
 	or error if an empty/missing file isn't tolerated.
 */
-static char* file_into_buf( char* fname ) {
+static char* file_into_buf( char* fname, uid_t* uid ) {
 	struct stat	stats;
 	off_t		fsize = 8192;	// size of the file
 	off_t		nread;			// number of bytes read
 	int			fd;
 	char*		buf;			// input buffer
+	
+	if( uid != NULL ) {
+		*uid = -1;				// invalid to begin with
+	}
 	
 	if( (fd = open( fname, O_RDONLY )) >= 0 ) {
 		if( fstat( fd, &stats ) >= 0 ) {
@@ -56,6 +64,9 @@ static char* file_into_buf( char* fname ) {
 				fd = -1;
 			} else {
 				fsize = stats.st_size;						// stat ok, save the file size
+				if( uid != NULL ) {
+					*uid = stats.st_uid;					// pass back the user id
+				}
 			}
 		} else {
 			fsize = 8192; 								// stat failed, we'll leave the file open and try to read a default max of 8k
@@ -103,7 +114,7 @@ extern parms_t* read_parms( char* fname ) {
 	int			i;
 	int			def_mtu;		// default mtu (pulled and used to set pciid struct, but not kept in parms
 
-	if( (buf = file_into_buf( fname )) == NULL ) {
+	if( (buf = file_into_buf( fname, NULL )) == NULL ) {
 		return NULL;
 	}
 
@@ -226,8 +237,9 @@ extern vf_config_t*	read_config( char* fname ) {
 	char*		stuff;
 	int			val;
 	int			i;
+	uid_t		uid;
 
-	if( (buf = file_into_buf( fname )) == NULL ) {
+	if( (buf = file_into_buf( fname, &uid )) == NULL ) {
 		return NULL;
 	}
 
@@ -244,11 +256,14 @@ extern vf_config_t*	read_config( char* fname ) {
 
 		memset( vfc, 0, sizeof( *vfc ) );						// pointers default to nil
 
-		//vfc->antispoof_mac = 1;				// these are forced to 1 regardless of what was in json
-		//vfc->antispoof_vlan = 1;
 
-		vfc->antispoof_mac = jw_missing( jblob, "antispoof_mac" ) ? 0 : (int) jw_value( jblob, "antispoof_mac" );
-		vfc->antispoof_vlan = jw_missing( jblob, "antispoof_vlan" ) ? 0 : (int) jw_value( jblob, "antispoof_vlan" );
+		vfc->owner = uid;
+		vfc->antispoof_mac = 1;				// these are forced to 1 regardless of what was in json
+		vfc->antispoof_vlan = 1;
+
+		//vfc->antispoof_mac = jw_missing( jblob, "antispoof_mac" ) ? 0 : (int) jw_value( jblob, "antispoof_mac" );
+		//vfc->antispoof_vlan = jw_missing( jblob, "antispoof_vlan" ) ? 0 : (int) jw_value( jblob, "antispoof_vlan" );
+
 		vfc->allow_untagged = jw_missing( jblob, "allow_untagged" ) ? 0 : (int) jw_value( jblob, "allow_untagged" );
 
 		vfc->strip_stag = jw_missing( jblob, "strip_stag" ) ? 0 : (int) jw_value( jblob, "strip_stag" );
@@ -257,7 +272,7 @@ extern vf_config_t*	read_config( char* fname ) {
 		vfc->allow_un_ucast = jw_missing( jblob, "allow_un_ucast" ) ? 1 : (int) jw_value( jblob, "allow_un_ucast" );
 		vfc->vfid = jw_missing( jblob, "vfid" ) ? -1 : (int) jw_value( jblob, "vfid" );			// there is no real default value, so set to invalid
 
-		vfc->rate = jw_missing( jblob, "rate" ) ? 0 : (float) jw_value( jblob, "rate" );			// there is no real default value, so set to invalid
+		vfc->rate = jw_missing( jblob, "rate" ) ? 0 : (float) jw_value( jblob, "rate" );
 
 		if(  (stuff = jw_string( jblob, "name" )) ) {
 			vfc->name = strdup( stuff );
@@ -265,6 +280,13 @@ extern vf_config_t*	read_config( char* fname ) {
 
 		if(  (stuff = jw_string( jblob, "pciid" )) ) {
 			vfc->pciid = strdup( stuff );
+		}
+
+		if(  (stuff = jw_string( jblob, "stop_cb" )) ) {					// command that is executed on owner's behalf as we shutdown
+			vfc->stop_cb = strdup( stuff );
+		}
+		if(  (stuff = jw_string( jblob, "start_cb" )) ) {					// command that is executed on owner's behalf as we start (last part of init)
+			vfc->start_cb = strdup( stuff );
 		}
 
 		if(  (stuff = jw_string( jblob, "link_status" )) ) {
@@ -333,6 +355,8 @@ extern void free_config( vf_config_t *vfc ) {
 	SFREE( vfc->pciid );
 	SFREE( vfc->link_status);
 	SFREE( vfc->vlans );
+	SFREE( vfc->start_cb );
+	SFREE( vfc->stop_cb );
 
 	for( i = 0; i < vfc->nmacs; i++ ) {
 		SFREE( vfc->macs[i] );
