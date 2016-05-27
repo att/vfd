@@ -31,7 +31,8 @@
 
 
 /*
-	Run the user command as the user given (e.g. sudo -u user command).
+	Run the user command as the user given (e.g. sudo -u user command). User command output goes to 
+	either stderr or stdout and won't go to a bleat log file.
 */
 int user_cmd( uid_t uid, char* cmd ) {
 	char*	cmd_buf;
