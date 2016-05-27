@@ -220,6 +220,10 @@ struct vf_s
   int     num_macs;
   int     vlans[MAX_VF_VLANS];
   char    macs[MAX_VF_MACS][18];
+
+	uid_t	owner;					// user id which 'owns' the VF (owner of the config file from stat())
+	char*	start_cb;				// user commands driven just after initialisation and just before termination
+	char*	stop_cb;
 };
 
 
