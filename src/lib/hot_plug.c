@@ -37,7 +37,7 @@
 int user_cmd( uid_t uid, char* cmd ) {
 	char*	cmd_buf;
 	int		cmd_len;
-	int		rc;
+	int		rc = 0;		// under dpdk the result of the system call always seems to be -1
 
 	if( uid < 0 ) {
 		return -1;
