@@ -4,6 +4,7 @@
 #ifndef _vfdlib_h_
 #define _vfdlib_h_
 #include <time.h>
+#include <sys/types.h>
 
 /*
 	Things that need to be visible to vfd

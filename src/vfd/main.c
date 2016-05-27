@@ -30,18 +30,28 @@
 							no descriptor available on both port (all queues) and VFs.
 				13 May 2016 - Deletes config files unless keep option in the master parm file is on.
 				26 May 2016 - Added validation for vlan ids in range and valid mac strings.
+							Added support to drive virsh attach/detach commands at start to 
+							force a VM to reset their driver.
 */
 
 
 #include <strings.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
+
 #include "sriov.h"
-#include <vfdlib.h>
+#include <vfdlib.h>		// if vfdlib.h needs an include it must be included there, can't be include prior
 
 #define DEBUG
 
 // -------------------------------------------------------------------------------------------------------------
 
-// TODO - these need to move to header file
 #define ADDED	1				// updated states
 #define DELETED (-1)
 #define UNCHANGED 0
@@ -73,7 +83,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
 static char* gen_stats( struct sriov_conf_c* conf );
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-static const char* version = "v1.0/65266";
+static const char* version = "v1.0/65276";
 static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
 
 // --- misc support ----------------------------------------------------------------------------------------------
@@ -126,6 +136,63 @@ static int is_valid_mac_str( char* mac ) {
 
 	return 0;
 }
+
+/*
+	Run start and stop user commands.  These are commands defined by
+	either the start_cb or stop_cb tags in the VF's config file. The
+	commands are run under the user id which owns the config file
+	when it was presented to VFd for addition. The commands are generally
+	to allow the 'user' to hot-plug, or similar, a device on the VM when 
+	VFd is cycled.  This might be necessary as some drivers do not seem 
+	to reset completely when VFd reinitialises on start up. 
+
+	State of the command is _not_ captured; it seems that the dpdk lib
+	fiddles with underlying system() calls and the status returns -1 regardless
+	of what the command returns. 
+
+	Output from these user defined commands goes to standard output or
+	standard error and won't be capture in our log files. 
+*/
+static void run_start_cbs( struct sriov_conf_c* conf ) {
+	int i;
+	int j;
+	struct sriov_port_s* port;
+	struct vf_s *vf;
+
+	for (i = 0; i < conf->num_ports; ++i){							// run each port we know about
+		port = &conf->ports[i];
+
+	    for( j = 0; j < port->num_vfs; ++j ) { 			// traverse each VF and if we have a command, then drive it
+			vf = &port->vfs[j];				   			// convenience
+
+			if( vf->num >= 0  &&  vf->start_cb != NULL ) {
+				user_cmd( vf->owner, vf->start_cb );		
+				bleat_printf( 1, "start_cb for pf=%d vf=%d executed: %s", i, j, vf->start_cb  );
+			}
+		}
+	}
+}
+
+static void run_stop_cbs( struct sriov_conf_c* conf ) {
+	int i;
+	int j;
+	struct sriov_port_s* port;
+	struct vf_s *vf;
+
+	for (i = 0; i < conf->num_ports; ++i){							// run each port we know about
+		port = &conf->ports[i];
+
+	    for( j = 0; j < port->num_vfs; ++j ) { 			// traverse each VF and if we have a command, then drive it
+			vf = &port->vfs[j];				   			// convenience
+
+			if( vf->num >= 0  &&  vf->stop_cb != NULL ) {
+				user_cmd( vf->owner, vf->stop_cb );		
+				bleat_printf( 1, "stop_cb for pf=%d vf=%d executed: %s", i, j, vf->stop_cb  );
+			}
+		}
+	}
+}
+
 
 // --- callback/mailbox support - depend on global parms ---------------------------------------------------------
 
@@ -660,6 +727,24 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 		}
 	}
 
+	if( vfc->start_cb != NULL && strchr( vfc->start_cb, ';' ) != NULL ) {
+		snprintf( mbuf, sizeof( mbuf ), "start_cb command contains invalid character: ;" );
+		bleat_printf( 1, "vf not added: %s", mbuf );
+		if( reason ) {
+			*reason = strdup( mbuf );
+		}
+		free_config( vfc );
+		return 0;
+	}
+	if( vfc->stop_cb != NULL && strchr( vfc->stop_cb, ';' ) != NULL ) {
+		snprintf( mbuf, sizeof( mbuf ), "stop_cb command contains invalid character: ;" );
+		bleat_printf( 1, "vf not added: %s", mbuf );
+		if( reason ) {
+			*reason = strdup( mbuf );
+		}
+		free_config( vfc );
+		return 0;
+	}
 
 	// CAUTION: if we fail because of a parm error it MUST happen before here!
 	if( vidx == port->num_vfs ) {		// inserting at end, bump the num we have used
@@ -668,6 +753,7 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 	
 	vf = &port->vfs[vidx];						// copy from config data doing any translation needed
 	memset( vf, 0, sizeof( *vf ) );				// assume zeroing everything is good
+	vf->owner = vfc->owner;
 	vf->num = vfc->vfid;
 	port->vfs[vidx].last_updated = ADDED;		// signal main code to configure the buggger
 	vf->strip_stag = vfc->strip_stag;
@@ -682,6 +768,13 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 	vf->rate = 0.0;							// best effort :)
 	vf->rate = vfc->rate;
 	
+	if( vfc->start_cb != NULL ) {
+		vf->start_cb = strdup( vfc->start_cb );
+	}
+	if( vfc->stop_cb != NULL ) {
+		vf->stop_cb = strdup( vfc->stop_cb );
+	}
+
 	vf->link = 0;							// default if parm missing or mis-set (not fatal)
 	switch( *vfc->link_status ) {			// down, up or auto are allowed in config file
 		case 'a':
@@ -718,6 +811,7 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 		*reason = NULL;
 	}
 
+	free_config( vfc );
 	bleat_printf( 2, "VF was added: %s %s id=%d", vfc->name, vfc->pciid, vfc->vfid );
 	return 1;
 }
@@ -1361,7 +1455,16 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 				bleat_printf( 1, "reconfigure vf for %s: %s vf=%d", reason, port->pciid, vf->num );
 
 				// TODO: order from original kept; probably can group into to blocks based on updated flag
-				if( vf->last_updated == DELETED ) { 							// delete vlans
+				if( vf->last_updated == DELETED ) { 							// delete vlans, free any buffers
+					if( vf->start_cb ) {
+						free( vf->start_cb );
+						vf->start_cb = NULL;
+					}
+					if( vf->stop_cb ) {
+						free( vf->stop_cb );
+						vf->stop_cb = NULL;
+					}
+
 					for(v = 0; v < vf->num_vlans; ++v) {
 						int vlan = vf->vlans[v];
 						bleat_printf( 2, "delete vlan: %s vf=%d vlan=%d", port->pciid, vf->num, vlan );
@@ -1765,7 +1868,7 @@ main(int argc, char **argv)
 	}
 	free( log_file );
 	bleat_set_lvl( g_parms->init_log_level );											// set default level
-	bleat_printf( 0, "VFD initialising" );
+	bleat_printf( 0, "VFD %s initialising", version );
 	bleat_printf( 0, "config dir set to: %s", g_parms->config_dir );
 
 	if( vfd_init_fifo( g_parms ) < 0 ) {
@@ -1909,6 +2012,8 @@ main(int argc, char **argv)
 		}
 	}
 	
+	run_start_cbs( &running_config );				// run any user startup callback commands defined in VF configs
+
 	bleat_printf( 1, "initialisation complete, setting bleat level to %d; starting to looop", g_parms->log_level );
 	bleat_set_lvl( g_parms->log_level );					// initialisation finished, set log level to running level
 	if( forreal ) {
@@ -1924,6 +2029,7 @@ main(int argc, char **argv)
 	}		// end !terminated while
 
 	bleat_printf( 0, "terminating" );
+	run_stop_cbs( &running_config );				// run any user stop callback commands that were given in VF conf files
 
 	if( fd >= 0 ) {
 		close(fd);
