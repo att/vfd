@@ -417,7 +417,8 @@ Figure &_fig provides a sample configuration which contains the following inform
 &ex_start
 {
   "comments": [
-    " configure VF 1 on the pciid given"
+    " configure VF 1 on the pciid given",
+    " comments are ignored"
   ],
  
   "name":             "VM_daniels1/uuid-dummy-daniels-1",
@@ -428,6 +429,8 @@ Figure &_fig provides a sample configuration which contains the following inform
   "allow_bcast":      true,
   "allow_mcast":      true,
   "allow_un_ucast":   true,
+  "start_cb":         "/var/lib/vmman/hot_plug daniels-1",
+  "stop_cb":          "/var/lib/vmman/unplug daniels-1",
   "vlans":            [ 10, 11, 12, 33 ],
   "macs":             [ "aa:bb:cc:dd:ee:f0", 
                         "11:22:33:44:55:66", 
@@ -452,6 +455,11 @@ Figure &_fig provides a sample configuration which contains the following inform
 .di vlans : Is an array of one or more VLAN IDs which VFd will configure on the VF.
 .sp .3
 .di macs : Is an array of one or more MAC addresses which VFd will configure on the VF.
+.sp .3
+.di start_cb : Is a command (script) which VFd will execute as the last step in the VFd start up process.
+(See section on callback command hooks below.)
+.sp .3
+.di stop_cb : Is a command (script) which VFd will execute as the first step in the VFd shutdown process.
 .ed
 &uindent
 .sp
@@ -521,6 +529,21 @@ This allows the existing configuration to be reloaded easily when VFd is restart
 VFd will ignore any files in the directory which &bold( do not ) have a &cw( .json ) suffix; from 
 a hacking perspective this allows test configuration files to be kept in the directory (e.g. VM1.x) 
 and copied into the desired JSON file when needed. 
+
+.h3 Callback Command Hooks
+The callback command hooks (start_cb and stop_cb) in the VF configuration allow the &ital( user ) to define 
+a command which is executed at the end of VFd startup initialisation (start_cb) and just prior to the 
+normal shut down processing when VFd is terminated (stop_cb).
+The commands are executed as the user which owns the configuration file, and the command may &bold( not )
+contain an embedded semicolon (;).  If multiple commands are needed, then a script should be used. 
+
+.sp
+The exact use of these commands is unknown, however it has been observed that in some cases when VFd is 
+restarted the ethernet driver in the VM fails to completely reinitialise requiring either an unload and reload
+of the driver, or similar. 
+One way to force a complete reinitialisation of the VM's ethernet driver is to simulate a device removal followed
+by a device insertion which has shown to cause the driver to initialise to the point that the VM can again 
+communicate over the device after VFd has been stopped and started.
 
 .h1 Logs and Debugging
 Log files are written to the directory named in the VFd config file (generally in &cw(/var/log) .sm ).
