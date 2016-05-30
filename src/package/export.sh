@@ -22,10 +22,23 @@ function build_it
         git clone https://github.com/att/dpdk.git -b vf-agent-dpdk
 		cd $src_dir/src/lib/dpdk
 		echo "building dpdk...."
-		make install T=x86_64-native-linuxapp-gcc
+        cat <<endKat >config/defconfig_x86_64-vfd-linuxapp-gcc
+#include "common_linuxapp"
+
+CONFIG_RTE_MACHINE="snb"
+
+CONFIG_RTE_ARCH="x86_64"
+CONFIG_RTE_ARCH_X86_64=y
+CONFIG_RTE_ARCH_X86=y
+CONFIG_RTE_ARCH_64=y
+
+CONFIG_RTE_TOOLCHAIN="gcc"
+CONFIG_RTE_TOOLCHAIN_GCC=y
+endKat
+		make install T=x86_64-vfd-linuxapp-gcc
 		cd $src_dir/src
 		export RTE_SDK=$PWD/lib/dpdk
-		export RTE_TARGET=x86_64-native-linuxapp-gcc
+		export RTE_TARGET=x86_64-vfd-linuxapp-gcc
 		echo "building vfd...."
 		cd $src_dir/src/lib
 		make jsmn
