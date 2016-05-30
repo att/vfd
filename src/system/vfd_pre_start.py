@@ -9,6 +9,7 @@
     Mod:            2016 7 Apr - Created script
                     2016 8 Apr - fix to index out of bound error
                     2016 22 Apr - remove unloading ixgbevf driver
+                    2016 30 May - wait for vf's to create
 """
 
 import subprocess
@@ -21,7 +22,7 @@ import os
 VFD_CONFIG = '/etc/vfd/vfd.cfg'
 SYS_DIR = "/sys/devices"
 LOG_DIR = '/var/log/vfd'
-
+	
 # global pciids list
 pciids = []
 # global group pciids list
@@ -68,6 +69,7 @@ def get_pciids():
 # unbind pciid
 def unbind_pfs(dev_id):
 	unbind_cmd = 'dpdk_nic_bind --force -u %s' % dev_id
+	log.info(unbind_cmd)
 	try:
 		msg = subprocess.check_output(unbind_cmd, shell=True)
 		if "Routing" in msg:
@@ -80,11 +82,13 @@ def unbind_pfs(dev_id):
 def get_vfids(dev_id):
 	cmd='find %s -name %s -type d | while read d; do echo "$d"; ls -l $d | grep virtfn| sed \'s!.*/!!\'; done' % (SYS_DIR, dev_id)
 	vfids = subprocess.check_output(cmd, shell=True).split('\n')[1:]
+	log.info("[%s]", dev_id, vfids)
 	return filter(None, vfids)
 
 # bind pf's and vf's to vfio-pci
 def bind_pf_vfs(dev_id):
 	bind_cmd = 'dpdk_nic_bind --force -b vfio-pci %s' % dev_id
+	log.info(bind_cmd)
 	try:
 		subprocess.check_call(bind_cmd, shell=True)
 		return True
@@ -134,6 +138,12 @@ def check_vendor():
 			sys.exit(1)
 	return not_ixgbe_vendor
 
+def get_configured_vfs(pciids):
+	vfd_count = 0
+	for pciid in pciids:
+		vfd_count = vfd_count + get_vfids(pciid)
+	return vfd_count
+
 def main():
 	global pciids
 	global group_pciids
@@ -150,6 +160,19 @@ def main():
 
 	pciids = list(set(pciids) | set(group_pciids))
 	log.info("pciids: %s", pciids)
+
+	log.info("Sleeping for 30 sec to configure VF's")
+	time.sleep(30)
+	
+	for i in xrange(3):
+		vfs_count = get_configured_vfs(pciids)
+		if vfs_count == 0:
+			time.sleep(30)
+			if i == 2:
+				log.error("It seems VF's are not Created, check 'dpdk_nic_bind --st'")
+				sys.exit(1)
+			continue
+		break
 
 	not_ixgbe_vendor = check_vendor()
 	if len(not_ixgbe_vendor) > 0:
@@ -171,24 +194,34 @@ def main():
 				if not unbind_pfs(pciid):
 					log.error("unable to unbind %s PF", pciid)
 					sys.exit(1)
+				else:
+					log.info("Successfully unbind %s", pciid)
 
 	for pciid in pciids:
 		if not bind_pf_vfs(pciid):
 			log.error("unable to bind %s with vfio-pci", pciid)
 			sys.exit(1)
+		else:
+			log.info("Successfully bind %s", pciid)
 		for vfid in get_vfids(pciid):
 			if not driver_attach(vfid):
 				if index == 0:
 					if not unbind_pfs(vfid):
 						log.error("unable to unbind %s VF", vfid)
 						sys.exit(1)
+					else:
+						log.info("Successfully unbind %s", vfid)
 					if not bind_pf_vfs(vfid):
 						log.error("unbale to bind %s with vfio-pci", vfid)
 						sys.exit(1)
+					else:
+						log.info("Successfully bind %s", vfid)
 				if index == 1:
 					if not bind_pf_vfs(vfid):
 						log.error("unbale to bind %s with vfio-pci", vfid)
 						sys.exit(1)
+					else:
+						log.info("Successfully bind %s", vfid)
 
 if __name__ == '__main__':
 	setup_logging('vfd_upstart.log')
