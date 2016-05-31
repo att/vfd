@@ -794,7 +794,7 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 	// Configure the Ethernet device.
 	retval = rte_eth_dev_configure(port, rx_rings, tx_rings, &port_conf);
 	if (retval != 0) {
-		bleat_printf( 0, "CRI: abort: can not configure port %u, retval %d", port, retval);
+		bleat_printf( 0, "CRI: abort: cannot configure port %u, retval %d", port, retval);
    		//exit(EXIT_FAILURE);
 		return 1;
 	}
@@ -809,7 +809,7 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 	for (q = 0; q < rx_rings; q++) {
 		retval = rte_eth_rx_queue_setup(port, q, RX_RING_SIZE, rte_eth_dev_socket_id(port), NULL, mbuf_pool);
 		if (retval < 0) {
-			bleat_printf( 0, "CRI: abort: can not setup rx queue, port %u", port);
+			bleat_printf( 0, "CRI: abort: cannot setup rx queue, port %u", port);
    			//exit(EXIT_FAILURE);
 			return 1;
 		}
@@ -819,7 +819,7 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 	for (q = 0; q < tx_rings; q++) {
 		retval = rte_eth_tx_queue_setup(port, q, TX_RING_SIZE, rte_eth_dev_socket_id(port), NULL);
 		if (retval < 0) {
-			bleat_printf( 0, "CRI: abort: can not setup tx queue, port %u", port);
+			bleat_printf( 0, "CRI: abort: cannot setup tx queue, port %u", port);
    			//exit(EXIT_FAILURE);
 			return 1;
 		}
@@ -829,7 +829,7 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 	// Start the Ethernet port.
 	retval = rte_eth_dev_start(port);
 	if (retval < 0) {
-		bleat_printf( 0, "CRI: abort: can not start port %u", port);
+		bleat_printf( 0, "CRI: abort: cannot start port %u", port);
   		//exit(EXIT_FAILURE);
 		return 1;
 	}
