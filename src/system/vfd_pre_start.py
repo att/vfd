@@ -18,6 +18,7 @@ import sys
 import logging
 from logging.handlers import RotatingFileHandler
 import os
+import time
 
 VFD_CONFIG = '/etc/vfd/vfd.cfg'
 SYS_DIR = "/sys/devices"
@@ -82,7 +83,7 @@ def unbind_pfs(dev_id):
 def get_vfids(dev_id):
 	cmd='find %s -name %s -type d | while read d; do echo "$d"; ls -l $d | grep virtfn| sed \'s!.*/!!\'; done' % (SYS_DIR, dev_id)
 	vfids = subprocess.check_output(cmd, shell=True).split('\n')[1:]
-	log.info("[%s]", dev_id, vfids)
+	log.info("[%s]: %s", dev_id, vfids)
 	return filter(None, vfids)
 
 # bind pf's and vf's to vfio-pci
@@ -141,7 +142,7 @@ def check_vendor():
 def get_configured_vfs(pciids):
 	vfd_count = 0
 	for pciid in pciids:
-		vfd_count = vfd_count + get_vfids(pciid)
+		vfd_count = vfd_count + len(get_vfids(pciid))
 	return vfd_count
 
 def main():
