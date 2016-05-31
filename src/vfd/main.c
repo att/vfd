@@ -313,7 +313,7 @@ static int dummy_rte_eal_init( int argc, char** argv ) {
 	}
 
 	if( argv[argc] != NULL ) {
-		bleat_printf( 2, "ERROR:  the last element of argc wasn't nil" );
+		bleat_printf( 2, "ERR:  the last element of argc wasn't nil" );
 	}
 
 	return 0;
@@ -1313,7 +1313,7 @@ static char*  gen_stats( struct sriov_conf_c* conf ) {
 					rblen += BUF_SIZE + l;
 					rbuf = (char *) realloc( rbuf, sizeof( char ) * rblen );
 					if( !rbuf ) {
-						bleat_printf( 0, "gen_stats: realloc ERROR");
+						bleat_printf( 0, "ERR: gen_stats: realloc failed");
 						return NULL;
 					}
 				}
