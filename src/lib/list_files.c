@@ -4,6 +4,8 @@
 	Abstract:	Simple directory read to list config files in a given directory.
 	Author:		E. Scott Daniels
 	Date:		04 Mar 2016
+
+	Mod:		01 Jun 2016 - Added ability to create a set of old files
 */
 
 #include <fcntl.h>
@@ -15,6 +17,7 @@
 #include <errno.h>
 #include <string.h>
 #include <dirent.h>
+#include <time.h>
 
 #include "vfdlib.h"
 
@@ -134,4 +137,51 @@ extern char** list_files( char* dname, const char* suffix, int qualify, int* len
 		free( qbuf );
 	}
 	return NULL;
+}
+
+/*
+	Generate a list of files which have a last mod time more than seconds ago.
+	If qualify is set the filenames returned in the list will be fully qualified.
+*/
+extern char** list_old_files( char* dname, int qualify, int seconds, int *ulen ) {
+	char**	flist;				// list of files in the named directory
+	char**	olist; 				// list of old files
+	int		flen;
+	struct stat fstats;
+	int i;
+	int j;
+	time_t	stale_before;		// timestamp -- files older than this are listed
+
+
+	if( ulen != NULL ) {
+		*ulen = 0;
+	}
+
+	flist = list_files( dname, "", qualify, &flen );
+	if( flist == NULL || flen <= 0 ) {
+		return NULL;
+	}
+
+	olist = (char **) malloc( sizeof( char * ) * flen );
+	if( olist == NULL ) {
+		return NULL;
+	}
+	
+	stale_before = time( NULL ) - seconds;
+	j = 0;
+	for( i = 0; i < flen; i ++ ) {
+		if( stat( flist[i], &fstats ) == 0 ) {
+			if( S_ISREG( fstats.st_mode ) && fstats.st_mtime < stale_before ) {				// regular file
+				olist[j++] = flist[i];
+				flist[i] = NULL;
+			}
+		}	
+	}
+
+	free_list( flist, flen );
+	if( ulen != NULL ) {
+		*ulen = j;
+	}
+
+	return olist;
 }
