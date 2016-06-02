@@ -52,6 +52,10 @@ list_test::	list_test.c $lib
 old_list_test::	old_list_test.c $lib
 	$cc $cflags old_list_test.c -o old_list_test -L. -lvfd $jsmn_lib
 
+pfx_list_test::	pfx_list_test.c $lib
+	$cc $cflags pfx_list_test.c -o pfx_list_test -L. -lvfd $jsmn_lib
+
+
 
 hot_plug_test::	hot_plug_test.c $lib
 	$cc $cflags hot_plug_test.c -o hot_plug_test -L. -lvfd $jsmn_lib

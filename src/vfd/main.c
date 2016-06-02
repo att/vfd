@@ -32,6 +32,7 @@
 				26 May 2016 - Added validation for vlan ids in range and valid mac strings.
 							Added support to drive virsh attach/detach commands at start to 
 							force a VM to reset their driver.
+				02 Jun 2015 - Added log purging set up in bleat.
 */
 
 
@@ -83,7 +84,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
 static char* gen_stats( struct sriov_conf_c* conf );
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-static const char* version = "v1.0/65276";
+static const char* version = "v1.0/66026";
 static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
 
 // --- misc support ----------------------------------------------------------------------------------------------
@@ -1863,6 +1864,9 @@ main(int argc, char **argv)
 		bleat_printf( 3, "detaching from tty (daemonise)" );
 		daemonize( g_parms->pid_fname );
 		bleat_set_log( log_file, 86400 );									// open bleat log with date suffix _after_ daemonize so it doesn't close our fd
+		if( g_parms->log_keep > 0 ) {										// set days to keep log files
+			bleat_set_purge( g_parms->log_dir, "vfd.log.", g_parms->log_keep * 86400 );
+		}
 	} else {
 		bleat_printf( 2, "-f supplied, staying attached to tty" );
 	}

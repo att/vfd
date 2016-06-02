@@ -5,7 +5,9 @@
 	Author:		E. Scott Daniels
 	Date:		09 March 2016
 
-	Mods:		10 May2016 - fix comment
+	Mods:		10 May 2016 - fix comment
+				01 Jun 2016 - Add auto cleanup of log files.
+							Corrected memory leak.
 */
 
 #include <fcntl.h>
@@ -30,6 +32,10 @@ static int		log_is_std = 1;		// set when log is stderr so we don't close it
 static	time_t	time2flip = 0;		// time at which we need to flip the log (or first write after)
 static time_t	log_cycle = 0;		// cycle time for the log if dated
 static char*	fname_base = NULL;	// base name of the file that we add the date to
+
+static time_t	purge_threshold = 0;	// number of seconds afterwhich log files are purged
+static	char*	purge_directory = NULL;	// directory where we should purge on a regular basis
+static	char*	purge_prefix = NULL;	// prefix of files in the log directory that are purged
 
 // -- private -------------------------------------------------------------------------
 /*
@@ -86,6 +92,38 @@ static char* add_date( char* fbase, time_t cycle ) {
 	return strdup( buf );
 }
 
+/*
+	Generate a list of files in the purge directory and purge old ones.
+*/
+static void purge_old_files( ) {
+	char**	flist;
+	char**	oflist;
+	int		flen;
+	int		oflen;
+	int		i;
+
+	if( purge_directory == NULL || purge_prefix == NULL ) {
+		return;
+	}
+
+	
+	flist = list_pfiles( purge_directory, purge_prefix, 1, &flen );			// list files with the indicated prefix
+	if( flist != NULL ) {
+		oflen = flen;
+		oflist = rm_new_files( flist, purge_threshold, &oflen );			// remove new files from the list
+		if( oflist != NULL ) {
+			for( i = 0; i < oflen; i++ ) {
+				if( oflist[i] != NULL ) {									// shouldn't be nil, but don't chance it
+					unlink( oflist[i] );
+				}
+			}
+
+			free_list( oflist, oflen );
+		}
+
+		free_list( flist, flen );
+	}
+}
 
 /*
 	set the level; does not affect the value saved with a push.
@@ -148,6 +186,35 @@ extern time_t bleat_next_roll( ) {
 }
 
 /*
+	Set the value for purging the log directory. The log directory 
+	will be purged of all files which have not been modified in the
+	number of seconds given.  If dname or prefix are nil, or empty, 
+	the effect is to clear the purge action.
+*/
+extern void bleat_set_purge( const char* dname, const char* prefix, int seconds ) {
+
+	if( purge_directory != NULL ) {
+		free( purge_directory );
+	}
+
+	if( purge_prefix != NULL ) {
+		free( purge_prefix );
+	}
+
+	if( dname == NULL || ! *dname ) {		// must have dir/prefix and they must not be empty
+		return;
+	}
+
+	if( prefix == NULL || ! *prefix || *prefix == ' '  ) {
+		return;
+	}
+
+	purge_directory = strdup( dname );
+	purge_prefix = strdup( prefix );
+	purge_threshold = seconds;
+}
+
+/*
 	Set the file where we will write and open it.
 	Returns 0 if good; !0 otherwise. If ad_flag is true then we add
 	a datestamp to the log file and cause the log to roll at midnght.
@@ -180,14 +247,11 @@ extern int bleat_set_log( char* fname, int ad_flag ) {
 			free( fname_base );
 			fname_base = NULL;
 		}
-		if( fname ) {
-			free( fname );
-		}
 		return 0;
 	}
 
 	if( ad_flag ) {
-		if( fname_base && strcmp( fname, fname_base ) != 0 ) {		// user could rename, don't leak
+		if( fname_base ) {
 			free( fname_base );
 		}
 		fname_base = strdup( fname );
@@ -197,7 +261,7 @@ extern int bleat_set_log( char* fname, int ad_flag ) {
 	}
 	if( (f = fopen( fname, "a" )) == NULL ) {
 		if( ad_flag ) {
-			free( fname );
+			free( fname );			// fname is overloaded and points @ our add_date string not caller string
 			free( fname_base );
 			fname_base = NULL;
 		}
@@ -211,7 +275,7 @@ extern int bleat_set_log( char* fname, int ad_flag ) {
 	log = f;
 
 	if( ad_flag ) {
-		free( fname );
+		free( fname );				// fname was overloaded with our add date string; must free
 	}
 	return 0;
 }
@@ -231,13 +295,17 @@ void bleat_printf( int vlevel, const char *fmt, ... )
 	int	space; 				/* amount of space in obuf for user message */
 	int	hlen;  				/* size of header in output buffer */
 	char*	ptime;
+	char*	obn;			// old base name
 
 	if( log == NULL ) {		// first call; initialise if not set
 		log = stderr;
 		log_is_std = 1;
 	} else {
 		if( time2flip && time2flip < time( NULL ) ) {			// first bleat after flip time, close and reoopen the log
-			bleat_set_log( fname_base, log_cycle );
+			obn = strdup( fname_base );							// save because set_log will replace it
+			bleat_set_log( obn, log_cycle );
+			free( obn );
+			purge_old_files();									// purge old files if purge is set
 		}
 	}
 
