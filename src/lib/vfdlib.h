@@ -104,7 +104,9 @@ extern char* rfifo_read( void* vfifo );
 #define LF_UNQUALIFIED	0
 
 extern char** list_files( char* dname, const char* suffix, int qualify, int* len );
+extern char** list_pfiles( char* dname, const char* prefix, int qualify, int* len );
 extern char** list_old_files( char* dname, int qualify, int seconds, int* len );
+extern char** rm_new_files( char** flist, int seconds, int *ulen );
 extern void free_list( char** list, int size );
 
 // --------------- bleat ----------------------------------------------------------------------------------
@@ -112,6 +114,7 @@ extern void free_list( char** list, int size );
 #define BLEAT_NO_DATE	0
 
 extern int bleat_set_lvl( int l );
+extern void bleat_set_purge( const char* dname, const char* prefix, int seconds );
 extern time_t bleat_next_roll( void );
 extern void bleat_push_lvl( int l );
 extern void bleat_push_glvl( int l );
