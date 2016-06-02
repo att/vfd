@@ -104,6 +104,7 @@ extern char* rfifo_read( void* vfifo );
 #define LF_UNQUALIFIED	0
 
 extern char** list_files( char* dname, const char* suffix, int qualify, int* len );
+extern char** list_old_files( char* dname, int qualify, int seconds, int* len );
 extern void free_list( char** list, int size );
 
 // --------------- bleat ----------------------------------------------------------------------------------

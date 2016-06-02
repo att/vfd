@@ -3,6 +3,15 @@
 	Mneminic:	bleat_test.c
 	Abstract: 	Unit test for the bleat module.
 				Tests obvious things, may miss edge cases.
+
+				bleat_test [seconds]
+
+				If seconds are given, then a test of purging log files
+				in the current directory is made.  Log files older than
+				seconds should be purged when the log file is rolled during
+				the test.
+
+
 	Date:		08 March 2016
 	Author:		E. Scott Daniels
 */
@@ -19,8 +28,16 @@
 
 int main( int argc, char** argv ) {
 	int	id = 0;
+	int	psec = 0;
 	
 	id = getppid();
+
+	if( argc > 1 ) {								// directory, prefix, seconds
+		if( (psec = atoi( argv[1] )) > 5 ) {
+			fprintf( stderr, "setting purge threshold to %d\n", psec );
+			bleat_set_purge( ".", "foo.log.", psec );
+		}
+	}
 
 	// these should go to stderr
 	bleat_set_lvl( 1 );
