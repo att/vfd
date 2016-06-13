@@ -34,7 +34,9 @@
 							force a VM to reset their driver.
 				02 Jun 2016 - Added log purging set up in bleat.
 				13 Jun 2016 - Version bump to indicate inclusion of better type checking used in lib.
-							Change VLAN ID range bounds to <= 0.
+							Change VLAN ID range bounds to <= 0. Correct error message when rejecting
+							because of excessive number of mac addresses.
+
 */
 
 
@@ -86,7 +88,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
 static char* gen_stats( struct sriov_conf_c* conf );
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-static const char* version = "v1.0/66136a";
+static const char* version = "v1.0/66136b";
 static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
 
 // --- misc support ----------------------------------------------------------------------------------------------
@@ -638,7 +640,7 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 
 
 	if( vfc->nmacs > MAX_VF_MACS ) {
-		snprintf( mbuf, sizeof( mbuf ), "number of vlans supplied (%d) exceeds the maximum (%d)", vfc->nvlans, MAX_VF_MACS );
+		snprintf( mbuf, sizeof( mbuf ), "number of macs supplied (%d) exceeds the maximum (%d)", vfc->nmacs, MAX_VF_MACS );
 		bleat_printf( 1, "vf not added: %s", mbuf );
 		if( reason ) {
 			*reason = strdup( mbuf );
