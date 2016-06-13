@@ -8,6 +8,9 @@
 
 	Mods:		04 Mar 2016 : Added missing/exists functions.
 								Fixed bug in value array save.
+				13 Jun 2016 : Added more granularity to sussing out primative types
+								allowing the caller to determine whether the primative 
+								is a bool, value, or null.
 */
 
 #include <stdio.h>
@@ -20,6 +23,11 @@
 #define JSON_SYM_NAME	"_jw_json_string"
 #define MAX_THINGS		1024		// max objects/elements
 
+#define PT_UNKNOWN		0			// primative types; unk for non prim
+#define PT_VALUE		1
+#define PT_BOOL			2
+#define PT_NULL			3
+
 extern void jw_nuke( void* st );
 
 // ---------------------------------------------------------------------------------------
@@ -31,6 +39,7 @@ extern void jw_nuke( void* st );
 */
 typedef struct jthing {
 	int jsmn_type;				// propigated type from jsmn (jsmn constants)
+	int prim_type;				// finer grained primative type (bool, null, value)
 	int	nele;					// number of elements if applies
 	union {
 		float fv;
@@ -67,6 +76,7 @@ static jthing_t *mk_thing( void *st, char *name, int jsmn_type ) {
 	}
 
 	jtp->jsmn_type = jsmn_type;
+	jtp->prim_type = PT_UNKNOWN;			// caller must set this
 	jtp->nele = 1;
 	jtp->v.fv = 0;
 
@@ -264,6 +274,7 @@ void* parse_jobject( void* st, char *json, char* prefix ) {
 				jtp->nele = size;
 
 				for( n = 0; n < size; n++ ) {								// for each array element
+					jarray[n].prim_type	 = PT_UNKNOWN;						// assume not primative type
 					switch( jtokens[i+n].type ) {
 						case JSMN_UNDEFINED:
 							fprintf( stderr, "warn: [%d] array element %d is not valid type (undefined) is not string or primative\n", i, n );
@@ -304,22 +315,30 @@ void* parse_jobject( void* st, char *json, char* prefix ) {
 							data = extract( json, &jtokens[i+n] );
 							switch( *data ) {
 								case 0:
+									jarray[n].prim_type	 = PT_VALUE;
 									jarray[n].v.fv = 0;
 									break;
 
 								case 'T':
 								case 't':
 									jarray[n].v.fv = 1;
+									jarray[n].prim_type	 = PT_BOOL;
 									break;
 
 								case 'F':
 								case 'f':
+									jarray[n].prim_type	 = PT_BOOL;
+									jarray[n].v.fv = 0;
+									break;
+
 								case 'N':										// assume null, nil, or some variant
 								case 'n':
+									jarray[n].prim_type	 = PT_NULL;
 									jarray[n].v.fv = 0;
 									break;
 
 								default:
+									jarray[n].prim_type	 = PT_VALUE;
 									jarray[n].v.fv = strtof( data, NULL ); 		// store all numerics as float
 									break;
 							}
@@ -360,21 +379,29 @@ void* parse_jobject( void* st, char *json, char* prefix ) {
 				switch( *data ) {								// assume T|t is true and F|f is false
 					case 0:
 						jtp->v.fv = 0;
+						jtp->prim_type = PT_VALUE;
 						break;
 
 					case 'T':
 					case 't':
+						jtp->prim_type = PT_BOOL;
 						jtp->v.fv = 1; 
 						break;
 
 					case 'F':
 					case 'f':
+						jtp->prim_type = PT_BOOL;
+						jtp->v.fv = 0; 
+						break;
+
 					case 'N':									// Null or some form of that
 					case 'n':
+						jtp->prim_type = PT_NULL;
 						jtp->v.fv = 0; 
 						break;
 
 					default:
+						jtp->prim_type = PT_VALUE;
 						jtp->v.fv = strtof( data, NULL ); 		// store all numerics as float
 						break;
 				}
@@ -440,6 +467,51 @@ extern int jw_missing( void* st, const char* name ) {
 */
 extern int jw_exists( void* st, const char* name ) {
 	return sym_get( st, name, 0 ) != NULL;
+}
+
+/*
+	Returns true (1) if the primative type is value (float).
+*/
+extern int jw_is_value( void* st, const char* name ) {
+	jthing_t* jtp;									// thing that is referenced by the symtab
+
+	jtp = (jthing_t *) sym_get( st, name, 0 );		// get it or NULL
+
+	if( ! jtp ) {
+		return 0;
+	}
+
+	return jtp->prim_type == PT_VALUE;
+}
+
+/*
+	Returns true (1) if the primative type is boolean.
+*/
+extern int jw_is_bool( void* st, const char* name ) {
+	jthing_t* jtp;									// thing that is referenced by the symtab
+
+	jtp = (jthing_t *) sym_get( st, name, 0 );		// get it or NULL
+
+	if( ! jtp ) {
+		return 0;
+	}
+
+	return jtp->prim_type == PT_BOOL;
+}
+
+/*
+	Returns true (1) if the primative type was a 'null' type.
+*/
+extern int jw_is_null( void* st, const char* name ) {
+	jthing_t* jtp;									// thing that is referenced by the symtab
+
+	jtp = (jthing_t *) sym_get( st, name, 0 );		// get it or NULL
+
+	if( ! jtp ) {
+		return 0;
+	}
+
+	return jtp->prim_type == PT_NULL;
 }
 
 /*
@@ -539,6 +611,48 @@ extern float jw_value_ele( void* st, const char* name, int idx ) {
 	}
 
 	return jtp->v.fv;
+}
+
+/*
+	Look up the element and check to see if it is a value primative. 
+	Return true (1) if it is.
+*/
+extern int jw_is_value_ele( void* st, const char* name, int idx ) {
+	jthing_t* jtp;									// thing that is referenced by the symtab entry
+
+	if( (jtp = suss_element( st, name, idx )) == NULL ) {
+		return 0;
+	}
+
+	return jtp->prim_type == PT_VALUE;
+}
+
+/*
+	Look up the element and check to see if it is a boolean primative. 
+	Return true (1) if it is.
+*/
+extern int jw_is_bool_ele( void* st, const char* name, int idx ) {
+	jthing_t* jtp;									// thing that is referenced by the symtab entry
+
+	if( (jtp = suss_element( st, name, idx )) == NULL ) {
+		return 0;
+	}
+
+	return jtp->prim_type == PT_BOOL;
+}
+
+/*
+	Look up the element and check to see if it is a null primative. 
+	Return true (1) if it is.
+*/
+extern int jw_is_null_ele( void* st, const char* name, int idx ) {
+	jthing_t* jtp;									// thing that is referenced by the symtab entry
+
+	if( (jtp = suss_element( st, name, idx )) == NULL ) {
+		return 0;
+	}
+
+	return jtp->prim_type == PT_NULL;
 }
 
 /*

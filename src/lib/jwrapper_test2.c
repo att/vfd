@@ -2,7 +2,7 @@
 	Mnemonic:	jwrapper_test2
 	Abstract: 	This will attempt to put the jwrapper code through its paces.
 
-				Unlike jwapper which allows a user supplied set of json to be given
+				Unlike jwapper_test.c which allows a user supplied set of json to be given
 				this uses a static json string so as to test specific things and report
 				a binary good/bad for each.
 
@@ -37,7 +37,8 @@ char* raw_json = "{ \
 		{ \"relative\": \"wife\", \"age\": 40, \"name\": \"Wilma\", \"blood\": false, },\
 		{ \"relative\": \"daugher\", \"age\": 10, \"name\": \"Pebbles\", \"blood\": true, },\
 		{ \"relative\": \"mother\", \"age\": 70, \"name\": \"Gertrude\", \"blood\": true, }\
-	]\
+	],\
+	\"last_blood\": [ \"acceptable\", 192.1, 45.0, true, false, null, \"full pannel\" ]\
 }";
 
 
@@ -61,6 +62,101 @@ static int check_str( void* jblob, char* field, char* expect ) {
 	return 0;
 }
 
+/*
+	Check element types in the "last_blood" array.
+*/
+static int check_ele_types( void* jblob ) {
+	int ec = 0;
+
+	if( !jw_is_value_ele( jblob, "last_blood", 1 )  ) {
+		fprintf( stderr, "error: 'last_blood' array element 1 is not reporting type value\n" );
+		ec++;
+	}
+	if( jw_is_value_ele( jblob, "last_blood", 0 )  ) {
+		fprintf( stderr, "error: 'last_blood' array element 0 is reporting type value and should not be\n" );
+		ec++;
+	}
+	if( !jw_is_bool_ele( jblob, "last_blood", 3 )  ) {
+		fprintf( stderr, "error: 'last_blood' array element 1 is not reporting type boolean\n" );
+		ec++;
+	}
+	if( !jw_is_bool_ele( jblob, "last_blood", 4 )  ) {
+		fprintf( stderr, "error: 'last_blood' array element 3 is not reporting type boolean\n" );
+		ec++;
+	}
+	if( jw_is_bool_ele( jblob, "last_blood", 2 )  ) {
+		fprintf( stderr, "error: 'last_blood' array element 2 is reporting type boolean and should not be\n" );
+		ec++;
+	}
+	if( jw_is_bool_ele( jblob, "last_blood", 0 )  ) {
+		fprintf( stderr, "error: 'last_blood' array element 0 is reporting type boolean and should not be\n" );
+		ec++;
+	}
+
+	if( ! ec ) {
+		fprintf( stderr, "ok: all element primative type checks pass\n" );
+	}
+
+	return ec;
+}
+
+/*
+	Check the type in the blob for boolean. Expect is 1 if we expect it to 
+	be bool, and 0 if we expect it to not be bool. Returns the error count.
+*/
+static int check_type_bool( void* jblob, char* field, float expect ) {
+	float	value;
+	int		ec = 0;
+	int		is_bool;
+
+	is_bool = jw_is_bool( jblob, field );
+	if( is_bool && expect == 1 ) {
+		fprintf( stderr, "ok: %s reports boolean as expected\n", field );
+		return 0;
+	}
+
+	if( is_bool ) {
+		fprintf( stderr, "error: %s reports boolean but isn't expected to be\n", field );
+		return 1;
+	}
+
+	if( expect == 1 ) {
+		fprintf( stderr, "error: %s reports NOT boolean but is expected to be\n", field );
+		return 1;
+	}
+
+	fprintf( stderr, "ok: %s reports NOT boolean as expected\n", field );
+	return 0;			// not expected to be and didn't report boolean
+}
+
+/*
+	Check the type in the blob for value. Expect is 1 if we expect it to 
+	be a value, and 0 if we expect it to not be a value. Returns the error count.
+*/
+static int check_type_value( void* jblob, char* field, float expect ) {
+	float	value;
+	int		ec = 0;
+	int		is_value;
+
+	is_value = jw_is_value( jblob, field );
+	if( is_value && expect == 1 ) {
+		fprintf( stderr, "ok: %s reports it is a value as expected\n", field );
+		return 0;
+	}
+
+	if( is_value ) {
+		fprintf( stderr, "error: %s reports it is a value but isn't expected to be\n", field );
+		return 1;
+	}
+
+	if( expect == 1 ) {
+		fprintf( stderr, "error: %s reports it is NOT a value but is expected to be\n", field );
+		return 1;
+	}
+
+	fprintf( stderr, "ok: %s reports it is NOT a value as expected\n", field );
+	return 0;			// not expected to be and didn't report as a value
+}
 
 static int check_value( void* jblob, char* field, float expect ) {
 	float	value;
@@ -125,8 +221,23 @@ int main( int argc, char **argv ) {
 
 	errors += check_str( jblob, "Contact_info.relation", "wife" );		// should be able to reach it through dotted notation too
 
+	// check to see if the primative types are reporting correctly
+	fprintf( stderr, "\nchecking that primative types report correctly\n" );
+	errors += check_type_bool( jblob, "last_visit", 0 );				// shouldn't report boolean
+	errors += check_type_bool( jblob, "patient_id", 0 );				// shouldn't report boolean
+	errors += check_type_bool( jblob, "active_patient", 1 );			// should report boolean
+
+	errors += check_type_value( jblob, "last_visit", 0 );				// shouldn't report value
+	errors += check_type_value( jblob, "active_patient", 0 );			// shouldn't report value
+	errors += check_type_value( jblob, "patient_id", 1 );				// should report value
+
+	errors += check_ele_types( jblob );
+
+
 	jw_nuke( jblob );
 
+
+	// ----------------------------------------------------------------------------------------
 	if( errors ) {
 		fprintf( stderr, "%d errors found  [FAIL]\n", errors );
 	} else {
