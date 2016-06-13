@@ -8,6 +8,8 @@
 	Mods:		10 Mar 2016 : Added support for additional parm file values.
 				01 Apr 2016 : Support variable mtu for each pciid in the parm file.
 				10 May 2016 : Add keep boolien from main config.
+				13 Jun 2016 : Changes to allow the more fine graned primative type
+					checking in jwrapper to be used.
 */
 
 #include <fcntl.h>
@@ -33,8 +35,8 @@
 */
 
 /*
-	Read an entire file into a buffer. We assume for config files 
-	they will be smallish and so this won't be a problem. 
+	Read an entire file into a buffer. We assume for config files
+	they will be smallish and so this won't be a problem.
 	Returns a pointer to the buffer, or NULL. Caller must free.
 	Terminates the buffer with a nil character for string processing.
 
@@ -102,8 +104,17 @@ static char* file_into_buf( char* fname, uid_t* uid ) {
 }
 
 /*
-	Open the file, and read the json there returning a populated structure from 
-	the json bits we expect to find. 
+	Open the file, and read the json there returning a populated structure from
+	the json bits we expect to find.
+
+	Primative type checking is done, and if the expected value for a field isn't the expected
+	type, then the default value is generally used.  For example, if the field 'stuff' should 
+	be a boolean, but "stuff": goo  is given in the json, the result is a bad type for 'stuff' 
+	and the default value is used. This keeps our code a bit more simple and puts the 
+	responsibility of getting the json correct on the 'user'. In some cases the default value 
+	is a bad value which might trigger an error in the code which is making use of this library.
+
+	Primative types are those types returned by the json parser as value, boolean or NULL.
 */
 extern parms_t* read_parms( char* fname ) {
 	parms_t*	parms = NULL;
@@ -130,12 +141,12 @@ extern parms_t* read_parms( char* fname ) {
 		}
 		memset( parms, 0, sizeof( *parms ) );					// probably not needed, but we don't do this frequently enough to worry
 
-		parms->dpdk_log_level = jw_missing( jblob, "dpdk_log_level" ) ? 0 : (int) jw_value( jblob, "dpdk_log_level" );
-		parms->dpdk_init_log_level = jw_missing( jblob, "dpdk_init_log_level" ) ? 0 : (int) jw_value( jblob, "dpdk_init_log_level" );
-		parms->log_level = jw_missing( jblob, "log_level" ) ? 0 : (int) jw_value( jblob, "log_level" );
-		parms->init_log_level = jw_missing( jblob, "init_log_level" ) ? 1 : (int) jw_value( jblob, "init_log_level" );
-		parms->log_keep = jw_missing( jblob, "log_keep" ) ? 30 : (int) jw_value( jblob, "log_keep" );
-		parms->delete_keep = jw_missing( jblob, "delete_keep" ) ? 0 : (int) jw_value( jblob, "delete_keep" );
+		parms->dpdk_log_level = !jw_is_value( jblob, "dpdk_log_level" ) ? 0 : (int) jw_value( jblob, "dpdk_log_level" );
+		parms->dpdk_init_log_level = !jw_is_value( jblob, "dpdk_init_log_level" ) ? 0 : (int) jw_value( jblob, "dpdk_init_log_level" );
+		parms->log_level = !jw_is_value( jblob, "log_level" ) ? 0 : (int) jw_value( jblob, "log_level" );
+		parms->init_log_level = !jw_is_value( jblob, "init_log_level" ) ? 1 : (int) jw_value( jblob, "init_log_level" );
+		parms->log_keep = !jw_is_bool( jblob, "log_keep" ) ? 30 : (int) jw_value( jblob, "log_keep" );
+		parms->delete_keep = !jw_is_bool( jblob, "delete_keep" ) ? 0 : (int) jw_value( jblob, "delete_keep" );
 
 		if( jw_missing( jblob, "default_mtu" ) ) {			// could be an old install using deprecated mtu, so look for that and default if neither is there
 			def_mtu = jw_missing( jblob, "mtu" ) ? 9000 : (int) jw_value( jblob, "mtu" );
@@ -184,14 +195,14 @@ extern parms_t* read_parms( char* fname ) {
 					stuff = (char *) jw_string_ele( jblob, "pciids", i );
 					if( stuff != NULL ) {										// string, use default mtu
 						parms->pciids[i].id = strdup( stuff );
-						parms->pciids[i].mtu = def_mtu; 
+						parms->pciids[i].mtu = def_mtu;
 					} else {
 						if( (pobj = jw_obj_ele( jblob, "pciids", i )) != NULL ) {		// full pciid object -- take both values from it
 							if( (stuff = jw_string( pobj, "id" )) == NULL ) {
 								stuff = strdup( "missing-id" );
 							}
 							parms->pciids[i].id = strdup( stuff );
-							parms->pciids[i].mtu = jw_missing( pobj, "mtu" ) ? def_mtu : (int) jw_value( pobj, "mtu" );
+							parms->pciids[i].mtu = !jw_is_value( pobj, "mtu" ) ? def_mtu : (int) jw_value( pobj, "mtu" );
 						}
 					}
 				}
@@ -264,13 +275,13 @@ extern vf_config_t*	read_config( char* fname ) {
 		//vfc->antispoof_mac = jw_missing( jblob, "antispoof_mac" ) ? 0 : (int) jw_value( jblob, "antispoof_mac" );
 		//vfc->antispoof_vlan = jw_missing( jblob, "antispoof_vlan" ) ? 0 : (int) jw_value( jblob, "antispoof_vlan" );
 
-		vfc->allow_untagged = jw_missing( jblob, "allow_untagged" ) ? 0 : (int) jw_value( jblob, "allow_untagged" );
+		vfc->allow_untagged = !jw_is_bool( jblob, "allow_untagged" ) ? 0 : (int) jw_value( jblob, "allow_untagged" );
 
-		vfc->strip_stag = jw_missing( jblob, "strip_stag" ) ? 0 : (int) jw_value( jblob, "strip_stag" );
-		vfc->allow_bcast = jw_missing( jblob, "allow_bcast" ) ? 1 : (int) jw_value( jblob, "allow_bcast" );
-		vfc->allow_mcast = jw_missing( jblob, "allow_mcast" ) ? 1 : (int) jw_value( jblob, "allow_mcast" );
-		vfc->allow_un_ucast = jw_missing( jblob, "allow_un_ucast" ) ? 1 : (int) jw_value( jblob, "allow_un_ucast" );
-		vfc->vfid = jw_missing( jblob, "vfid" ) ? -1 : (int) jw_value( jblob, "vfid" );			// there is no real default value, so set to invalid
+		vfc->strip_stag = !jw_is_bool( jblob, "strip_stag" ) ? 0 : (int) jw_value( jblob, "strip_stag" );
+		vfc->allow_bcast = !jw_is_bool( jblob, "allow_bcast" ) ? 1 : (int) jw_value( jblob, "allow_bcast" );
+		vfc->allow_mcast = !jw_is_bool( jblob, "allow_mcast" ) ? 1 : (int) jw_value( jblob, "allow_mcast" );
+		vfc->allow_un_ucast = !jw_is_bool( jblob, "allow_un_ucast" ) ? 1 : (int) jw_value( jblob, "allow_un_ucast" );
+		vfc->vfid = !jw_is_value( jblob, "vfid" ) ? -1 : (int) jw_value( jblob, "vfid" );			// there is no real default value, so set to invalid
 
 		vfc->rate = jw_missing( jblob, "rate" ) ? 0 : (float) jw_value( jblob, "rate" );
 
@@ -303,7 +314,11 @@ extern vf_config_t*	read_config( char* fname ) {
 			vfc->vlans = malloc( sizeof( *vfc->vlans ) * vfc->nvlans );
 			if( vfc->vlans != NULL ) {
 				for( i = 0; i < vfc->nvlans; i++ ) {
-					vfc->vlans[i] = (int) jw_value_ele( jblob, "vlans", i );
+					if( jw_is_value_ele( jblob, "vlans", i ) ) {
+						vfc->vlans[i] = (int) jw_value_ele( jblob, "vlans", i );
+					} else {
+						vfc->vlans[i] = -1;												// vfd should toss this out
+					}
 				}
 			} else {
 				// TODO -- how to handle error? free and return nil?

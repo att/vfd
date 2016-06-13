@@ -32,7 +32,11 @@
 				26 May 2016 - Added validation for vlan ids in range and valid mac strings.
 							Added support to drive virsh attach/detach commands at start to 
 							force a VM to reset their driver.
-				02 Jun 2015 - Added log purging set up in bleat.
+				02 Jun 2016 - Added log purging set up in bleat.
+				13 Jun 2016 - Version bump to indicate inclusion of better type checking used in lib.
+							Change VLAN ID range bounds to <= 0. Correct error message when rejecting
+							because of excessive number of mac addresses.
+
 */
 
 
@@ -84,7 +88,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
 static char* gen_stats( struct sriov_conf_c* conf );
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-static const char* version = "v1.0/66026";
+static const char* version = "v1.0/66136b";
 static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
 
 // --- misc support ----------------------------------------------------------------------------------------------
@@ -529,7 +533,7 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 	bleat_printf( 2, "add: config data: vfid: %d", vfc->vfid );
 
 	if( vfc->pciid == NULL || vfc->vfid < 0 ) {
-		snprintf( mbuf, sizeof( mbuf ), "unable to read config file: %s", fname );
+		snprintf( mbuf, sizeof( mbuf ), "unable to read or parse config file: %s", fname );
 		bleat_printf( 1, "vfd_add_vf failed: %s", mbuf );
 		if( reason ) {
 			*reason = strdup( mbuf );
@@ -636,7 +640,7 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 
 
 	if( vfc->nmacs > MAX_VF_MACS ) {
-		snprintf( mbuf, sizeof( mbuf ), "number of vlans supplied (%d) exceeds the maximum (%d)", vfc->nvlans, MAX_VF_MACS );
+		snprintf( mbuf, sizeof( mbuf ), "number of macs supplied (%d) exceeds the maximum (%d)", vfc->nmacs, MAX_VF_MACS );
 		bleat_printf( 1, "vf not added: %s", mbuf );
 		if( reason ) {
 			*reason = strdup( mbuf );
@@ -657,7 +661,7 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 
 														// check vlan and mac arrays for duplicate values and bad things
 	if( vfc->nvlans == 1 ) {							// no need for a dup check, just a range check
-		if( vfc->vlans[0] < 0 || vfc->vlans[0] > 4095 ) {
+		if( vfc->vlans[0] < 1 || vfc->vlans[0] > 4095 ) {
 			snprintf( mbuf, sizeof( mbuf ), "invalid vlan id: %d", vfc->vlans[0] );
 			bleat_printf( 1, "vf not added: %s", mbuf );
 			if( reason ) {
@@ -668,7 +672,7 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 		}
 	} else {
 		for( i = 0; i < vfc->nvlans-1; i++ ) {
-			if( vfc->vlans[i] < 0 || vfc->vlans[i] > 4095 ) {			// range check
+			if( vfc->vlans[i] < 1 || vfc->vlans[i] > 4095 ) {			// range check
 				snprintf( mbuf, sizeof( mbuf ), "invalid vlan id: %d", vfc->vlans[i] );
 				bleat_printf( 1, "vf not added: %s", mbuf );
 				if( reason ) {
