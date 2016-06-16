@@ -243,6 +243,7 @@ struct sriov_port_s
   int     mtu;
   int     num_mirros;
 	int		nvfs_config;		// actual number of configured vfs; could be less than max
+	int		enable_loopback;		// allow VM-VM traffic looping back through the NIC
   int     num_vfs;
   struct  mirror_s mirror[MAX_VFS];
   struct  vf_s vfs[MAX_VFS];
