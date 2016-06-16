@@ -1414,8 +1414,10 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 		port = &conf->ports[i];
 
 		if( parms->forreal ) {
-			if( ! port->enable_loopback ) {				// disable NIC loopback meaning all VM-VM traffic must go to TOR before coming back
-				tx_set_loopback(i, 0); 
+			if( port->enable_loopback ) {
+				tx_set_loopback( i, 1 ); 				// ensure it is set
+			} else {
+				tx_set_loopback(i, 0); 					// disable NIC loopback meaning all VM-VM traffic must go to TOR before coming back
 			}
 
 			set_queue_drop( i, 1 );						// enable packet dropping if no descriptor matches
