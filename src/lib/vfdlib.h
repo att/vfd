@@ -11,12 +11,18 @@
 */
 
 //----------------- config.c --------------------------------------------------------------------------
+
+
+									// pfdef_t struct flags
+#define PFF_LOOP_BACK	0x01		// loop back enabled flag
+
 /*
 	pf_def -- definition info picked up from the parm file for a PF
 */
 typedef struct {
 	char*	id;
 	int		mtu;
+	unsigned int flags;		// PFF_ flag constants
 } pfdef_t;
 
 /*

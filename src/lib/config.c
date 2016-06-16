@@ -10,6 +10,7 @@
 				10 May 2016 : Add keep boolien from main config.
 				13 Jun 2016 : Changes to allow the more fine graned primative type
 					checking in jwrapper to be used.
+				16 Jun 2016 : Add option to allow loop-back.
 */
 
 #include <fcntl.h>
@@ -189,20 +190,28 @@ extern parms_t* read_parms( char* fname ) {
 		}
 
 		if( (parms->npciids = jw_array_len( jblob, "pciids" )) > 0 ) {			// pick up the list of pciids
-			parms->pciids = malloc( sizeof( *parms->pciids ) * parms->npciids );
+			parms->pciids = (pfdef_t *) malloc( sizeof( *parms->pciids ) * parms->npciids );
+			memset( parms->pciids, 0, sizeof( *parms->pciids ) * parms->npciids );
+
 			if( parms->pciids != NULL ) {
 				for( i = 0; i < parms->npciids; i++ ) {
 					stuff = (char *) jw_string_ele( jblob, "pciids", i );
 					if( stuff != NULL ) {										// string, use default mtu
 						parms->pciids[i].id = strdup( stuff );
 						parms->pciids[i].mtu = def_mtu;
+						parms->pciids[i].flags |= PFF_LOOP_BACK;
 					} else {
-						if( (pobj = jw_obj_ele( jblob, "pciids", i )) != NULL ) {		// full pciid object -- take both values from it
+						if( (pobj = jw_obj_ele( jblob, "pciids", i )) != NULL ) {		// full pciid object -- take values from it
 							if( (stuff = jw_string( pobj, "id" )) == NULL ) {
 								stuff = strdup( "missing-id" );
 							}
 							parms->pciids[i].id = strdup( stuff );
 							parms->pciids[i].mtu = !jw_is_value( pobj, "mtu" ) ? def_mtu : (int) jw_value( pobj, "mtu" );
+							if( !jw_is_bool( pobj, "enable_loopback" ) ? 1 : (int) jw_value( pobj, "enable_loopback" ) ) {		// default to true if not there
+								parms->pciids[i].flags |= PFF_LOOP_BACK;
+							} else {
+								parms->pciids[i].flags &= ~PFF_LOOP_BACK;			// disable if set to false
+							}
 						}
 					}
 				}

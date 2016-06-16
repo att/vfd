@@ -34,7 +34,7 @@ void pprint( parms_t* parms ) {
 
 	fprintf( stderr, "\tnpciids: %d\n", parms->npciids );
 	for( i = 0; i < parms->npciids; i++ ) {
-		fprintf( stderr, "\tpciid[%d]: %s %d\n", i, parms->pciids[i].id, parms->pciids[i].mtu );
+		fprintf( stderr, "\tpciid[%d]: %s %d flags=%02x\n", i, parms->pciids[i].id, parms->pciids[i].mtu, parms->pciids[i].flags );
 	}
 }
 

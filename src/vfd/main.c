@@ -88,7 +88,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
 static char* gen_stats( struct sriov_conf_c* conf );
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-static const char* version = "v1.0/66136c";
+static const char* version = "v1.0/66166";
 static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
 
 // --- misc support ----------------------------------------------------------------------------------------------
@@ -472,6 +472,7 @@ static void vfd_add_ports( parms_t* parms, struct sriov_conf_c* conf ) {
 		snprintf( port->name, sizeof( port->name ), "port-%d",  i);				// TODO--- support getting a name from the config
 		snprintf( port->pciid, sizeof( port->pciid ), "%s", parms->pciids[i].id );
 		port->mtu = parms->pciids[i].mtu;
+		port->enable_loopback = !!( parms->pciids[i].flags & PFF_LOOP_BACK );
 		port->num_mirros = 0;
 		port->num_vfs = 0;
 		
@@ -1412,13 +1413,12 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf ) {
 
 		port = &conf->ports[i];
 
-		/*
-		* disable loop back, pin traffic between VM's on the same VLAN via TOR
-		* will need to have this functionality configurable
-		*/
 		if( parms->forreal ) {
-			tx_set_loopback(i, 0); 
-			set_queue_drop( i, 1 );					// enable packet dropping if no descriptor matches
+			if( ! port->enable_loopback ) {				// disable NIC loopback meaning all VM-VM traffic must go to TOR before coming back
+				tx_set_loopback(i, 0); 
+			}
+
+			set_queue_drop( i, 1 );						// enable packet dropping if no descriptor matches
 		}
 
 		if( port->last_updated == ADDED ) {								// updated since last call, reconfigure
