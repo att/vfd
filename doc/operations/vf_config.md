@@ -31,14 +31,28 @@ The following is the expected syntax of the file:
 ## Field Descriptions
 
 `name`		A string which identifies the VF. VFd does not use the name; it is only for the convenience of the creator.
+
 `pciid`		The address of the PF on which the VF is allocated
+
 `vfid`		The id (0-31) of the VF that is being configured
-`strip_stag` A boolean value that when true will cause the NIC to remove the VLAN ID from packets before they are given to the VF.  When true, this option implies that VLAN ID is inserted as packets are sent (there is no separate insert option).
+
+`strip_stag` A boolean value that when true will cause the NIC to remove the VLAN ID from packets before they are given to the VF.  
+	When true, this option implies that VLAN ID is inserted as packets are sent (there is no separate insert option).
+
 `allow_bacast` A boolean value which when true allows broadcast messages from the VF
+
 `allow_macast` A boolean value which when true allows multicast messages from the VF
+
 `allow_un_uacast` A boolean value which when true allows unicast messages from the VF
+
 `link_status` Sets one of three possible modes: on (status always reported to the VF), off (status never reported), auto (NIC decides when to report)
+
 `stop_cb`	The command line of a command that VFd will execute just prior to VFd shutdown
+
 `start_cb`  The command line of a command that VFd will execute immediately following initialisation (before any new ipelx requests are processed)
-`vlans`  An array of VLAN IDs which are used as a filter for the VF; only packets with these IDs will be passed by the NIC.  If the list contains more than one value, then `strip_stag` *must* be false or VFd will toss and error and refuse to add the VF.
-`macs`   An array of mac addresses which are used to filter incoming packets.  This array may be empty (e.g. []) to indicate the current MAC address of the VF is the only address which should be used as a filter.
+
+`vlans`  An array of VLAN IDs which are used as a filter for the VF; only packets with these IDs will be passed by the NIC.  If the 
+	list contains more than one value, then `strip_stag` *must* be false or VFd will toss and error and refuse to add the VF.
+
+`macs`   An array of mac addresses which are used to filter incoming packets.  This array may be empty (e.g. []) to indicate the 
+	current MAC address of the VF is the only address which should be used as a filter.
