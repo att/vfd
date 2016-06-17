@@ -199,7 +199,7 @@ extern parms_t* read_parms( char* fname ) {
 					if( stuff != NULL ) {										// string, use default mtu
 						parms->pciids[i].id = strdup( stuff );
 						parms->pciids[i].mtu = def_mtu;
-						parms->pciids[i].flags |= PFF_LOOP_BACK;
+						parms->pciids[i].flags &= ~PFF_LOOP_BACK;
 					} else {
 						if( (pobj = jw_obj_ele( jblob, "pciids", i )) != NULL ) {		// full pciid object -- take values from it
 							if( (stuff = jw_string( pobj, "id" )) == NULL ) {
@@ -207,7 +207,7 @@ extern parms_t* read_parms( char* fname ) {
 							}
 							parms->pciids[i].id = strdup( stuff );
 							parms->pciids[i].mtu = !jw_is_value( pobj, "mtu" ) ? def_mtu : (int) jw_value( pobj, "mtu" );
-							if( !jw_is_bool( pobj, "enable_loopback" ) ? 1 : (int) jw_value( pobj, "enable_loopback" ) ) {		// default to true if not there
+							if( !jw_is_bool( pobj, "enable_loopback" ) ? 0 : (int) jw_value( pobj, "enable_loopback" ) ) {		// default to true if not there
 								parms->pciids[i].flags |= PFF_LOOP_BACK;
 							} else {
 								parms->pciids[i].flags &= ~PFF_LOOP_BACK;			// disable if set to false
