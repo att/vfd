@@ -146,7 +146,7 @@ extern parms_t* read_parms( char* fname ) {
 		parms->dpdk_init_log_level = !jw_is_value( jblob, "dpdk_init_log_level" ) ? 0 : (int) jw_value( jblob, "dpdk_init_log_level" );
 		parms->log_level = !jw_is_value( jblob, "log_level" ) ? 0 : (int) jw_value( jblob, "log_level" );
 		parms->init_log_level = !jw_is_value( jblob, "init_log_level" ) ? 1 : (int) jw_value( jblob, "init_log_level" );
-		parms->log_keep = !jw_is_bool( jblob, "log_keep" ) ? 30 : (int) jw_value( jblob, "log_keep" );
+		parms->log_keep = !jw_is_value( jblob, "log_keep" ) ? 30 : (int) jw_value( jblob, "log_keep" );
 		parms->delete_keep = !jw_is_bool( jblob, "delete_keep" ) ? 0 : (int) jw_value( jblob, "delete_keep" );
 
 		if( jw_missing( jblob, "default_mtu" ) ) {			// could be an old install using deprecated mtu, so look for that and default if neither is there
@@ -199,7 +199,7 @@ extern parms_t* read_parms( char* fname ) {
 					if( stuff != NULL ) {										// string, use default mtu
 						parms->pciids[i].id = strdup( stuff );
 						parms->pciids[i].mtu = def_mtu;
-						parms->pciids[i].flags |= PFF_LOOP_BACK;
+						parms->pciids[i].flags &= ~PFF_LOOP_BACK;
 					} else {
 						if( (pobj = jw_obj_ele( jblob, "pciids", i )) != NULL ) {		// full pciid object -- take values from it
 							if( (stuff = jw_string( pobj, "id" )) == NULL ) {
@@ -207,7 +207,7 @@ extern parms_t* read_parms( char* fname ) {
 							}
 							parms->pciids[i].id = strdup( stuff );
 							parms->pciids[i].mtu = !jw_is_value( pobj, "mtu" ) ? def_mtu : (int) jw_value( pobj, "mtu" );
-							if( !jw_is_bool( pobj, "enable_loopback" ) ? 1 : (int) jw_value( pobj, "enable_loopback" ) ) {		// default to true if not there
+							if( !jw_is_bool( pobj, "enable_loopback" ) ? 0 : (int) jw_value( pobj, "enable_loopback" ) ) {		// default to true if not there
 								parms->pciids[i].flags |= PFF_LOOP_BACK;
 							} else {
 								parms->pciids[i].flags &= ~PFF_LOOP_BACK;			// disable if set to false
