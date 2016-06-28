@@ -1,4 +1,14 @@
+#!/bin/sh
+
+set -e
+
 echo "running attlrvfd post initialisation..."
+
+# Add the vfd group unless it's already there
+if ! getent group vfd >/dev/null
+then
+   addgroup --quiet --system vfd || true
+fi
 
 if [ ! -d /etc/vfd ]
 then
@@ -32,6 +42,9 @@ then
 	echo "unable to create /var/lib/vfd/config "
 	exit 0
 fi
+
+chgrp vfd /var/lib/vfd/config
+chmod 775 /var/lib/vfd/config
 
 if [ -f /etc/vfd/vfd.cfg.sample ]
 then
