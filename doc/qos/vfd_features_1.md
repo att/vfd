@@ -19,28 +19,28 @@ RX pipeline: the RX pipeline will use a PCP --> TC mapping table (see per PF con
 
 ### Tenant view from a VM
 
-	                     +-----------------------------------+
+                         +-----------------------------------+
                          |                VM                 |
-						 |  VNF read RX Qs in priority order |
-						 +---|   |---|   |---|   |---|   |---+
+                         |  VNF read RX Qs in priority order |
+                         +---|   |---|   |---|   |---|   |---+
                              |   |   |   |   |   |   |   |
-						      TC0     TC1     TC2     TC3
+                              TC0     TC1     TC2     TC3
                          TX: min_bw  min_bw  min_bw  min_bw     | TX priority and bandwith
-						     max_bw  max_bw  max_bw  max_bw     | based on TX Q pkt is sent to
+                             max_bw  max_bw  max_bw  max_bw     | based on TX Q pkt is sent to
                                ^     ^        ^      ^
                                 \     \      /      /
-							     \     \    /      /
-							 Select RX TC queue based on PCP
+                                 \     \    /      /
+                           Select RX TC queue based on PCP
                                           ^
                                           |
-										  |
-									  RX packet
+                                          |
+                                       RX packet
 
 
 ### System view (TC class configuration)
 
        VF0_TC0  VF1_TC0 ...    VF0_TC1 VF1_TC1 ...     VF0_TC1 VF1_TC1 ...     VF0_TC1 VF1_TC1 ...
-	+---| Q |---| Q |---+   +---| Q |---| Q |---+   +---| Q |---| Q |---+   +---| Q |---| Q |---+
+    +---| Q |---| Q |---+   +---| Q |---| Q |---+   +---| Q |---| Q |---+   +---| Q |---| Q |---+
         |   |   |   |           |   |   |   |           |   |   |   |           |   |   |   |
        max_bw   max_bw          max_bw  max_bw          max_bw  max_bw          max_bw  max_bw
              TC0                     TC1                     TC2                     TC3
