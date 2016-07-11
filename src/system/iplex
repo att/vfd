@@ -11,11 +11,12 @@
                 2016 17 Mar - Add logging functionality
                 2016 25 Apr - Cleanup code
                 2016 03 May - Add dump action
+                2016 11 July- Add update action
 """
 
 __doc__ = """ iplex
     Usage:
-    iplex (add | delete) <port-id> [--loglevel=<value>]
+    iplex (add | update | delete) <port-id> [--loglevel=<value>]
     iplex show (all | <port-id>) [--loglevel=<value>]
     iplex verbose [--loglevel=<value>]
     iplex (ping | dump)
@@ -78,6 +79,13 @@ class Iplex(object):
         self.filename = self.__validate_file(port_id)
         self.resp_fifo = self.__create_fifo()
         msg = self.__request_message('add')
+        self.__write_read_fifo(msg)
+        return
+
+    def update(self, port_id):
+        self.filename = self.__validate_file(port_id)
+        self.resp_fifo = self.__create_fifo()
+        msg = self.__request_message('update')
         self.__write_read_fifo(msg)
         return
 
@@ -204,6 +212,8 @@ if __name__ == '__main__':
     iplex = Iplex(config_data, options, log)
     if options['add']:
         iplex.add(options['<port-id>'])
+    elif options['update']:
+        iplex.update(options['<port_id>'])
     elif options['delete']:
         iplex.delete(options['<port-id>'])
     elif options['ping']:
