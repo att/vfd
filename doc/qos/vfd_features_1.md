@@ -1,21 +1,39 @@
-VFd 2.0 features
+VFd 2.0 features  (DRAFT)
 ================
 
 Dynamic update of VF parameters
 -------------------------------
 
-VFd will support a `iplex update <vf_conf_file>` command to allow in-place updating of VF parameters. VFd will determine if the changes can be made non-destructively, i.e., without reseting the VF, and if possible, make them transparently to the attached VNF. This feature will mainly be useful for changing mirroring and QoS parameters after initial deployment. 
+VFd will support a `iplex update <vf_conf_file>` command to allow in-place updating of VF parameters. 
+VFd will determine if the changes can be made non-destructively, i.e., without reseting the VF, and if possible, make them transparently to the attached VNF. 
+This feature will mainly be useful for changing mirroring and QoS parameters after initial deployment. 
 
 
 Bandwidth QoS
 -------------
 
-The VFd bandwidth qos feature allows an administrator to configure the NIC with multiple traffic classes (4 to 8), henceforth named `tc0, tc1, ..., tc7` and to allocate priority and bandwidth to these classes. TC numbering is in priority order, with the higher number representing higher priority. The traffic classes are exposed to VFs in the form of multiple RX/TX queues - one per TC. Bandwidth assigned to each TC is shared across all the VF pools in the system. Additionally, each VF can be assigned a different min and max bandwidth within each TC.
+The VFd bandwidth qos feature allows an administrator to configure the NIC with 4 traffic classes (TCs), henceforth named `tc0, tc1, ..., tc3,` 
+and to allocate priority and bandwidth to these classes. 
+TC numbering is in priority order, with the higher number representing higher priority. 
+The traffic classes are exposed to VFs in the form of multiple RX/TX queues - one per TC. 
+Bandwidth assigned to each TC is shared across all the VF pools in the system. 
+Additionally, each VF can be assigned a different min and max bandwidth within each TC.
  
-TX pipeline: the TX pipeline will support priority and bandwidth allocation to each traffic class, and
-bandwidth allocation to each VF pool using a combination of PF and VF configuration below. The TC of outgoing packets will be inferred from the TX queue the packet is sent to. *802.1q PCP markings will not be considered in the TX TC selection decision*. However, VFd will configure the NIC to insert the PCP values provided by the VNF into the outgoing frame. Therefore, it is the VNF's responsibility to ensure that the correct PCP marking (see RX per-PF configuration section below) is provided in the frame descriptor during packet transmission.
+<!--- 2016/07/15 changed to remove priority -->
+TX pipeline: the TX pipeline will support bandwidth allocation to each traffic class, and
+bandwidth allocation to each VF pool using a combination of PF and VF configuration below. 
+The TC of outgoing packets will be inferred from the TX queue the packet is sent to. *802.1q PCP markings will 
+not be considered in the TX TC selection decision*. 
+However, VFd will configure the NIC to insert the PCP values provided by the VNF into the outgoing frame. 
+Therefore, it is the VNF's responsibility to ensure that the correct PCP marking (see RX per-PF configuration 
+section below) is provided in the frame descriptor during packet transmission.
 
-RX pipeline: the RX pipeline will use a PCP --> TC mapping table (see per PF configuration below) to determine what TC to map each incoming packet to based on the 802.1q header PCP values marked on the packet. This mapping will be a system-wide administrative setting. The packet will be sent to the appropriate RX queue based on it's TC (there's one RX queue per VF for each TC). *The NIC shall not provide any prioritization or bandwidth control for RX traffic beyond putting packets on the right TC queues.* The VNF associated attached to the VF is responsible for reading packets in priority order in order to provide any RX prioritization/policing. 
+RX pipeline: the RX pipeline will use a PCP --> TC mapping table (see per PF configuration below) to determine what 
+TC to map each incoming packet to based on the 802.1q header PCP values marked on the packet. 
+This mapping will be a system-wide administrative setting. 
+The packet will be sent to the appropriate RX queue based on it's TC (there's one RX queue per VF for each TC). *The 
+NIC shall not provide any prioritization or bandwidth control for RX traffic beyond putting packets on the right TC queues.* 
+The VNF associated attached to the VF is responsible for reading packets in priority order in order to provide any RX prioritization/policing. 
 
 ### Tenant view from a VM
 
@@ -25,7 +43,7 @@ RX pipeline: the RX pipeline will use a PCP --> TC mapping table (see per PF con
                          +---|   |---|   |---|   |---|   |---+
                              |   |   |   |   |   |   |   |
                               TC0     TC1     TC2     TC3
-                         TX: min_bw  min_bw  min_bw  min_bw     | TX priority and bandwidth
+                         TX: min_bw  min_bw  min_bw  min_bw     | TX bandwidth
                              max_bw  max_bw  max_bw  max_bw     | based on TX Q pkt is sent to
                                ^     ^        ^      ^
                                 \     \      /      /
@@ -44,8 +62,12 @@ RX pipeline: the RX pipeline will use a PCP --> TC mapping table (see per PF con
         |   |   |   |           |   |   |   |           |   |   |   |           |   |   |   |
        max_bw   max_bw          max_bw  max_bw          max_bw  max_bw          max_bw  max_bw
              TC0                     TC1                     TC2                     TC3
-           priority                priority                priority                priority
             min_bw                  min_bw                  min_bw                  min_bw
+
+<!---
+per 2016/07/15 meeting
+           priority                priority                priority                priority
+-->
 
 
 ### Per-PF configuration
@@ -95,11 +117,17 @@ Each TC must be assigned to a bandwidth group. Each bandwidth group is given a s
 
 Each TC can be configured separately and be given a `min_bw` within its BWG. The sum of all `min_bw` of TCs belonging to a BWG must total the `min_bw` of the BWG. Otherwise, the TCs will be allocated bandwidth in proportionally to their weights within the group.
 
+<!--
+	removed per 2016/07/15 meeting
 A TC having `link_strict_priority` (LSP) enabled will be given strict priority for the link *except* for traffic belonging to higher number TCs. Therefore, to have a globally strict priority TC, it should be enabled for the highest numbered traffic class. For such TCs, the `min_bw` field is superfluous (they can consume the entire link bandwidth not already consumed by a higher priority class), but the `max_bw` will still be honored on a per VF basis using the VM rate limiter. In other words, no single VF can transmit more than `max_bw` in a TC configured using LSP. Note that if an LSP class is configured without any `max_bw`, then lower priority classes cannot be guaranteed to receive their share of min bandwidth.
+-->
 
 A TC with `bwg_strict_priority` (GSP) is similar to LSP, but its scope is within a BWG. I.e., it can consume all the bandwidth not already consumed by higher priority TCs within its bandwidth group within the current round. However, a GSP TC will not consume more than its BWG's min_bw under contention conditions. So, similar to LSP, `min_bw` is not applicable for a GSP TC, but the `min_bw` of its BWG will still apply. The `max_bw` is again a per VF limit implemented using a per queue rate limiter. 
 
+<!--
+	removed per 2016/07/15 meeting
 The priority map determines which TC each PCP value maps to for RX traffic. 
+-->
 
 __[KJ TODO:] should we simplify by eliminating BWG entirely, and only allowing per TC configuration with strict_priority, min_bw, and max_bw fields?__
 
