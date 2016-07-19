@@ -36,6 +36,8 @@
 				13 Jun 2016 - Version bump to indicate inclusion of better type checking used in lib.
 							Change VLAN ID range bounds to <= 0. Correct error message when rejecting
 							because of excessive number of mac addresses.
+				19 Jul 2016 - Correct problem which was causing huge status responses to be 
+							chopped.
 
 */
 
@@ -73,6 +75,9 @@
 #define BUF_1K	1024			// simple buffer size constants
 #define BUF_10K BUF_1K * 10
 
+#define QOS_4TC_MODE 0			// 4 TCs mode flag
+#define QOS_8TC_MODE 1			// 8 TCs mode flag
+
 // --- local structs --------------------------------------------------------------------------------------------
 
 typedef struct request {
@@ -85,10 +90,10 @@ typedef struct request {
 // --- local protos when needed ---------------------------------------------------------------------------------
 
 static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
-static char* gen_stats( struct sriov_conf_c* conf );
+static char* gen_stats( struct sriov_conf_c* conf, int pf_only );
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-static const char* version = "v1.0/66166";
+static const char* version = "v1.1/17196";
 static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
 
 // --- misc support ----------------------------------------------------------------------------------------------
@@ -296,13 +301,14 @@ static void close_ports( void ) {
 
 	bleat_printf( 0, "closing ports" );
 	for( i = 0; i < n_ports; i++) {
-		bleat_printf( 0, "interrupt: closing port %d", i );
+		bleat_printf( 0, "closing port: %d", i );
 		rte_eth_dev_stop( i );
 		rte_eth_dev_close( i );
 		//rte_eth_dev_detach( i, dev_name );
 		//bleat_printf( 2, "device closed and detached: %s", dev_name );
 	}
-	bleat_printf( 0, "ports closed" );
+
+	bleat_printf( 0, "close ports finished" );
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -329,9 +335,9 @@ static int dummy_rte_eal_init( int argc, char** argv ) {
 	This builds the base command, and then adds a -w option for each pciid/vf combination that we know
 	about.
 
-	We strdup all of the arument strings that are eventually passed to dpdk as the man page indicates that
-	they might be altered, and that we should not fiddle with them after calling the init function. We give
-	them their own copy, and suffer a small leak.
+	We strdup all of the argument strings that are eventually passed to dpdk as the man page indicates that
+	they might be altered, and that we should not fiddle with them after calling the init function. Thus we 
+	give them their own copy, and suffer a small leak.
 	
 	This function causes a process abort if any of the following are true:
 		- unable to alloc memory
@@ -399,10 +405,10 @@ static int vfd_eal_init( parms_t* parms ) {
 	argv[4] = strdup( "4" );
 		
 	argv[5] = strdup( "-m" );
-	argv[6] = strdup( "50" );
+	argv[6] = strdup( "50" );					// MiB of memory
 	
 	argv[7] = strdup( "--file-prefix" );
-	argv[8] = strdup( "vfd" );
+	argv[8] = strdup( "vfd" );					// dpdk creates some kind of lock file, this is used for that
 	
 	argv[9] = strdup( "--log-level" );
 	snprintf( wbuf, sizeof( wbuf ), "%d", parms->dpdk_init_log_level );
@@ -416,7 +422,7 @@ static int vfd_eal_init( parms_t* parms ) {
 		bleat_printf( 1, "add pciid to dpdk dummy command line -w %s", parms->pciids[i].id );
 	}
 
-	dummy_rte_eal_init( argc, argv );			// print out parms
+	dummy_rte_eal_init( argc, argv );			// print out parms, vet, etc.
 	if( parms->forreal ) {
 		bleat_printf( 1, "invoking real rte initialisation argc=%d", argc );
 		i = rte_eal_init( argc, argv ); 			// http://dpdk.org/doc/api/rte__eal_8h.html
@@ -505,7 +511,7 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 	int vidx;							// index into the vf array
 	int	hole = -1;						// first hole in the list;
 	struct sriov_port_s* port = NULL;	// reference to a single port in the config
-	struct vf_s*	vf;		// point at the vf we need to fill in
+	struct vf_s*	vf;					// point at the vf we need to fill in
 	char mbuf[BUF_1K];					// message buffer if we fail
 	int tot_vlans = 0;					// must count vlans and macs to ensure limit not busted
 	int tot_macs = 0;
@@ -967,6 +973,40 @@ static int vfd_del_vf( parms_t* parms, struct sriov_conf_c* conf, char* fname, c
 // ---- request/response functions -----------------------------------------------------------------------------
 
 /*
+	Write to an open file des with a simple retry mechanism.  We cannot afford to block forever,
+	so we'll try only a few times if we make absolutely no progress.
+*/
+static int vfd_write( int fd, const char* buf, int len ) {
+	int	tries = 5;				// if we have this number of times where there is no progress we give up
+	int	nsent;					// number of bytes actually sent
+	int n2send;					// number of bytes left to send
+
+	n2send = len;
+	while( n2send > 0 && tries > 0 ) {
+		nsent = write( fd, buf, n2send );			// hard error; quit immediately
+		if( nsent < 0 ) {
+			bleat_printf( 0, "WRN: write error attempting %d, wrote only %d bytes: %s", len, len - n2send, strerror( errno ) );
+			return -1;
+		}
+			
+		if( nsent == n2send ) {
+			return len;
+		}
+
+		if( nsent > 0 ) { 		// something sent, so we assume iplex is actively reading
+			n2send -= nsent;
+			buf += nsent;
+		} else {
+			tries--;
+			usleep(50000);			// .5s
+		}
+	}
+
+	bleat_printf( 0, "WRN: write timed out attempting %d, but wrote only %d bytes", len, len - n2send );
+	return -1;
+}
+
+/*
 	Construct json to write onto the response pipe.  The response pipe is opened in non-block mode
 	so that it will fail immiediately if there isn't a reader or the pipe doesn't exist. We assume
 	that the requestor opens the pipe before sending the request so that if it is delayed after
@@ -975,9 +1015,7 @@ static int vfd_del_vf( parms_t* parms, struct sriov_conf_c* conf, char* fname, c
 */
 static void vfd_response( char* rpipe, int state, const char* msg ) {
 	int 	fd;
-	//char	buf[BUF_1K]; // to small :-(
-	char	buf[BUF_10K];
-	unsigned int		len = 0;
+	char	buf[BUF_1K];
 
 	if( rpipe == NULL ) {
 		return;
@@ -987,15 +1025,22 @@ static void vfd_response( char* rpipe, int state, const char* msg ) {
 	 	bleat_printf( 0, "unable to deliver response: open failed: %s: %s", rpipe, strerror( errno ) );
 		return;
 	}
-	bleat_printf( 3, "sending response: %s(%d) [%d] %s", rpipe, fd, state, msg );
 
-	snprintf( buf, sizeof( buf ), "{ \"state\": \"%s\", \"msg\": \"%s\" }\n", state ? "ERROR" : "OK", msg == NULL ? "" : msg );
-	if( (len = write( fd, buf, strlen( buf ) )) != strlen( buf ) ) {
-		bleat_printf( 0, "enum=%s", strerror( errno ) );
-		bleat_printf( 0, "WRN: write of response to pipe failed: %s: state=%d msg=%s", rpipe, state, msg ? msg : "" );
+	if( bleat_will_it( 2 ) ) {
+		bleat_printf( 2, "sending response: %s(%d) [%d] %d bytes", rpipe, fd, state, strlen( msg ) );
+	} else {
+		bleat_printf( 3, "sending response: %s(%d) [%d] %s", rpipe, fd, state, msg );
 	}
 
-	bleat_printf( 2, "response written to pipe" );
+	snprintf( buf, sizeof( buf ), "{ \"state\": \"%s\", \"msg\": \"", state ? "ERROR" : "OK" );
+	if ( vfd_write( fd, buf, strlen( buf ) ) > 0 ) {
+		if ( msg == NULL || vfd_write( fd, msg, strlen( msg ) ) > 0 ) {
+			snprintf( buf, sizeof( buf ), "\" }\n" );				// terminate the json
+			vfd_write( fd, buf, strlen( buf ) );
+			bleat_printf( 2, "response written to pipe" );			// only if all of message written 
+		}
+	}
+
 	bleat_pop_lvl();			// we assume it was pushed when the request received; we pop it once we respond
 	close( fd );
 }
@@ -1199,13 +1244,26 @@ static int vfd_req_if( parms_t *parms, struct sriov_conf_c* conf, int forever ) 
 					vfd_response( req->resp_fifo, 0, "dump captured in the log" );
 					break;
 
-				case RT_SHOW:			//TODO -- need to check for a specific thing to show; right now just dumps all
+				case RT_SHOW:
 					if( parms->forreal ) {
-						if( (buf = gen_stats( conf )) != NULL )  {		// todo need to replace 1 with actual number of ports
-							vfd_response( req->resp_fifo, 0, buf );
-							free( buf );
+						if( strcmp( req->resource, "pfs" ) == 0 ) {				// dump just the VF information
+							if( (buf = gen_stats( conf, 1 )) != NULL )  {		// todo need to replace 1 with actual number of ports
+								vfd_response( req->resp_fifo, 0, buf );
+								free( buf );
+							} else {
+								vfd_response( req->resp_fifo, 1, "unable to generate pf stats" );
+							}
 						} else {
-							vfd_response( req->resp_fifo, 1, "unable to generate stats" );
+							if( isdigit( *req->resource ) ) {						// dump just for the indicated pf (future)
+								vfd_response( req->resp_fifo, 1, "show of specific PF is not supported in this release; use 'all' or 'pfs'." );
+							} else {												// assume we dump for all
+								if( (buf = gen_stats( conf, 0 )) != NULL )  {		// todo need to replace 1 with actual number of ports
+									vfd_response( req->resp_fifo, 0, buf );
+									free( buf );
+								} else {
+									vfd_response( req->resp_fifo, 1, "unable to generate stats" );
+								}
+							}
 						}
 					} else {
 							vfd_response( req->resp_fifo, 1, "VFD running in 'no harm' (-n) mode; no stats available." );
@@ -1247,8 +1305,9 @@ static int vfd_req_if( parms_t *parms, struct sriov_conf_c* conf, int forever ) 
 
 /*
 	Generate a set of stats to a single buffer. Return buffer to caller (caller must free).
+	If pf_only is true, then the VF stats are skipped.
 */
-static char*  gen_stats( struct sriov_conf_c* conf ) {
+static char*  gen_stats( struct sriov_conf_c* conf, int pf_only ) {
 	char*	rbuf;			// buffer to return
 	int		rblen = 0;		// lenght
 	int		rbidx = 0;
@@ -1300,36 +1359,38 @@ static char*  gen_stats( struct sriov_conf_c* conf ) {
 		strcat( rbuf+rbidx,  buf );
 		rbidx += l;
 		
-		
-		// pack PCI ARI into 32bit to be used to get VF's ARI later 
-		uint32_t pf_ari = dev_info.pci_dev->addr.bus << 8 | dev_info.pci_dev->addr.devid << 3 | dev_info.pci_dev->addr.function;
-		
-		//iterate over active (configured) VF's only
-		int * vf_arr = malloc(sizeof(int) * conf->ports[i].num_vfs);
-		int v;
-		for (v = 0; v < conf->ports[i].num_vfs; v++)
-			vf_arr[v] = conf->ports[i].vfs[v].num;
+		if( ! pf_only ) {
+			// pack PCI ARI into 32bit to be used to get VF's ARI later 
+			uint32_t pf_ari = dev_info.pci_dev->addr.bus << 8 | dev_info.pci_dev->addr.devid << 3 | dev_info.pci_dev->addr.function;
+			
+			//iterate over active (configured) VF's only
+			int * vf_arr = malloc(sizeof(int) * conf->ports[i].num_vfs);
+			int v;
+			for (v = 0; v < conf->ports[i].num_vfs; v++)
+				vf_arr[v] = conf->ports[i].vfs[v].num;
 
-		// sort vf numbers
-		qsort(vf_arr, conf->ports[i].num_vfs, sizeof(int), cmp_vfs);
-		
-		for (v = 0; v < conf->ports[i].num_vfs; v++) {
-			if( (l = vf_stats_display(conf->ports[i].rte_port_number, pf_ari, vf_arr[v], buf, sizeof( buf ))) > 0 ) {  // < 0 out of range, not in use
-				if( l + rbidx > rblen ) {
-					rblen += BUF_SIZE + l;
-					rbuf = (char *) realloc( rbuf, sizeof( char ) * rblen );
-					if( !rbuf ) {
-						bleat_printf( 0, "ERR: gen_stats: realloc failed");
-						return NULL;
+			// sort vf numbers
+			qsort(vf_arr, conf->ports[i].num_vfs, sizeof(int), cmp_vfs);
+			
+			for (v = 0; v < conf->ports[i].num_vfs; v++) {
+				if( (l = vf_stats_display(conf->ports[i].rte_port_number, pf_ari, vf_arr[v], buf, sizeof( buf ))) > 0 ) {  // < 0 out of range, not in use
+					if( l + rbidx > rblen ) {
+						rblen += BUF_SIZE + l;
+						rbuf = (char *) realloc( rbuf, sizeof( char ) * rblen );
+						if( !rbuf ) {
+							bleat_printf( 0, "ERR: gen_stats: realloc failed");
+							return NULL;
+						}
 					}
+					strcat( rbuf+rbidx,  buf );
+					rbidx += l;
 				}
-				strcat( rbuf+rbidx,  buf );
-				rbidx += l;
-			}
-		}		
-		free(vf_arr);
+			}		
+			free(vf_arr);
+		}
 	}
 
+	bleat_printf( 2, "status buffer size: %d", rbidx );
 	return rbuf;
 }
 
@@ -1801,15 +1862,18 @@ main(int argc, char **argv)
 
 
   const char * main_help =
-	"\n"
-	"Usage: vfd [-f] [-n] [-p parm-file] [-v level] [-s syslogid]\n"
-	"Usage: vfd -?\n"
-	"  Options:\n"
-  "\t -f        keep in 'foreground'\n"
-  "\t -n        no-nic actions executed\n"
-  "\t -p <file> parmm file (/etc/vfd/vfd.cfg)\n"
-  "\t -s <num>  syslog facility 0-11 (log_kern - log_ftp) 16-23 (local0-local7) see /usr/include/sys/syslog.h\n"
-	"\t -h|?  Display this help screen\n";
+		"\n"
+		"Usage: vfd [-f] [-n] [-p parm-file] [-v level] [-q]\n"
+		"Usage: vfd -?\n"
+		"  Options:\n"
+		"\t -f        keep in 'foreground'\n"
+		"\t -n        no-nic actions executed\n"
+		"\t -p <file> parmm file (/etc/vfd/vfd.cfg)\n"
+		"\t -q        enable dcb qos (tmp until parm file enabled)\n"
+		"\t -h|?  Display this help screen\n"
+		"\n";
+
+  		//"\t -s <num>  syslog facility 0-11 (log_kern - log_ftp) 16-23 (local0-local7) see /usr/include/sys/syslog.h\n"
 
 	struct rte_mempool *mbuf_pool = NULL;
 	prog_name = strdup(argv[0]);
@@ -1819,7 +1883,7 @@ main(int argc, char **argv)
 	log_file = (char *) malloc( sizeof( char ) * BUF_1K );
 
   // Parse command line options
-  while ( (opt = getopt(argc, argv, "fhnv:p:s:")) != -1)
+  while ( (opt = getopt(argc, argv, "?fhnqv:p:s:")) != -1)
   {
     switch (opt)
     {
@@ -1843,13 +1907,14 @@ main(int argc, char **argv)
 
 		case 'h':
 		case '?':
-			printf( "vfd %s\n", version );
+			printf( "\nvfd %s\n", version );
 			printf("%s\n", main_help);
 			exit( 0 );
 			break;
 
+
 		default:
-			fprintf( stderr, "unknown commandline flag: %c\n", opt );
+			fprintf( stderr, "\nunknown commandline flag: %c\n", opt );
 			fprintf( stderr, "%s\n", main_help );
 			exit( 1 );
     }
@@ -1895,6 +1960,11 @@ main(int argc, char **argv)
 	vfd_add_ports( g_parms, &running_config );			// add the pciid info from parms to the ports list (must do before dpdk init, config file adds wait til after)
 
 	if( g_parms->forreal ) {										// begin dpdk setup and device discovery
+		int port;
+		int ret;					// returned value from some call
+		u_int16_t portid;
+		uint32_t pci_control_r;  
+
 		bleat_printf( 1, "starting rte initialisation" );
 		rte_set_log_type(RTE_LOGTYPE_PMD && RTE_LOGTYPE_PORT, 0);
 		
@@ -1916,11 +1986,12 @@ main(int argc, char **argv)
 		static pthread_t tid;
 		TAILQ_INIT(&rq_head);
 		
-		int ret = pthread_create(&tid, NULL, (void *)process_refresh_queue, NULL);	
+		ret = pthread_create(&tid, NULL, (void *)process_refresh_queue, NULL);	
 		if (ret != 0) {
 			bleat_printf( 0, "CRI: abort: cannot crate refresh_queue thread" );
 			rte_exit(EXIT_FAILURE, "Cannot create refresh_queue thread\n");
 		}
+		bleat_printf( 1, "refresh queue management thread created" );
 	
 		bleat_printf( 1, "creating memory pool" );
 		// Creates a new mempool in memory to hold the mbufs.
@@ -1935,10 +2006,8 @@ main(int argc, char **argv)
 			rte_exit(EXIT_FAILURE, "Cannot create mbuf pool\n");
 		}
 
-		bleat_printf( 1, "initialising all ports" );
-		/* Initialize all ports. */
-	  u_int16_t portid;
-		for (portid = 0; portid < n_ports; portid++) {
+		bleat_printf( 1, "initialising all (%d) ports", n_ports );
+		for (portid = 0; portid < n_ports; portid++) { 									/* Initialize all ports. */
 			if (port_init(portid, mbuf_pool) != 0) {
 				bleat_printf( 0, "CRI: abort: port initialisation failed: %d", (int) portid );
 				rte_exit(EXIT_FAILURE, "Cannot init port %"PRIu8 "\n", portid);
@@ -1950,56 +2019,52 @@ main(int argc, char **argv)
 	
 	
 		bleat_printf( 1, "looping over %d ports to map indexes", n_ports );
-	  int port;
-	  for(port = 0; port < n_ports; ++port){					// for each port reported by driver
-		struct rte_eth_dev_info dev_info;
-		rte_eth_dev_info_get(port, &dev_info);
-		
-		rte_eth_macaddr_get(port, &addr);
-		bleat_printf( 1,  "mapping port: %u, MAC: %02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ", ",
-			(unsigned)port,
-			addr.addr_bytes[0], addr.addr_bytes[1],
-			addr.addr_bytes[2], addr.addr_bytes[3],
-			addr.addr_bytes[4], addr.addr_bytes[5]);
+		for(port = 0; port < n_ports; ++port){					// for each port reported by driver
+			int i;
+			char pciid[25];
+			struct rte_eth_dev_info dev_info;
 
-		bleat_printf( 1, "driver: %s, index %d, pkts rx: %lu", dev_info.driver_name, dev_info.if_index, st.pcount);
-		bleat_printf( 1, "pci: %04X:%02X:%02X.%01X, max VF's: %d, numa: %d", dev_info.pci_dev->addr.domain, dev_info.pci_dev->addr.bus,
+			rte_eth_dev_info_get(port, &dev_info);
+		
+			rte_eth_macaddr_get(port, &addr);
+			bleat_printf( 1,  "mapping port: %u, MAC: %02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ", ",
+					(unsigned)port,
+					addr.addr_bytes[0], addr.addr_bytes[1],
+					addr.addr_bytes[2], addr.addr_bytes[3],
+					addr.addr_bytes[4], addr.addr_bytes[5]);
+
+			bleat_printf( 1, "driver: %s, index %d, pkts rx: %lu", dev_info.driver_name, dev_info.if_index, st.pcount);
+			bleat_printf( 1, "pci: %04X:%02X:%02X.%01X, max VF's: %d, numa: %d", dev_info.pci_dev->addr.domain, dev_info.pci_dev->addr.bus,
 				dev_info.pci_dev->addr.devid , dev_info.pci_dev->addr.function, dev_info.max_vfs, dev_info.pci_dev->numa_node);
 				
-		/*
-		 * rte could enumerate ports differently than in config files
-		 * rte_config_portmap array will hold index to config
-		 */
-		int i;
-		char pciid[25];
-		snprintf(pciid, sizeof( pciid ), "%04X:%02X:%02X.%01X",
+			/*
+			* rte could enumerate ports differently than in config files
+			* rte_config_portmap array will hold index to config
+			*/
+			snprintf(pciid, sizeof( pciid ), "%04X:%02X:%02X.%01X",
 				dev_info.pci_dev->addr.domain,
 				dev_info.pci_dev->addr.bus,
 				dev_info.pci_dev->addr.devid,
 				dev_info.pci_dev->addr.function);
 		
-		for(i = 0; i < running_config.num_ports; ++i) {						// suss out the device in our config and map the two indexes
-		  if (strcmp(pciid, running_config.ports[i].pciid) == 0) {
-			bleat_printf( 2, "physical port %i maps to config %d", port, i );
-			rte_config_portmap[port] = i;
-			running_config.ports[i].nvfs_config = dev_info.max_vfs;			// number of configured VFs (could be less than max)
-			running_config.ports[i].rte_port_number = port; 				// point config port back to rte port
-		  }
-		}
-	  }
-
+			for(i = 0; i < running_config.num_ports; ++i) {							// suss out the device in our config and map the two indexes
+				if (strcmp(pciid, running_config.ports[i].pciid) == 0) {
+					bleat_printf( 2, "physical port %i maps to config %d", port, i );
+					rte_config_portmap[port] = i;
+					running_config.ports[i].nvfs_config = dev_info.max_vfs;			// number of configured VFs (could be less than max)
+					running_config.ports[i].rte_port_number = port; 				// point config port back to rte port
+				}
+			}
+	  	}
 
 		// read PCI config to get VM offset and stride 
 		struct rte_eth_dev *pf_dev = &rte_eth_devices[0];
-		uint32_t pci_control_r;  
 		rte_eal_pci_read_config(pf_dev->pci_dev, &pci_control_r, 32, 0x174);
 		vf_offfset = pci_control_r & 0x0ffff;
 		vf_stride = pci_control_r >> 16;
-
-	
 		bleat_printf( 2, "indexes were mapped" );
 	
-		set_signals();				// register signal handlers 
+		set_signals();												// register signal handlers 
 
 		gettimeofday(&st.startTime, NULL);
 
@@ -2009,7 +2074,7 @@ main(int argc, char **argv)
 	}
 
 	if( g_parms->forreal ) {
-		g_parms->initialised = 1;											// safe to update nic now, but only if in forreal mode
+		g_parms->initialised = 1;										// safe to update nic now, but only if in forreal mode
 	}
 
 	vfd_add_all_vfs( g_parms, &running_config );						// read all existing config files and add the VFs to the config
@@ -2021,6 +2086,7 @@ main(int argc, char **argv)
 			exit( 1 );
 		}
 	}
+
 	
 	run_start_cbs( &running_config );				// run any user startup callback commands defined in VF configs
 
