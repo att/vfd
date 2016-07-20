@@ -12,12 +12,13 @@
                 2016 25 Apr - Cleanup code
                 2016 03 May - Add dump action
                 2016 11 July- Add update action
+                2016 20 July - Add list pf's, per vf status functionality
 """
 
 __doc__ = """ iplex
     Usage:
-    iplex (add | update | delete) <port-id> [--loglevel=<value>]
-    iplex show (all | <port-id>) [--loglevel=<value>]
+    iplex (add | update | delete | status) <port-id> [--loglevel=<value>]
+    iplex show (all | pfs) [--loglevel=<value>]
     iplex verbose [--loglevel=<value>]
     iplex (ping | dump)
     iplex -h | --help
@@ -96,11 +97,15 @@ class Iplex(object):
         self.__write_read_fifo(msg)
         return
 
-    def show(self, port_id=None, all_list=False):
-        if all_list:
-            self.filename = None
-        else:
-            self.filename = self.__validate_file(port_id)
+    def status(self, port_id):
+        self.filename = self.__validate_file(port_id)
+        self.resp_fifo = self.__create_fifo()
+        msg = self.__request_message('status')
+        self.__write_read_fifo(msg)
+        return
+
+    def show(self):
+        self.filename = None
         self.resp_fifo = self.__create_fifo()
         msg = self.__request_message('show')
         self.__write_read_fifo(msg)
@@ -165,6 +170,10 @@ class Iplex(object):
         msg["params"] = {}
         if self.filename is not None:
             msg["params"]["filename"] = self.filename
+        if self.options['all']:
+            msg["params"]["resource"] = "all"
+        if self.options['pfs']:
+            msg["params"]["resource"] = "pfs"
         msg["params"]["loglevel"] = int(self.options["--loglevel"])
         msg["params"]["r_fifo"] = self.resp_fifo
         self.log.info("REQUEST MESSAGE: %s", msg)
@@ -173,8 +182,9 @@ class Iplex(object):
     def __read_fd(self, fd, chunksize=2048):
         buffer = []
         running = True
+        time.sleep(1)
         while running:
-            time.sleep(2)
+            time.sleep(1)
             chunk = os.read(fd, chunksize)
             buffer.append(chunk)
             running = len(chunk) == chunksize
@@ -224,4 +234,4 @@ if __name__ == '__main__':
         iplex.dump()
     else:
         if options['show']:
-            iplex.show(options['<port-id>'], options['all'])
+            iplex.show()
