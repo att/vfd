@@ -38,6 +38,7 @@
 							because of excessive number of mac addresses.
 				19 Jul 2016 - Correct problem which was causing huge status responses to be 
 							chopped.
+				20 Jul 2016 - Correct use of config struct after free.
 
 */
 
@@ -93,7 +94,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
 static char* gen_stats( struct sriov_conf_c* conf, int pf_only );
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-static const char* version = "v1.1/17196";
+static const char* version = "v1.1/17206";
 static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
 
 // --- misc support ----------------------------------------------------------------------------------------------
@@ -823,8 +824,8 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 		*reason = NULL;
 	}
 
-	free_config( vfc );
 	bleat_printf( 2, "VF was added: %s %s id=%d", vfc->name, vfc->pciid, vfc->vfid );
+	free_config( vfc );
 	return 1;
 }
 
