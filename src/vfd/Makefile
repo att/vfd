@@ -30,7 +30,7 @@ APP = vfd
 
 # all source are stored in SRCS-y	(again, for the dpdk mk file)
 #SRCS-y := main.c sriov.c /usr/local/lib/libconfig.a
-SRCS-y := main.c sriov.c $(libvfd) $(libjsmn)
+SRCS-y := main.c sriov.c qos.c $(libvfd) $(libjsmn)
 
 CFLAGS += $(WERROR_FLAGS) -I $(PWD)/../lib/
 #-lconfig
@@ -49,4 +49,4 @@ include $(RTE_SDK)/mk/rte.extapp.mk
 
 	
 clean: 
-	rm -rf build/*
+	rm -rf build
