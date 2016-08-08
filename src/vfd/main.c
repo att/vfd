@@ -94,7 +94,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
 static char* gen_stats( struct sriov_conf_c* conf, int pf_only );
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-static const char* version = "v1.1/17206";
+static const char* version = "v1.1/18086";
 static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
 
 // --- misc support ----------------------------------------------------------------------------------------------
@@ -1247,7 +1247,14 @@ static int vfd_req_if( parms_t *parms, struct sriov_conf_c* conf, int forever ) 
 
 				case RT_SHOW:
 					if( parms->forreal ) {
-						if( strcmp( req->resource, "pfs" ) == 0 ) {				// dump just the VF information
+								if( (buf = gen_stats( conf, 0 )) != NULL )  {		// todo need to replace 1 with actual number of ports
+									vfd_response( req->resp_fifo, 0, buf );
+									free( buf );
+								} else {
+									vfd_response( req->resp_fifo, 1, "unable to generate stats" );
+								}
+/*
+						if( req->resource != NULL && strcmp( req->resource, "pfs" ) == 0 ) {				// dump just the VF information
 							if( (buf = gen_stats( conf, 1 )) != NULL )  {		// todo need to replace 1 with actual number of ports
 								vfd_response( req->resp_fifo, 0, buf );
 								free( buf );
@@ -1266,6 +1273,7 @@ static int vfd_req_if( parms_t *parms, struct sriov_conf_c* conf, int forever ) 
 								}
 							}
 						}
+*/
 					} else {
 							vfd_response( req->resp_fifo, 1, "VFD running in 'no harm' (-n) mode; no stats available." );
 					}
@@ -1860,6 +1868,7 @@ main(int argc, char **argv)
 	int		forreal = 1;				// -n sets to 0 to keep us from actually fiddling the nic
 	int		opt;
 	int		fd = -1;
+	int		enable_qos = 0;
 
 
   const char * main_help =
@@ -1884,7 +1893,7 @@ main(int argc, char **argv)
 	log_file = (char *) malloc( sizeof( char ) * BUF_1K );
 
   // Parse command line options
-  while ( (opt = getopt(argc, argv, "?fhnqv:p:s:")) != -1)
+  while ( (opt = getopt(argc, argv, "?qfhnqv:p:s:")) != -1)
   {
     switch (opt)
     {
@@ -1905,6 +1914,10 @@ main(int argc, char **argv)
 		case 's':
 		  logFacility = (atoi(optarg) << 3);
 		  break;
+
+		case 'q':
+			enable_qos = 1;
+			break;
 
 		case 'h':
 		case '?':
@@ -2056,6 +2069,17 @@ main(int argc, char **argv)
 					running_config.ports[i].rte_port_number = port; 				// point config port back to rte port
 				}
 			}
+			if( enable_qos ) {
+				int pctgs[32];
+				int	v;
+				pctgs[0] = 69;
+				for( v = 1; v < 32; v++ ) {
+					pctgs[v] = 1;
+				}
+
+				bleat_printf( 1, "enabling qos for port %d", port );
+				enable_dcb_qos( port, pctgs, 0 );
+			}
 	  	}
 
 		// read PCI config to get VM offset and stride 
@@ -2091,7 +2115,7 @@ main(int argc, char **argv)
 	
 	run_start_cbs( &running_config );				// run any user startup callback commands defined in VF configs
 
-	bleat_printf( 1, "initialisation complete, setting bleat level to %d; starting to looop", g_parms->log_level );
+	bleat_printf( 1, "%s initialisation complete, setting bleat level to %d; starting to looop", version, g_parms->log_level );
 	bleat_set_lvl( g_parms->log_level );					// initialisation finished, set log level to running level
 	if( forreal ) {
 		rte_set_log_level( g_parms->dpdk_log_level );

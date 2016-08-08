@@ -105,7 +105,7 @@ static void qos_set_tdplane( portid_t pf ) {
 	int i;
 	uint32_t cval;			// current value
 	uint32_t offset;
-	uint32_t val = 0x00 1f f0 ff;	// max=1ff (23:12)  group=0 tc-credits=ff (8:0)
+	uint32_t val = 0x001ff0ff;	// max=1ff (23:12)  group=0 tc-credits=ff (8:0)
 	uint32_t mask = 0x3f000000;
 
 	offset = 0x04910;		// RTTDT2C
