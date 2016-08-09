@@ -37,8 +37,8 @@ static void qos_set_minifg( portid_t pf ) {
                         |                              |
                         |                              ||-- 0==RR 1==WSP (TDPAC)
                         |                              ||
-			crrr rrrr   01rr cccr   rrrr rrrr   r0r1 rr11
-			xxxx xxxx   xxxx xxxx   xxxx xxxx   xxxx xxxx
+            crrr rrrr   01rr cccr   rrrr rrrr   r0r1 rr11
+            xxxx xxxx   xxxx xxxx   xxxx xxxx   xxxx xxxx
 	mask:   ff          3f          ff          ac
 	val     00          40          00          13
 
@@ -48,8 +48,8 @@ static void qos_set_minifg( portid_t pf ) {
                   | -- per data sheet set to 0x004 for DCB mode
                   |                               |--- 0==RR 1=Strict pri
             /-----^------\                        |
-			0000 0001   00rr rrrr   rrrr rrr1   rr1r rrrr
-			xxxx xxxx   xxxx xxxx   xxxx xxxx   xxxx xxxx
+            0000 0001   00rr rrrr   rrrr rrr1   rr1r rrrr
+            xxxx xxxx   xxxx xxxx   xxxx xxxx   xxxx xxxx
 	mask:   00          3f          fe          df
 	val     01          00          01          20
 
@@ -58,8 +58,8 @@ static void qos_set_minifg( portid_t pf ) {
 		RAC=1b, RRM=1b
                                                       |-- 0==RR 1=WSB
                                                       ||- must be 1 for DCB
-			rrrr rrrr   rrrr rrrr   rrrr rrrr   rrrr r11r
-			xxxx xxxx   xxxx xxxx   xxxx xxxx   xxxx xxxx
+            rrrr rrrr   rrrr rrrr   rrrr rrrr   rrrr r11r
+            xxxx xxxx   xxxx xxxx   xxxx xxxx   xxxx xxxx
 	mask:   ff          ff          ff          f9				(unused since we don't clear anything)
 	val     00          00          00          06
 	
