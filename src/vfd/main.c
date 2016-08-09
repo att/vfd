@@ -773,6 +773,7 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 	vf->num = vfc->vfid;
 	port->vfs[vidx].last_updated = ADDED;		// signal main code to configure the buggger
 	vf->strip_stag = vfc->strip_stag;
+	vf->insert_stag = vfc->strip_stag;			// both are pulled from same config parm
 	vf->allow_bcast = vfc->allow_bcast;
 	vf->allow_mcast = vfc->allow_mcast;
 	vf->allow_un_ucast = vfc->allow_un_ucast;
@@ -1423,7 +1424,7 @@ static int vfd_set_ins_strip( struct sriov_port_s *port, struct vf_s *vf ) {
 		bleat_printf( 2, "pf: %s vf: %d set strip vlan tag %d", port->name, vf->num, vf->strip_stag );
 		rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag );			// if just one in the list, push through user strip option
 
-		if( vf->strip_stag ) {																// when stripping, we must also insert
+		if( vf->insert_stag ) {																// when stripping, we must also insert
 			bleat_printf( 2, "%s vf: %d set insert vlan tag with id %d", port->name, vf->num, vf->vlans[0] );
 			tx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->vlans[0] );
 		} else {
