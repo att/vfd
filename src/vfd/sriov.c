@@ -209,11 +209,11 @@ tx_vlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id)
 
 	reg_off += 4 * vf_id;
 
-	bleat_printf( 3, "tx_vlan_insert_set_on_vf: bar=0x%08X, vf_id=%d, vlan=%d", reg_off, vf_id, vlan_id);
+	bleat_printf( 1, "tx_vlan_insert_set_on_vf: base=0x08000 bar=0x%08X, port=%d vf_id=%d, vlan=%d", reg_off, port_id, vf_id, vlan_id);
 
 	uint32_t ctrl = port_pci_reg_read(port_id, reg_off);
 
-	bleat_printf( 3, "tx_vlan_insert_set_on_vf: read: bar=0x%08X, vf_id=%d, ctrl=0x%x", reg_off, vf_id, ctrl);
+	bleat_printf( 1, "tx_vlan_insert_set_on_vf: read: bar=0x%08X, vf_id=%d, ctrl=0x%x", reg_off, vf_id, ctrl);
 
 
 	if (vlan_id){
@@ -225,7 +225,7 @@ tx_vlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id)
 
 	port_pci_reg_write(port_id, reg_off, ctrl);
 
-	bleat_printf( 3, "tx_insert_set_on_vf: set: bar=0x%08X, vfid_id=%d, ctrl=0x%08X", reg_off, vf_id, ctrl);
+	bleat_printf( 1, "tx_insert_set_on_vf: set: bar=0x%08X, vfid_id=%d, ctrl=0x%08X", reg_off, vf_id, ctrl);
 }
 
 
@@ -236,20 +236,21 @@ rx_vlan_strip_set_on_vf(portid_t port_id, uint16_t vf_id, int on)
   struct rte_eth_dev_info dev_info;
   rte_eth_dev_info_get(port_id, &dev_info);
 
-  uint32_t queues_per_pool = dev_info.vmdq_queue_num / dev_info.max_vmdq_pools;
+  //uint32_t queues_per_pool = dev_info.vmdq_queue_num / dev_info.max_vmdq_pools;
+  uint32_t queues_per_pool = 4;
 
   uint32_t reg_off = 0x01028;						// receive descriptor control reg (pg527/597)
 
   reg_off += (0x40 * vf_id * queues_per_pool);
 
-  bleat_printf( 3, "rx_vlan_strip_set_on_vf: bar=0x%08X, vf_id=%d, numq=%d)", reg_off, vf_id, queues_per_pool);
+  bleat_printf( 1, "rx_vlan_strip_set_on_vf: base=0x01028 offset=0x%08X, pf=%d vf_id=%d, q/pool=%d)", reg_off, port_id, vf_id, queues_per_pool);
 
   uint32_t q;
   for(q = 0; q < queues_per_pool; ++q){
 
     reg_off += 0x40 * q;
 
-    bleat_printf( 3, "rx_vlan_strip_set_on_vf: q=%d bar=0x%08X, vf_id=%d, on=%d", q, reg_off, vf_id, on);
+    bleat_printf( 1, "rx_vlan_strip_set_on_vf: q=%d bar=0x%08X, vf_id=%d, on=%d", q, reg_off, vf_id, on);
 
     uint32_t ctrl = port_pci_reg_read(port_id, reg_off);
 
@@ -509,7 +510,8 @@ is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter )
 	
 	struct rte_eth_dev *pf_dev = &rte_eth_devices[port_id];
   uint32_t queues_per_pool = RTE_ETH_DEV_SRIOV(pf_dev).nb_q_per_pool;
-	queues_per_pool = 2;											// if we don't have RSS or DCB enabled number of queues is 2 per pool ?
+	//queues_per_pool = 2;											// if we don't have RSS or DCB enabled number of queues is 2 per pool ?
+	queues_per_pool = 4;											// if we don't have RSS or DCB enabled number of queues is 2 per pool ?
 	
   uint32_t reg_off = 0x01028; 							// receive descriptor control reg (pg527/597)
 
