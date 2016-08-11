@@ -10,6 +10,8 @@
 #include "sriov.h"
 #include <vfdlib.h>		// if vfdlib.h needs an include it must be included there, can't be include prior
 
+static int option1 = 1;
+
 /*
 	Set security buffer minimum ifg.
 */
@@ -32,11 +34,17 @@ static void qos_set_minifg( portid_t pf ) {
     - Tx Descriptor plane Control and Status (RTTDCS), bits:
         TDPAC=1b, VMPAC=1b, TDRM=1b, BDPM=1b, BPBFSM=0b
 
-                        |--- bypass buffer free space mon (must be cleared for sriov or dcb)
-                        |                              |--- 0==RR 1=WRR (VMPAC)
-                        |                              |
-                        |                              ||-- 0==RR 1==WSP (TDPAC)
-                        |                              ||
+		CONFLICT:  there is a conflict in the data sheet with regard to the BDPM setting
+					section 4 says the bit should be set, while the description of this
+					register in section 8 states that the bit should not be set in dcb mode.
+
+                        +--- bypass buffer free space mon (must be cleared for sriov or dcb)
+                        |+--- bypass data pipe monitor ?????? value uncertain -- conflict in doc
+                        ||
+                        ||                             +--- 0==RR 1=WRR (VMPAC) VM
+                        ||                             |
+                        ||                             |+-- 0==RR 1==WSP (TDPAC) TC
+                        ||                             ||
             crrr rrrr   01rr cccr   rrrr rrrr   r0r1 rr11
             xxxx xxxx   xxxx xxxx   xxxx xxxx   xxxx xxxx
 	mask:   ff          3f          ff          ac
@@ -45,6 +53,7 @@ static void qos_set_minifg( portid_t pf ) {
 
     - Tx Packet Plane Control and Status (RTTPCS): 
 		TPPAC=1b, TPRM=1b, ARBD=0x004
+
                   | -- per data sheet set to 0x004 for DCB mode
                   |                               |--- 0==RR 1=Strict pri
             /-----^------\                        |
@@ -72,20 +81,24 @@ static void qos_enable_arb( portid_t pf ) {
 
 	offset = 0x04900;			// RTTDCS
 	mask = 0xff3fffac;			
-	val = 0x400013;
+	if( option1 ) {
+		val = 0x00400013;
+	} else {
+		val = 0x00000013;
+	}
 	cval = port_pci_reg_read( pf, offset );						// snag current 
 	port_pci_reg_write( pf, offset, (cval & mask) | val );		
-	bleat_printf( 1, ">>>> qos: set_enable_rttdcs %08x & %08x | %08x = %08x", cval, mask, val, (cval & mask) | val );
+	bleat_printf( 1, ">>>> qos: set_enable_rttdcs (%08x & %08x) | %08x = %08x", cval, mask, val, (cval & mask) | val );
 
 	offset = 0x0cd00;			// RTTPCS
 	mask = 0x003ffedf;
 	val = 0x01000120;
 	cval = port_pci_reg_read( pf, offset );						// snag current 
 	port_pci_reg_write( pf, offset, (cval & mask) | val );		// add our bits or clear what we don't want
-	bleat_printf( 1, ">>>> qos: set_enable_rttpcsarb %08x & %08x | %08x = %08x", cval, mask, val, (cval & mask) | val );
+	bleat_printf( 1, ">>>> qos: set_enable_rttpcsarb (%08x & %08x) | %08x = %08x", cval, mask, val, (cval & mask) | val );
 
 	offset = 0x02430;			// RTRPCS
-	val = 0x06;
+	val = 0x00000006;
 	cval = port_pci_reg_read( pf, offset );						// snag current 
 	port_pci_reg_write( pf, offset, cval | val );				// flip on our bits (no mask needed since we aren't clearing bits)
 	bleat_printf( 0, ">>> rtrpcs: %08x/nomask %08x = %08x", cval, val, (cval) | val );
@@ -100,6 +113,18 @@ static void qos_enable_arb( portid_t pf ) {
 /*
 	Set dcb transmit descriptor plane t2 config [0-7].
 	For now we set equallay.
+
+	FUTURE:  if setting gsp or lsp changes will be needed
+
+    |- 1==lsp                   |-- bwg index
+    |                           |
+    ||- 1==gsp     max cl       |    CR quant
+    ||         /------^------\ /-\/---^------\
+    xxrr rrrr  xxxx xxxx  xxxx xxxr  xxxx xxxx
+    00         0001 1111  1111 ???0  1111 1111
+       0    0     1    f     f  ?       f    f
+    0011 1111  0000 0000  0000 0001  0000 0000 mask
+       3    f     0    0    0     0     0    0
 */
 static void qos_set_tdplane( portid_t pf ) {
 	int i;
@@ -107,12 +132,14 @@ static void qos_set_tdplane( portid_t pf ) {
 	uint32_t offset;
 	uint32_t val = 0x001ff0ff;	// max=1ff (23:12)  group=0 tc-credits=ff (8:0)
 	uint32_t mask = 0x3f000000;
+	uint32_t group = 0x00;		// we'll just use a sequential group and assign each tc to its own for now
 
 	offset = 0x04910;		// RTTDT2C
 	for( i = 0; i < 8; i++ ) {
+		group = i << 9;
 		cval = port_pci_reg_read( pf, offset );
-		port_pci_reg_write( pf, offset, (cval & mask) | val );		
-		bleat_printf( 1, ">>>> qos: rttdt2c  [%d] %08x & %08x | %08x = %08x", i, cval, mask, val, (cval & mask) | val );
+		port_pci_reg_write( pf, offset, (cval & mask) | val | group );		
+		bleat_printf( 1, ">>>> qos: rttdt2c  [%d] %08x & %08x | %08x = %08x g=0x%02x", i, cval, mask, val, (cval & mask) | val | group, group );
 
 		offset += 4;
 	}
@@ -121,41 +148,33 @@ static void qos_set_tdplane( portid_t pf ) {
 /*
 	Set dcb transmit packet plane t2 config [0-7].
 	For now we set equallay.
+
+	See qos_set_tdplane flower box for values.
 */
 static void qos_set_txpplane( portid_t pf ) {
 	int i;
 	uint32_t cval;				// current value
 	uint32_t offset;
-	uint32_t val = 0x1ff0ff;	// max=1ff group=0 credits=ff
+	uint32_t val = 0x001ff0ff;	// max=1ff group=0 credits=ff
 	uint32_t mask = 0x3f000000;
+	uint32_t group = 0x00;		// we'll just use a sequential group and assign each tc to its own for now
 
 	offset = 0x0cd20;			// RTTPT2C
 	for( i = 0; i < 8; i++ ) {
+		group = i << 9;
 		cval = port_pci_reg_read( pf, offset );
-		port_pci_reg_write( pf, offset, (cval & mask) | val );		
-		bleat_printf( 1, ">>>> qos: rttpt2c  [%d] %08x & %08x | %08x = %08x", i, cval, mask, val, (cval & mask) | val );
+		port_pci_reg_write( pf, offset, (cval & mask) | val | group );		
+		bleat_printf( 1, ">>>> qos: rttpt2c  [%d] %08x & %08x | %08x = %08x", i, cval, mask, val, (cval & mask) | val | group );
 
 		offset += 4;
 	}
 }
-/*---
-	int i;
-	uint32_t cval;			// current value
-	uint32_t offset;
-
-	offset = 0x0cd20;		// RTTPT2C
-	for( i = 0; i < 8; i++ ) {
-		cval = port_pci_reg_read( pf, offset );
-		port_pci_reg_write( pf, offset, (cval & 0x3f000000) );		
-
-		offset += 4;
-	}
-}
-*/
 
 /*
 	Set dcb receive packet plane t2 config [0-7].
 	For now we set equallay.
+
+	See qos_set_tdplane flowerbox for details
 */
 static void qos_set_rxpplane( portid_t pf ) {
 	int i;
@@ -163,12 +182,14 @@ static void qos_set_rxpplane( portid_t pf ) {
 	uint32_t offset;
 	uint32_t val = 0x1ff0ff;	// max=1ff group=0 credits=ff
 	uint32_t mask = 0x3f000000;
+	uint32_t group = 0x00;		// we'll just use a sequential group and assign each tc to its own for now
 
 	offset = 0x02140;		//RTRPT4C
 	for( i = 0; i < 8; i++ ) {
+		group = i << 9;
 		cval = port_pci_reg_read( pf, offset );
-		port_pci_reg_write( pf, offset, (cval & mask) | val );		
-		bleat_printf( 1, ">>>> qos: rtrp4tc  [%d] %08x & %08x | %08x = %08x", i, cval, mask, val, (cval & mask) | val );
+		port_pci_reg_write( pf, offset, (cval & mask) | val | group );		
+		bleat_printf( 1, ">>>> qos: rtrp4tc  [%d] %08x & %08x | %08x = %08x", i, cval, mask, val, (cval & mask) | val| group  );
 
 		offset += 4;
 	}
@@ -181,21 +202,26 @@ static void qos_set_rxpplane( portid_t pf ) {
 static void qos_set_rates( portid_t pf, int* rates ) {
 	uint32_t	sel_offset = 0x04904;				// offset of the selector register
 	uint32_t	reg_offset = 0x04908;				// register offset
-	uint32_t	one_cred = 163;						// credits for one percent
+	uint32_t	one_cred = 163;						// credits for one percent (100% would be about the max of 0x3fff)
+	uint32_t	cval;
 	int v;											// VF index
 	int t;											// tc index
 	uint32_t q;										// q index
 	uint32_t	amt;								// amount to assign to each tc in the pool/queue
+	uint32_t	mask;
 
+	mask = 0xffffc000;								// we set bits 0:13; we'll mask those off the current value first to preserve what might be set
 	q = 0;
 	for( v = 0; v < 32; v++ ) {						// set the credits for each of the possible queues
 		amt = rates[v] * one_cred;					// figure the amount for this pool
 
 		for( t = 0; t < 4; t++ ) {
-			port_pci_reg_write( pf, sel_offset, q );		// select the queue to work on
+			// --- this seems dodgy if another process/thread can select before we make our second write ----
+			port_pci_reg_write( pf, sel_offset, q );						// select the queue to work on
+			cval = port_pci_reg_read( pf, reg_offset );						// read to preserve reserved bits
+			port_pci_reg_write( pf, reg_offset, (cval & mask) | amt );		// set the credits 
+			bleat_printf( 2, "qos set rate: [%d=%d] rate=%d%% credits=%d (%08x)", t, q, rates[v], amt, (cval & mask) | amt );
 			q++;
-			port_pci_reg_write( pf, reg_offset, amt );		// set the credits 
-			bleat_printf( 2, "qos set rate: [%d=%d] rate=%d credits=%d", t, q, rates[v], amt );
 		}
 	}
 }
@@ -212,7 +238,7 @@ static void qos_set_fcc( portid_t pf ) {
 	offset = 0x03d00;		// FCCFG.TFCE=10b
 	mask = 0xffffffe7;
 	cval = port_pci_reg_read( pf, offset );
-	val = 1 << 3;
+	val = 2 << 3;												// 10b (priority) when in dcb mode
 	port_pci_reg_write( pf, offset, (cval & mask) | val );		// flip on our bits, and set
 	bleat_printf( 1, ">>>> qos: tfce %08x & %08x | %08x = %08x", cval, mask, val, (cval & mask) | val );
 
@@ -271,7 +297,7 @@ static void qos_set_rup2tc( portid_t pf, int tc8_mode ) {
 		val = 0xfac688;
 	}
 
-	offset = 0x3020;				// RTRUP2TC
+	offset = 0x03020;				// RTRUP2TC
 	mask = 0xff000000;
 	cval = port_pci_reg_read( pf, offset );
 	port_pci_reg_write( pf, offset, (cval & mask) | val );
@@ -294,18 +320,26 @@ static void qos_set_tup2tc( portid_t pf, int tc8_mode ) {
 
 /*
 	Set the virt control registers.
+	bit 0 should match bit 1 of mtqc (per data sheet)
 */
 static void qos_set_vtctl( portid_t pf ) {
 	uint32_t	val;
 	uint32_t	cval;
 	uint32_t	offset;
+	uint32_t	mask;
 
+	//xxxx xxxx xxxx xxxx xxxx xxxx xxxx xxxx
+	//rXXr rrrr rrrr rrrr rrrp pppp prrr rrr1
+	//1001 1111 1111 1111 1110 0000 0111 1110
+
+	mask = 0x9fffe07e;
 	val = (1 << 29) + 1;		// drop packets which don't match a pool + enable VT
+	//val = 1;					// enable VT
 
 	offset = 0x051b0;			// PFVTCTL
 	cval = port_pci_reg_read( pf, offset );
-	port_pci_reg_write( pf, offset, cval | val );				// no mask needed; we're only setting bits
-	bleat_printf( 1, ">>> qos pfvtctl turn on: %08x", val );
+	port_pci_reg_write( pf, offset, (cval & mask) | val );				// no mask needed; we're only setting bits
+	bleat_printf( 1, ">>> qos pfvtctl turn on: %08x", (cval & mask) | val );
 }
 
 /*
@@ -314,7 +348,8 @@ static void qos_set_vtctl( portid_t pf ) {
 	coded here are based on section 8.2.3.9.15. 
 */
 static void qos_set_mtqc( portid_t pf, int tc8_mode ) {
-	uint32_t	val = 0x0b;			// default to dcb-ena, vt-ena, TC0-3 & 32 VMs 
+	uint32_t	val = 0x0b;			// default to dcb-ena, vt-ena, TC0-3 & 32 VMs (1011)
+	uint32_t	mask = 0xffffff00;
 	uint32_t	cval;				// current value
 	uint32_t	offset = 0x8120;
 
@@ -323,17 +358,24 @@ static void qos_set_mtqc( portid_t pf, int tc8_mode ) {
 	}
 
 	cval = port_pci_reg_read( pf, offset );
-	port_pci_reg_write( pf, offset, cval | val );				// no mask needed; we're only setting bits
+	port_pci_reg_write( pf, offset, (cval & mask) | val );				// no mask needed; we're only setting bits
+	bleat_printf( 1, ">>> qos mtqc: offset=%8x %08x", offset, (cval&mask) | val );
 }
 
 /*
 	Set the multiple receive queues command register based on 4 or 8 TCs
 
+	xxxx xxxx xxxx xxxx xxxx xxxx xxxx xxxx
+       0    0    0    0 rrrr rrrr rrrr 1101	== 4tcs
+       0    0    0    0 rrrr rrrr rrrr 1100	== 8tcs
+
+	00 00 ff f0	mask
+
 	MRQC  = 0x0ec80
 	1100b == virt & dcb 16 pools (8TCs)	== 0x0c
 	1101b == virt & dcb 32 pools (4TCs) == 0x0d
 
-	hashing bits:
+	hashing bits:		not using rss, should be off
 	.... .... .... .... 
     rrrr rrrr 1111 rr11
 	ff0c mask
@@ -352,6 +394,7 @@ static void qos_set_mrqc( portid_t pf, int tc8_mode ) {
 
 	val |= hash_bits;
 	mask = 0xff0c0ff0;
+	//mask = 0x0000fff0;
 
 	cval = port_pci_reg_read( pf, offset );
 	bleat_printf( 1, ">>>> qos: mrqc  -low %08x & %08x | %08x = %08x", cval, mask, val, (cval & mask) | val );
@@ -436,16 +479,18 @@ static void qos_set_sizes( portid_t pf, int tc8_mode ) {
 
 /*
 	Enable qos on the PF passed in, using the percentages given.
-	The percentags is assumed to be an array of 32 integers with values
+	Percentags is assumed to be an array of 32 integers with values
 	in the range of -1 through 100 inclusive. A value <0 indicates that
 	we should NOT configure the queues associated with the VF. 
 
 	Returns 0 if error (percentags total != 100% etc), 1 
 	otherwise.
 */
-extern int enable_dcb_qos( portid_t pf, int* pctgs, int tc8_mode ) {
+extern int enable_dcb_qos( portid_t pf, int* pctgs, int tc8_mode, int option ) {
 	int i;
 	int sum;
+
+	option1 = option;		// TESTING to set arbitor selector bit
 
 	sum = 0;
 	for( i = 0; i < 32; i++ ) {
@@ -482,6 +527,8 @@ extern int enable_dcb_qos( portid_t pf, int* pctgs, int tc8_mode ) {
 
 	qos_enable_arb( pf );				// part 4 from the list
 
+//fprintf( stderr, ">>>---------- 8 \n\n" );
+//return 1;
 	qos_set_minifg( pf );						// part 5 from the list
 
 	return 1;
