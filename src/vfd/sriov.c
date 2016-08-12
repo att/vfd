@@ -203,31 +203,14 @@ rx_vlan_strip_set_on_queue(portid_t port_id, uint16_t queue_id, int on)
 void
 tx_vlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id)
 {
+	int diag;
 
-	struct rte_eth_dev_info dev_info;
-	rte_eth_dev_info_get(port_id, &dev_info);
-
-	uint32_t reg_off = 0x08000;
-
-	reg_off += 4 * vf_id;
-
-	bleat_printf( 3, "tx_vlan_insert_set_on_vf: bar=0x%08X, vf_id=%d, vlan=%d", reg_off, vf_id, vlan_id);
-
-	uint32_t ctrl = port_pci_reg_read(port_id, reg_off);
-
-	bleat_printf( 3, "tx_vlan_insert_set_on_vf: read: bar=0x%08X, vf_id=%d, ctrl=0x%x", reg_off, vf_id, ctrl);
-
-
-	if (vlan_id){
-		ctrl = vlan_id;
-		ctrl |= 0x40000000;
+	diag = rte_eth_dev_set_vf_vlan_insert(port_id, vf_id, vlan_id);
+	if (diag < 0) {
+		bleat_printf( 3, "rte_eth_dev_set_vf_vlan_insert(port_pi=%d, vf_id=%d, vlan_id=%d) failed " "diag=%d", port_id, vf_id, vlan_id, diag);
 	} else {
-		ctrl = 0;
+		bleat_printf( 3, "set vlan insert on vf successful: port=%d, vf=%d vlan=%d", port_id, vf_id, vlan_id );
 	}
-
-	port_pci_reg_write(port_id, reg_off, ctrl);
-
-	bleat_printf( 3, "tx_insert_set_on_vf: set: bar=0x%08X, vfid_id=%d, ctrl=0x%08X", reg_off, vf_id, ctrl);
 }
 
 
