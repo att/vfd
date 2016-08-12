@@ -234,39 +234,14 @@ tx_vlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id)
 void
 rx_vlan_strip_set_on_vf(portid_t port_id, uint16_t vf_id, int on)
 {
+	int diag;
 
-  struct rte_eth_dev_info dev_info;
-  rte_eth_dev_info_get(port_id, &dev_info);
-
-  uint32_t queues_per_pool = dev_info.vmdq_queue_num / dev_info.max_vmdq_pools;
-
-  uint32_t reg_off = 0x01028;						// receive descriptor control reg (pg527/597)
-
-  reg_off += (0x40 * vf_id * queues_per_pool);
-
-  bleat_printf( 3, "rx_vlan_strip_set_on_vf: bar=0x%08X, vf_id=%d, numq=%d)", reg_off, vf_id, queues_per_pool);
-
-  uint32_t q;
-  for(q = 0; q < queues_per_pool; ++q){
-
-    reg_off += 0x40 * q;
-
-    bleat_printf( 3, "rx_vlan_strip_set_on_vf: q=%d bar=0x%08X, vf_id=%d, on=%d", q, reg_off, vf_id, on);
-
-    uint32_t ctrl = port_pci_reg_read(port_id, reg_off);
-
-    bleat_printf( 3, "rx_vlan_strip_set_on_vf: read: q=%d bar=0x%08X, vf_id=%d, ctrl=0x%x", q, reg_off, vf_id, ctrl);
-
-
-    if (on)
-      ctrl |= IXGBE_RXDCTL_VME;				// vlan mode enable (strip flag)
-    else
-      ctrl &= ~IXGBE_RXDCTL_VME;
-
-    port_pci_reg_write(port_id, reg_off, ctrl);    		// void -- no error to check
-
-    bleat_printf( 3, "rx_vlan_strip_set_on_vf: set: q=%d bar=0x%08X, vfid_id=%d, ctrl=0x%08X)", q, reg_off, vf_id, ctrl);
-  }
+	diag = rte_eth_dev_set_vf_vlan_strip_on(port_id, vf_id, on);
+	if (diag < 0) {
+		bleat_printf( 3, "rte_eth_dev_set_vf_vlan_strip_on(port_pi=%d, vf_id=%d, on=%d) failed " "diag=%d", port_id, vf_id, on, diag);
+	} else {
+		bleat_printf( 3, "set vlan strip on vf successful: port=%d, vf_id=%d on/off=%d", port_id, vf_id, on );
+	}
 }
 
 
