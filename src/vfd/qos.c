@@ -84,7 +84,7 @@ static void qos_enable_arb( portid_t pf ) {
 	if( option1 ) {
 		val = 0x00400013;
 	} else {
-		val = 0x00000013;
+		val = 0x00400010;
 	}
 	cval = port_pci_reg_read( pf, offset );						// snag current 
 	port_pci_reg_write( pf, offset, (cval & mask) | val );		
