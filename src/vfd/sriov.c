@@ -10,6 +10,8 @@
 					if it is not. 
 				19 May 2016 - Added check for VF range in print function.
 				05 Aug 2016 - Changes to work with dpdk16.04.
+				15 Aug 2016 - Changes to work with dpdk16.07.
+				16 Aug 2016 - removed unused routines.
 
 	useful doc:
 				 http://www.intel.com/content/dam/doc/design-guide/82599-sr-iov-driver-companion-guide.pdf
@@ -87,48 +89,6 @@ ether_aton_r(const char *asc, struct ether_addr *addr)
 }
 
 
-int
-port_id_is_invalid(portid_t port_id, enum print_warning warning)
-{
-
-	bleat_printf( 3,"Port %d", port_id);
-
-	if (port_id == (portid_t)RTE_PORT_ALL)
-		return 0;
-
-	if (port_id < RTE_MAX_ETHPORTS && ports[port_id].enabled)
-		return 0;
-
-	if( warning == ENABLED_WARN )
-		bleat_printf( 2, "warn: Invalid port %d", port_id);
-
-	return 1;
-}
-
-
-int
-set_queue_rate_limit(portid_t port_id, uint16_t queue_idx, uint16_t rate)
-{
-	int diag;
-	struct rte_eth_link link;
-
-	if (port_id_is_invalid(port_id, ENABLED_WARN))
-		return 1;
-	rte_eth_link_get_nowait(port_id, &link);
-	if (rate > link.link_speed) {
-		bleat_printf( 0, "error: Invalid rate value:%u bigger than link speed: %u",
-			rate, link.link_speed);
-		return 1;
-	}
-	diag = rte_eth_set_queue_rate_limit(port_id, queue_idx, rate);
-	if (diag == 0)
-		return diag;
-	bleat_printf( 0, "error: rte_eth_set_queue_rate_limit for port_id=%d failed diag=%d",
-		port_id, diag);
-	return diag;
-}
-
-
 
 int
 set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk)
@@ -139,9 +99,6 @@ set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk)
 	if (q_msk == 0)
 		return 0;
 
-	// main will only call for a valid port.
-	//if (port_id_is_invalid(port_id, ENABLED_WARN))
-	//	return 1;
 
 	rte_eth_link_get_nowait(port_id, &link);
 	if (rate > link.link_speed) {
@@ -156,42 +113,6 @@ set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk)
 	}
 
 	return diag;
-}
-
-
-
-int
-port_reg_off_is_invalid(portid_t port_id, uint32_t reg_off)
-{
-	uint64_t pci_len;
-
-	if (reg_off & 0x3) {
-		bleat_printf( 3, "Port register offset 0x%X not aligned on a 4-byte boundary", (unsigned)reg_off);
-		return 1;
-	}
-	pci_len = ports[port_id].dev_info.pci_dev->mem_resource[0].len;
-	if (reg_off >= pci_len) {
-		bleat_printf( 3, "Port %d: register offset %u (0x%X) out of port PCI "
-		       "resource (length=%"PRIu64")",
-		       port_id, (unsigned)reg_off, (unsigned)reg_off,  pci_len);
-		return 1;
-	}
-	return 0;
-}
-
-
-void
-rx_vlan_strip_set_on_queue(portid_t port_id, uint16_t queue_id, int on)
-{
-	int diag;
-
-	diag = rte_eth_dev_set_vlan_strip_on_queue(port_id, queue_id, on);
-	if (diag < 0) {
-		bleat_printf( 3, "rx_vlan_strip_set_on_queue(port_pi=%d, queue_id=%d, on=%d) failed " "diag=%d", port_id, queue_id, on, diag);
-	} else {
-		bleat_printf( 3, "set vlan strip on queue successful: port=%d, q=%d on/off=%d", port_id, queue_id, on );
-	}
-	
 }
 
 
@@ -227,29 +148,6 @@ rx_vlan_strip_set_on_vf(portid_t port_id, uint16_t vf_id, int on)
 	}
 }
 
-
-
-void
-rx_vlan_strip_set(portid_t port_id, int on)
-{
-	int diag;
-	int vlan_offload;
-
-
-	vlan_offload = rte_eth_dev_get_vlan_offload(port_id);
-
-	if (on)
-		vlan_offload |= ETH_VLAN_STRIP_OFFLOAD;
-	else
-		vlan_offload &= ~ETH_VLAN_STRIP_OFFLOAD;
-
-	diag = rte_eth_dev_set_vlan_offload(port_id, vlan_offload);
-	if (diag < 0) {
-		bleat_printf( 1, "rx_vlan_strip_set(port_pi=%d, on=%d) failed, diag=%d", port_id, on, diag);
-	} else {
-		bleat_printf( 3, "set vlan strip successful: %d: on/off=%d", port_id, on );
-	}
-}
 
 
 
@@ -833,17 +731,7 @@ lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param)
   rte_eth_dev_ping_vfs(port_id, -1);
 }
 
-int
-check_mcast_mbox(uint32_t * mb)
-{
-  //#define IXGBE_VFMAILBOX_SIZE	16 /* 16 32 bit words - 64 bytes */
-  uint32_t mbox[IXGBE_VFMAILBOX_SIZE];
-  RTE_SET_USED(mb);
 
-  RTE_SET_USED(mbox);
-
-  return 0;
-}
 
 /*
 	Called when a 'mailbox' message is received.  Examine and take action based on
@@ -974,32 +862,6 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 
   bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %d",
       type, port_id, vf, p.retval, mbox_type);
-  /*
-  struct rte_eth_dev_info dev_info;
-  rte_eth_dev_info_get(port_id, &dev_info);
-
-
-	bleat_printf( 3, "driver_name = %s", dev_info.driver_name);
-	bleat_printf( 3, "if_index = %d", dev_info.if_index);
-	bleat_printf( 3, "min_rx_bufsize = %d", dev_info.min_rx_bufsize);
-	bleat_printf( 3, "max_rx_pktlen = %d", dev_info.max_rx_pktlen);
-	bleat_printf( 3, "max_rx_queues = %d", dev_info.max_rx_queues);
-	bleat_printf( 3, "max_tx_queues = %d", dev_info.max_tx_queues);
-	bleat_printf( 3, "max_mac_addrs = %d", dev_info.max_mac_addrs);
-	bleat_printf( 3, "max_hash_mac_addrs = %d", dev_info.max_hash_mac_addrs);
-	// Maximum number of hash MAC addresses for MTA and UTA.
-	bleat_printf( 3, "max_vfs = %d", dev_info.max_vfs);
-	bleat_printf( 3, "max_vmdq_pools = %d", dev_info.max_vmdq_pools);
-	bleat_printf( 3, "rx_offload_capa = %d", dev_info.rx_offload_capa);
-	bleat_printf( 3, "reta_size = %d", dev_info.reta_size);
-	// Device redirection table size, the total number of entries.
-	bleat_printf( 3, "hash_key_size = %d", dev_info.hash_key_size);
-	///Bit mask of RSS offloads, the bit offset also means flow type
-	bleat_printf( 3, "flow_type_rss_offloads = %lu", dev_info.flow_type_rss_offloads);
-	bleat_printf( 3, "vmdq_queue_base = %d", dev_info.vmdq_queue_base);
-	bleat_printf( 3, "vmdq_queue_num = %d", dev_info.vmdq_queue_num);
-	bleat_printf( 3, "vmdq_pool_base = %d", dev_info.vmdq_pool_base);
-  */
 }
 
 
