@@ -95,7 +95,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
 static char* gen_stats( struct sriov_conf_c* conf, int pf_only );
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-static const char* version = "v1.2/18096";
+static const char* version = "v1.2/18316t";
 static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
 
 // --- misc support ----------------------------------------------------------------------------------------------
