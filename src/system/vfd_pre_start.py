@@ -162,15 +162,10 @@ def main():
     pciids = list(set(pciids) | set(group_pciids))
     log.info("pciids: %s", pciids)
     
-    for i in xrange(4):
-        vfs_count = get_configured_vfs(pciids)
-        if vfs_count == 0:
-            time.sleep(30)
-            if i == 3:
-                log.error("It seems VF's are not Created, check 'dpdk_nic_bind --st'")
-                sys.exit(1)
-            continue
-        break
+    vfs_count = get_configured_vfs(pciids)
+    if vfs_count == 0:
+        log.error("It seems VF's are not Created, check 'dpdk_nic_bind --st'")
+        sys.exit(1)
 
     not_ixgbe_vendor = check_vendor()
     if len(not_ixgbe_vendor) > 0:
