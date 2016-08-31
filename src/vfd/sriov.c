@@ -621,7 +621,7 @@ process_refresh_queue(void)
 			//printf("checking the queue:  PORT: %d, VF: %d, Enabled: %d\n", refresh_item->port_id, refresh_item->vf_id, refresh_item->enabled);
 			/* check if item's q is enabled, update VF and remove item from queue */
 			if(refresh_item->enabled){
-				bleat_printf( 2, "refresh item enabled: updating VF: %d", refresh_item->vf_id);
+				bleat_printf( 1, "refresh item enabled: updating VF: %d", refresh_item->vf_id);
 
 				restore_vf_setings(refresh_item->port_id, refresh_item->vf_id);
 				
@@ -909,6 +909,7 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
 				type, port_id, vf, p.retval, "IXGBE_VF_RESET");
 				
+			restore_vf_setings( port_id, vf );		// reset now, and we'll reset again when the queue goes ready; suspect we need to clear DMAs early
 			add_refresh_queue(port_id, vf);
 			break;
 
