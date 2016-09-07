@@ -378,15 +378,17 @@ uint32_t spoffed[MAX_PORTS];
 */
 struct rq_entry 
 {
+	struct rq_entry* next;		// link references
+	struct rq_entry* prev;
+
 	uint8_t	port_id;
 	uint16_t vf_id;
 	uint8_t enabled;
 	int		mcounter;			// message counter so as not to flood the log
-
-	TAILQ_ENTRY(rq_entry) rq_entries;
 };
 
-TAILQ_HEAD(, rq_entry) rq_head;
+struct rq_entry *rq_list;		// reset queue list of VMs we are waiting on queue ready bits for
+
 void add_refresh_queue(u_int8_t port_id, uint16_t vf_id);
 void process_refresh_queue(void);
 int is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter );
