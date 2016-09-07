@@ -12,6 +12,8 @@
 				05 Aug 2016 - Changes to work with dpdk16.04.
 				15 Aug 2016 - Changes to work with dpdk16.07.
 				16 Aug 2016 - removed unused routines.
+				07 Sep 2016 - Remvoed TAILQ macros as these seemed to be freeing a block of memory
+					without discarding the pointer.
 
 	useful doc:
 				 http://www.intel.com/content/dam/doc/design-guide/82599-sr-iov-driver-companion-guide.pdf
@@ -401,12 +403,11 @@ static rte_spinlock_t rte_refresh_q_lock = RTE_SPINLOCK_INITIALIZER;
 void
 add_refresh_queue(u_int8_t port_id, uint16_t vf_id)
 {
-	
 	struct rq_entry *refresh_item;
 	
 	/* look for refresh request and update enabled status if already there */
 	rte_spinlock_lock(&rte_refresh_q_lock);
-	TAILQ_FOREACH(refresh_item, &rq_head, rq_entries) {
+	for( refresh_item = rq_list; refresh_item != NULL; refresh_item = refresh_item->next ) {
 		if (refresh_item->port_id == port_id && refresh_item->vf_id == vf_id){
 			if (!refresh_item->enabled)
 				refresh_item->enabled = is_rx_queue_on(port_id, vf_id, &refresh_item->mcounter );
@@ -426,10 +427,15 @@ add_refresh_queue(u_int8_t port_id, uint16_t vf_id)
 	refresh_item->vf_id = vf_id;
 	refresh_item->mcounter = 0;
 	refresh_item->enabled = is_rx_queue_on(port_id, vf_id, &refresh_item->mcounter );
+	refresh_item->prev = NULL;
 	bleat_printf( 2, "adding refresh to queue for %d/%d", port_id, vf_id );
 	
 	rte_spinlock_lock(&rte_refresh_q_lock);
-	TAILQ_INSERT_TAIL(&rq_head, refresh_item, rq_entries);	
+	refresh_item->next = rq_list;						// push on the head of the list, order is unimportant
+	rq_list = refresh_item;
+	if( refresh_item->next ) {
+		refresh_item->next->prev = refresh_item;
+	}
 	rte_spinlock_unlock(&rte_refresh_q_lock);
 }
 
@@ -440,14 +446,14 @@ add_refresh_queue(u_int8_t port_id, uint16_t vf_id)
 	what the state of the NIC is.  This funciton is called when we receive a
 	mailbox message which we interpret as meaning that the device is up and
 	in a 'ready' state.
-*/
+DEPRECATED
 static void enable_refresh_queue(u_int8_t port_id, uint16_t vf_id)
 {
 	struct rq_entry *refresh_item;
 	
 	bleat_printf( 3, "enable is looking for: %d %d", port_id, vf_id );
 	rte_spinlock_lock(&rte_refresh_q_lock);
-	TAILQ_FOREACH(refresh_item, &rq_head, rq_entries) {
+	XXTAILQ_FOREACH(refresh_item, &rq_head, rq_entries) {
 		if (refresh_item->port_id == port_id && refresh_item->vf_id == vf_id){
 			bleat_printf( 2, "enabling %d/%d", port_id, vf_id );
 			refresh_item->enabled = 1;
@@ -456,6 +462,7 @@ static void enable_refresh_queue(u_int8_t port_id, uint16_t vf_id)
 	rte_spinlock_unlock(&rte_refresh_q_lock);
 	return;
 }
+*/
 
 
 /*
@@ -467,14 +474,17 @@ static void enable_refresh_queue(u_int8_t port_id, uint16_t vf_id)
 void
 process_refresh_queue(void)
 {
+	struct rq_entry* next_item;		// pointer makes delete and free safe in loop
+
 	while(1) {
 		
 		usleep(200000);
 		struct rq_entry *refresh_item;
 		
 		rte_spinlock_lock(&rte_refresh_q_lock);
-		TAILQ_FOREACH(refresh_item, &rq_head, rq_entries){
-			
+		for( refresh_item = rq_list; refresh_item != NULL; refresh_item = next_item ) {
+			next_item = refresh_item->next;			// if we delete we need this to go forward
+
 			//printf("checking the queue:  PORT: %d, VF: %d, Enabled: %d\n", refresh_item->port_id, refresh_item->vf_id, refresh_item->enabled);
 			/* check if item's q is enabled, update VF and remove item from queue */
 			if(refresh_item->enabled){
@@ -482,7 +492,15 @@ process_refresh_queue(void)
 
 				restore_vf_setings(refresh_item->port_id, refresh_item->vf_id);
 				
-				TAILQ_REMOVE(&rq_head, refresh_item, rq_entries);
+				if( refresh_item->prev ) {
+					refresh_item->prev->next = refresh_item->next;
+				} else {
+					rq_list = refresh_item->next;						// when the head
+				}
+				if( refresh_item->next ) {
+					refresh_item->next->prev = refresh_item->prev;
+				}
+				memset( refresh_item, 0, sizeof( *refresh_item ) );
 				free(refresh_item);
 			} 
 			else
@@ -835,7 +853,7 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			//bleat_printf( 3, "calling enable with: %d %d", port_id, vf );
 
 			// ### this is a hack, but until we see a queue ready everywhere/everytime we assume we can enable things when we see this message
-			enable_refresh_queue( port_id, vf );
+			//enable_refresh_queue( port_id, vf );
 			break;
 
 		case IXGBE_VF_API_NEGOTIATE:

@@ -39,6 +39,8 @@
 				19 Jul 2016 - Correct problem which was causing huge status responses to be 
 							chopped.
 				20 Jul 2016 - Correct use of config struct after free.
+				07 Sep 2016 - Drop use of TAILQ as odd things were happening realted to removing 
+							items from the list.
 
 */
 
@@ -1247,7 +1249,7 @@ static int vfd_req_if( parms_t *parms, struct sriov_conf_c* conf, int forever ) 
 
 				case RT_SHOW:
 					if( parms->forreal ) {
-						if( strcmp( req->resource, "pfs" ) == 0 ) {				// dump just the VF information
+						if( req->resource != NULL  &&  strcmp( req->resource, "pfs" ) == 0 ) {				// dump just the VF information
 							if( (buf = gen_stats( conf, 1 )) != NULL )  {		// todo need to replace 1 with actual number of ports
 								vfd_response( req->resp_fifo, 0, buf );
 								free( buf );
@@ -1255,7 +1257,7 @@ static int vfd_req_if( parms_t *parms, struct sriov_conf_c* conf, int forever ) 
 								vfd_response( req->resp_fifo, 1, "unable to generate pf stats" );
 							}
 						} else {
-							if( isdigit( *req->resource ) ) {						// dump just for the indicated pf (future)
+							if( req->resource != NULL  &&  isdigit( *req->resource ) ) {						// dump just for the indicated pf (future)
 								vfd_response( req->resp_fifo, 1, "show of specific PF is not supported in this release; use 'all' or 'pfs'." );
 							} else {												// assume we dump for all
 								if( (buf = gen_stats( conf, 0 )) != NULL )  {		// todo need to replace 1 with actual number of ports
@@ -1985,7 +1987,7 @@ main(int argc, char **argv)
 		}
 
 		static pthread_t tid;
-		TAILQ_INIT(&rq_head);
+		rq_list = NULL;						// nothing on the reset list
 		
 		ret = pthread_create(&tid, NULL, (void *)process_refresh_queue, NULL);	
 		if (ret != 0) {
