@@ -344,6 +344,12 @@ void set_queue_drop( portid_t port_id, int state ) {
 
 		port_pci_reg_write( port_id, reg_off, reg_value );
 	}
+	
+	/*
+	 disable default pool to avoid DMAR errors when we get packets not destined to any VF
+	*/
+	 
+	disable_default_pool(port_id);
 }
 
 // --------------- pending reset support ----------------------------------------------------------------------
@@ -392,6 +398,18 @@ is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter )
 	}
 }
 
+/* 
+	Drop packets which are not directed to any of VF's
+	instead of sending them to default pool
+*/
+void
+disable_default_pool(portid_t port_id)
+{
+	uint32_t ctrl = port_pci_reg_read(port_id, IXGBE_VT_CTL);
+	ctrl |= IXGBE_VT_CTL_DIS_DEFPL;
+	bleat_printf( 3, "disabling default pool bar=0x%08X, port=%d ctrl=0x%08x ", IXGBE_VT_CTL, port_id, ctrl);
+	port_pci_reg_write( port_id, IXGBE_VT_CTL, ctrl);
+}
 
 static rte_spinlock_t rte_refresh_q_lock = RTE_SPINLOCK_INITIALIZER;
 

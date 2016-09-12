@@ -356,6 +356,7 @@ void dump_sriov_config(struct sriov_conf_c config);
 void dump_dev_info( int num_ports );
 int update_ports_config(void);
 int cmp_vfs (const void * a, const void * b);
+void disable_default_pool(portid_t port_id);
 
 
 void lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
