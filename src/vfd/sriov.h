@@ -62,7 +62,6 @@
 #include <rte_ethdev.h>
 #include <rte_string_fns.h>
 #include <rte_spinlock.h>
-#include <rte_pmd_ixgbe.h>
 
 #include "../lib/dpdk/drivers/net/ixgbe/base/ixgbe_mbx.h"
 
