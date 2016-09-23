@@ -35,3 +35,26 @@ fifo
 	The reader is configured to return 'blocks' of data from the pipe where
 	a block is designated with two successive newline characters.  Unit test:
 		fifo_test pipe-name
+
+
+Building
+	The plan-9 mk tool is sitll the preferred tool to make the library and 
+	fetch/build the required jsmn repo/library.  There is a Makefile which 
+	should match, but is likely untested (replace mk with gmake in the 
+	example below).
+
+	# clone the jsmn repo and build its library
+	mk jsmn
+	
+	# build the vfd library
+	mk 
+
+DPDK Reference
+	The att/dpdk library is an extended version of dpdk 1607 and can be 
+	fetched from github.  The best way to reference it is to add a symlink
+	to the library in this directory, e.g.: 
+		ln -s <path-to-dpdk-clone> dpdk
+
+	Once the link is in place, the code in the ../vfd library can be
+	successfully built. See the README in this directory's parent for
+	DPDK configuration/build notes (if needed).
