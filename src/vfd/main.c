@@ -39,6 +39,7 @@
 				19 Jul 2016 - Correct problem which was causing huge status responses to be 
 							chopped.
 				20 Jul 2016 - Correct use of config struct after free.
+				09 Aug 2016 - Block VF0 from being used.
 				07 Sep 2016 - Drop use of TAILQ as odd things were happening realted to removing 
 							items from the list.
 
@@ -96,7 +97,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
 static char* gen_stats( struct sriov_conf_c* conf, int pf_only );
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-static const char* version = "v1.1/17206";
+static const char* version = "v1.2/19236";
 static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
 
 // --- misc support ----------------------------------------------------------------------------------------------
@@ -542,7 +543,7 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 	bleat_printf( 2, "add: config data: pciid: %s", vfc->pciid );
 	bleat_printf( 2, "add: config data: vfid: %d", vfc->vfid );
 
-	if( vfc->pciid == NULL || vfc->vfid < 0 ) {
+	if( vfc->pciid == NULL || vfc->vfid < 1 ) {
 		snprintf( mbuf, sizeof( mbuf ), "unable to read or parse config file: %s", fname );
 		bleat_printf( 1, "vfd_add_vf failed: %s", mbuf );
 		if( reason ) {
@@ -596,7 +597,7 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 		vidx = i;
 	}
 
-	if( vidx >= MAX_VFS || vfc->vfid < 0 || vfc->vfid > 31) {							// something is out of range
+	if( vidx >= MAX_VFS || vfc->vfid < 1 || vfc->vfid > 31) {							// something is out of range
 		snprintf( mbuf, sizeof( mbuf ), "max VFs already defined or vfid %d is out of range", vfc->vfid );
 		bleat_printf( 1, "vf not added: %s", mbuf );
 		if( reason ) {
@@ -925,7 +926,7 @@ static int vfd_del_vf( parms_t* parms, struct sriov_conf_c* conf, char* fname, c
 	bleat_printf( 2, "del: config data: pciid: %s", vfc->pciid );
 	bleat_printf( 2, "del: config data: vfid: %d", vfc->vfid );
 
-	if( vfc->pciid == NULL || vfc->vfid < 0 ) {
+	if( vfc->pciid == NULL || vfc->vfid < 1 ) {
 		snprintf( mbuf, sizeof( mbuf ), "unable to read config file: %s", fname );
 		bleat_printf( 1, "vfd_del_vf failed: %s", mbuf );
 		if( reason ) {
