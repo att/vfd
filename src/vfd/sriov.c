@@ -9,6 +9,12 @@
 				18 May 2016 - Verify vlan is configured for the port/vf before acking it; nak
 					if it is not. 
 				19 May 2016 - Added check for VF range in print function.
+				05 Aug 2016 - Changes to work with dpdk16.04.
+				15 Aug 2016 - Changes to work with dpdk16.07.
+				16 Aug 2016 - removed unused routines.
+				07 Sep 2016 - Remvoed TAILQ macros as these seemed to be freeing a block of memory
+					without discarding the pointer.
+
 	useful doc:
 				 http://www.intel.com/content/dam/doc/design-guide/82599-sr-iov-driver-companion-guide.pdf
 */
@@ -85,48 +91,6 @@ ether_aton_r(const char *asc, struct ether_addr *addr)
 }
 
 
-int
-port_id_is_invalid(portid_t port_id, enum print_warning warning)
-{
-
-	bleat_printf( 3,"Port %d", port_id);
-
-	if (port_id == (portid_t)RTE_PORT_ALL)
-		return 0;
-
-	if (port_id < RTE_MAX_ETHPORTS && ports[port_id].enabled)
-		return 0;
-
-	if( warning == ENABLED_WARN )
-		bleat_printf( 2, "warn: Invalid port %d", port_id);
-
-	return 1;
-}
-
-
-int
-set_queue_rate_limit(portid_t port_id, uint16_t queue_idx, uint16_t rate)
-{
-	int diag;
-	struct rte_eth_link link;
-
-	if (port_id_is_invalid(port_id, ENABLED_WARN))
-		return 1;
-	rte_eth_link_get_nowait(port_id, &link);
-	if (rate > link.link_speed) {
-		bleat_printf( 0, "error: Invalid rate value:%u bigger than link speed: %u",
-			rate, link.link_speed);
-		return 1;
-	}
-	diag = rte_eth_set_queue_rate_limit(port_id, queue_idx, rate);
-	if (diag == 0)
-		return diag;
-	bleat_printf( 0, "error: rte_eth_set_queue_rate_limit for port_id=%d failed diag=%d",
-		port_id, diag);
-	return diag;
-}
-
-
 
 int
 set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk)
@@ -137,9 +101,6 @@ set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk)
 	if (q_msk == 0)
 		return 0;
 
-	// main will only call for a valid port.
-	//if (port_id_is_invalid(port_id, ENABLED_WARN))
-	//	return 1;
 
 	rte_eth_link_get_nowait(port_id, &link);
 	if (rate > link.link_speed) {
@@ -158,42 +119,6 @@ set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk)
 
 
 
-int
-port_reg_off_is_invalid(portid_t port_id, uint32_t reg_off)
-{
-	uint64_t pci_len;
-
-	if (reg_off & 0x3) {
-		bleat_printf( 3, "Port register offset 0x%X not aligned on a 4-byte boundary", (unsigned)reg_off);
-		return 1;
-	}
-	pci_len = ports[port_id].dev_info.pci_dev->mem_resource[0].len;
-	if (reg_off >= pci_len) {
-		bleat_printf( 3, "Port %d: register offset %u (0x%X) out of port PCI "
-		       "resource (length=%"PRIu64")",
-		       port_id, (unsigned)reg_off, (unsigned)reg_off,  pci_len);
-		return 1;
-	}
-	return 0;
-}
-
-
-void
-rx_vlan_strip_set_on_queue(portid_t port_id, uint16_t queue_id, int on)
-{
-	int diag;
-
-	diag = rte_eth_dev_set_vlan_strip_on_queue(port_id, queue_id, on);
-	if (diag < 0) {
-		bleat_printf( 3, "rx_vlan_strip_set_on_queue(port_pi=%d, queue_id=%d, on=%d) failed " "diag=%d", port_id, queue_id, on, diag);
-	} else {
-		bleat_printf( 3, "set vlan strip on queue successful: port=%d, q=%d on/off=%d", port_id, queue_id, on );
-	}
-	
-}
-
-
-
 /*
 	Set VLAN tag on transmission.  If no tag is to be inserted, then a VLAN
 	ID of 0 must be passed.
@@ -201,95 +126,30 @@ rx_vlan_strip_set_on_queue(portid_t port_id, uint16_t queue_id, int on)
 void
 tx_vlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id)
 {
+	int diag;
 
-	struct rte_eth_dev_info dev_info;
-	rte_eth_dev_info_get(port_id, &dev_info);
-
-	uint32_t reg_off = 0x08000;
-
-	reg_off += 4 * vf_id;
-
-	bleat_printf( 3, "tx_vlan_insert_set_on_vf: bar=0x%08X, vf_id=%d, vlan=%d", reg_off, vf_id, vlan_id);
-
-	uint32_t ctrl = port_pci_reg_read(port_id, reg_off);
-
-	bleat_printf( 3, "tx_vlan_insert_set_on_vf: read: bar=0x%08X, vf_id=%d, ctrl=0x%x", reg_off, vf_id, ctrl);
-
-
-	if (vlan_id){
-		ctrl = vlan_id;
-		ctrl |= 0x40000000;
+	diag = rte_eth_dev_set_vf_vlan_insert(port_id, vf_id, vlan_id);
+	if (diag < 0) {
+		bleat_printf( 3, "rte_eth_dev_set_vf_vlan_insert(port_pi=%d, vf_id=%d, vlan_id=%d) failed " "diag=%d", port_id, vf_id, vlan_id, diag);
 	} else {
-		ctrl = 0;
+		bleat_printf( 3, "set vlan insert on vf successful: port=%d, vf=%d vlan=%d", port_id, vf_id, vlan_id );
 	}
-
-	port_pci_reg_write(port_id, reg_off, ctrl);
-
-	bleat_printf( 3, "tx_insert_set_on_vf: set: bar=0x%08X, vfid_id=%d, ctrl=0x%08X", reg_off, vf_id, ctrl);
 }
 
 
 void
 rx_vlan_strip_set_on_vf(portid_t port_id, uint16_t vf_id, int on)
 {
-
-  struct rte_eth_dev_info dev_info;
-  rte_eth_dev_info_get(port_id, &dev_info);
-
-  uint32_t queues_per_pool = dev_info.vmdq_queue_num / dev_info.max_vmdq_pools;
-
-  uint32_t reg_off = 0x01028;						// receive descriptor control reg (pg527/597)
-
-  reg_off += (0x40 * vf_id * queues_per_pool);
-
-  bleat_printf( 3, "rx_vlan_strip_set_on_vf: bar=0x%08X, vf_id=%d, numq=%d)", reg_off, vf_id, queues_per_pool);
-
-  uint32_t q;
-  for(q = 0; q < queues_per_pool; ++q){
-
-    reg_off += 0x40 * q;
-
-    bleat_printf( 3, "rx_vlan_strip_set_on_vf: q=%d bar=0x%08X, vf_id=%d, on=%d", q, reg_off, vf_id, on);
-
-    uint32_t ctrl = port_pci_reg_read(port_id, reg_off);
-
-    bleat_printf( 3, "rx_vlan_strip_set_on_vf: read: q=%d bar=0x%08X, vf_id=%d, ctrl=0x%x", q, reg_off, vf_id, ctrl);
-
-
-    if (on)
-      ctrl |= IXGBE_RXDCTL_VME;				// vlan mode enable (strip flag)
-    else
-      ctrl &= ~IXGBE_RXDCTL_VME;
-
-    port_pci_reg_write(port_id, reg_off, ctrl);    		// void -- no error to check
-
-    bleat_printf( 3, "rx_vlan_strip_set_on_vf: set: q=%d bar=0x%08X, vfid_id=%d, ctrl=0x%08X)", q, reg_off, vf_id, ctrl);
-  }
-}
-
-
-
-void
-rx_vlan_strip_set(portid_t port_id, int on)
-{
 	int diag;
-	int vlan_offload;
 
-
-	vlan_offload = rte_eth_dev_get_vlan_offload(port_id);
-
-	if (on)
-		vlan_offload |= ETH_VLAN_STRIP_OFFLOAD;
-	else
-		vlan_offload &= ~ETH_VLAN_STRIP_OFFLOAD;
-
-	diag = rte_eth_dev_set_vlan_offload(port_id, vlan_offload);
+	diag = rte_eth_dev_set_vf_vlan_strip_on(port_id, vf_id, on);
 	if (diag < 0) {
-		bleat_printf( 1, "rx_vlan_strip_set(port_pi=%d, on=%d) failed, diag=%d", port_id, on, diag);
+		bleat_printf( 3, "rte_eth_dev_set_vf_vlan_strip_on(port_pi=%d, vf_id=%d, on=%d) failed " "diag=%d", port_id, vf_id, on, diag);
 	} else {
-		bleat_printf( 3, "set vlan strip successful: %d: on/off=%d", port_id, on );
+		bleat_printf( 3, "set vlan strip on vf successful: port=%d, vf_id=%d on/off=%d", port_id, vf_id, on );
 	}
 }
+
 
 
 
@@ -415,13 +275,14 @@ set_vf_mac_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 void
 tx_set_loopback(portid_t port_id, u_int8_t on)
 {
-	uint32_t ctrl = port_pci_reg_read(port_id, IXGBE_PFDTXGSWC);
-	if (on)
-		ctrl |= IXGBE_PFDTXGSWC_VT_LBEN;
-	else
-		ctrl &= ~IXGBE_PFDTXGSWC_VT_LBEN;
-	
-	port_pci_reg_write(port_id, IXGBE_PFDTXGSWC, ctrl);
+	int diag;
+
+	diag = rte_eth_dev_set_loopback_on(port_id, on);
+	if (diag == 0) {
+		bleat_printf( 3, "set tx loopback successful: port=%d on/off=%d", (int)port_id, on );
+	} else {
+		bleat_printf( 0, "rte_eth_dev_set_loopback_on for port_id=%d failed " "diag=%d on=%d", port_id, diag, on);
+	}
 }
 
 /*
@@ -483,6 +344,12 @@ void set_queue_drop( portid_t port_id, int state ) {
 
 		port_pci_reg_write( port_id, reg_off, reg_value );
 	}
+	
+	/*
+	 disable default pool to avoid DMAR errors when we get packets not destined to any VF
+	*/
+	 
+	disable_default_pool(port_id);
 }
 
 // --------------- pending reset support ----------------------------------------------------------------------
@@ -531,6 +398,18 @@ is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter )
 	}
 }
 
+/* 
+	Drop packets which are not directed to any of VF's
+	instead of sending them to default pool
+*/
+void
+disable_default_pool(portid_t port_id)
+{
+	uint32_t ctrl = port_pci_reg_read(port_id, IXGBE_VT_CTL);
+	ctrl |= IXGBE_VT_CTL_DIS_DEFPL;
+	bleat_printf( 3, "disabling default pool bar=0x%08X, port=%d ctrl=0x%08x ", IXGBE_VT_CTL, port_id, ctrl);
+	port_pci_reg_write( port_id, IXGBE_VT_CTL, ctrl);
+}
 
 static rte_spinlock_t rte_refresh_q_lock = RTE_SPINLOCK_INITIALIZER;
 
@@ -542,12 +421,11 @@ static rte_spinlock_t rte_refresh_q_lock = RTE_SPINLOCK_INITIALIZER;
 void
 add_refresh_queue(u_int8_t port_id, uint16_t vf_id)
 {
-	
 	struct rq_entry *refresh_item;
 	
 	/* look for refresh request and update enabled status if already there */
 	rte_spinlock_lock(&rte_refresh_q_lock);
-	TAILQ_FOREACH(refresh_item, &rq_head, rq_entries) {
+	for( refresh_item = rq_list; refresh_item != NULL; refresh_item = refresh_item->next ) {
 		if (refresh_item->port_id == port_id && refresh_item->vf_id == vf_id){
 			if (!refresh_item->enabled)
 				refresh_item->enabled = is_rx_queue_on(port_id, vf_id, &refresh_item->mcounter );
@@ -567,10 +445,15 @@ add_refresh_queue(u_int8_t port_id, uint16_t vf_id)
 	refresh_item->vf_id = vf_id;
 	refresh_item->mcounter = 0;
 	refresh_item->enabled = is_rx_queue_on(port_id, vf_id, &refresh_item->mcounter );
+	refresh_item->prev = NULL;
 	bleat_printf( 2, "adding refresh to queue for %d/%d", port_id, vf_id );
 	
 	rte_spinlock_lock(&rte_refresh_q_lock);
-	TAILQ_INSERT_TAIL(&rq_head, refresh_item, rq_entries);	
+	refresh_item->next = rq_list;						// push on the head of the list, order is unimportant
+	rq_list = refresh_item;
+	if( refresh_item->next ) {
+		refresh_item->next->prev = refresh_item;
+	}
 	rte_spinlock_unlock(&rte_refresh_q_lock);
 }
 
@@ -581,14 +464,14 @@ add_refresh_queue(u_int8_t port_id, uint16_t vf_id)
 	what the state of the NIC is.  This funciton is called when we receive a
 	mailbox message which we interpret as meaning that the device is up and
 	in a 'ready' state.
-*/
+DEPRECATED
 static void enable_refresh_queue(u_int8_t port_id, uint16_t vf_id)
 {
 	struct rq_entry *refresh_item;
 	
 	bleat_printf( 3, "enable is looking for: %d %d", port_id, vf_id );
 	rte_spinlock_lock(&rte_refresh_q_lock);
-	TAILQ_FOREACH(refresh_item, &rq_head, rq_entries) {
+	XXTAILQ_FOREACH(refresh_item, &rq_head, rq_entries) {
 		if (refresh_item->port_id == port_id && refresh_item->vf_id == vf_id){
 			bleat_printf( 2, "enabling %d/%d", port_id, vf_id );
 			refresh_item->enabled = 1;
@@ -597,6 +480,7 @@ static void enable_refresh_queue(u_int8_t port_id, uint16_t vf_id)
 	rte_spinlock_unlock(&rte_refresh_q_lock);
 	return;
 }
+*/
 
 
 /*
@@ -608,22 +492,33 @@ static void enable_refresh_queue(u_int8_t port_id, uint16_t vf_id)
 void
 process_refresh_queue(void)
 {
+	struct rq_entry* next_item;		// pointer makes delete and free safe in loop
+
 	while(1) {
 		
 		usleep(200000);
 		struct rq_entry *refresh_item;
 		
 		rte_spinlock_lock(&rte_refresh_q_lock);
-		TAILQ_FOREACH(refresh_item, &rq_head, rq_entries){
-			
+		for( refresh_item = rq_list; refresh_item != NULL; refresh_item = next_item ) {
+			next_item = refresh_item->next;			// if we delete we need this to go forward
+
 			//printf("checking the queue:  PORT: %d, VF: %d, Enabled: %d\n", refresh_item->port_id, refresh_item->vf_id, refresh_item->enabled);
 			/* check if item's q is enabled, update VF and remove item from queue */
 			if(refresh_item->enabled){
-				bleat_printf( 1, "refresh item enabled: updating VF: %d", refresh_item->vf_id);
+				bleat_printf( 2, "refresh item enabled: updating VF: %d", refresh_item->vf_id);
 
 				restore_vf_setings(refresh_item->port_id, refresh_item->vf_id);
 				
-				TAILQ_REMOVE(&rq_head, refresh_item, rq_entries);
+				if( refresh_item->prev ) {
+					refresh_item->prev->next = refresh_item->next;
+				} else {
+					rq_list = refresh_item->next;						// when the head
+				}
+				if( refresh_item->next ) {
+					refresh_item->next->prev = refresh_item->prev;
+				}
+				memset( refresh_item, 0, sizeof( *refresh_item ) );
 				free(refresh_item);
 			} 
 			else
@@ -872,17 +767,7 @@ lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param)
   rte_eth_dev_ping_vfs(port_id, -1);
 }
 
-int
-check_mcast_mbox(uint32_t * mb)
-{
-  //#define IXGBE_VFMAILBOX_SIZE	16 /* 16 32 bit words - 64 bytes */
-  uint32_t mbox[IXGBE_VFMAILBOX_SIZE];
-  RTE_SET_USED(mb);
 
-  RTE_SET_USED(mbox);
-
-  return 0;
-}
 
 /*
 	Called when a 'mailbox' message is received.  Examine and take action based on
@@ -890,31 +775,34 @@ check_mcast_mbox(uint32_t * mb)
 */
 void
 vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param) {
-	uint32_t *p = (uint32_t*) param;
-	uint16_t vf = p[0] & 0xffff;
-	uint16_t mbox_type = (p[0] >> 16) & 0xffff;
-
+	
+	struct rte_eth_mb_event_param p = *(struct rte_eth_mb_event_param*) param;
+  uint16_t vf = p.vfid;
+	uint16_t mbox_type = p.msg_type;
+	uint32_t *msgbuf = (uint32_t *) p.userdata;
+	
+	struct ether_addr *new_mac;
 
 	/* check & process VF to PF mailbox message */
 	switch (mbox_type) {
 		case IXGBE_VF_RESET:
 			bleat_printf( 1, "reset event received: port=%d", port_id );
 
-			*(int*) param = RTE_ETH_MB_EVENT_NOOP_ACK;     /* noop & ack */
+			p.retval = RTE_ETH_MB_EVENT_NOOP_ACK;				/* noop & ack */
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
-				type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_RESET");
+				type, port_id, vf, p.retval, "IXGBE_VF_RESET");
 				
- 			restore_vf_setings( port_id, vf );              // reset now, and we'll reset again when the queue goes ready; suspect we need to clear DMAs early
 			add_refresh_queue(port_id, vf);
 			break;
 
 		case IXGBE_VF_SET_MAC_ADDR:
 			bleat_printf( 1, "setmac event received: port=%d", port_id );
-			*(int*) param = RTE_ETH_MB_EVENT_PROCEED;    						// do what's needed
+			p.retval = RTE_ETH_MB_EVENT_PROCEED;    						// do what's needed
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
-				type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_MAC_ADDR");
+				type, port_id, vf, p.retval, "IXGBE_VF_SET_MAC_ADDR");
 			
-			struct ether_addr *new_mac = (struct ether_addr *)(&p[1]);
+			new_mac = (struct ether_addr *) (&msgbuf[1]);
+		
 			
 			if (is_valid_assigned_ether_addr(new_mac)) {
 				bleat_printf( 3, "setting mac, vf %u, MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
@@ -930,12 +818,11 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 
 		case IXGBE_VF_SET_MULTICAST:
 			bleat_printf( 1, "setmulticast event received: port=%d", port_id );
-			*(int*) param = RTE_ETH_MB_EVENT_PROCEED;    /* do what's needed */
-			//*(int*) param = RTE_ETH_MB_EVENT_NOOP_ACK;     /* noop & ack */
+			p.retval = RTE_ETH_MB_EVENT_PROCEED;    /* do what's needed */
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
-				type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_MULTICAST");
+				type, port_id, vf, p.retval, "IXGBE_VF_SET_MULTICAST");
 
-			new_mac = (struct ether_addr *)(&p[1]);
+			new_mac = (struct ether_addr *) (&msgbuf[1]);
 
 			if (is_valid_assigned_ether_addr(new_mac)) {
 				bleat_printf( 3, "setting mcast, vf %u, MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
@@ -949,13 +836,13 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 
 		case IXGBE_VF_SET_VLAN:
 			// NOTE: we _always_ approve this.  This is the VMs setting of what will be an 'inner' vlan ID and thus we don't care
-			if( valid_vlan( port_id, vf, (int) p[1] ) ) {
-				bleat_printf( 1, "vlan set event approved: port=%d vf=%d vlan=%d (responding noop-ack)", port_id, vf, (int) p[1] );
+			if( valid_vlan( port_id, vf, (int) msgbuf[1] )) {
+				bleat_printf( 1, "vlan set event approved: port=%d vf=%d vlan=%d (responding noop-ack)", port_id, vf, (int) msgbuf[1] );
 				//*((int*) param) = RTE_ETH_MB_EVENT_PROCEED;
-				*(int*) param = RTE_ETH_MB_EVENT_NOOP_ACK;     // good rc to VM while not changing anything 
+				p.retval = RTE_ETH_MB_EVENT_NOOP_ACK;     // good rc to VM while not changing anything 
 			} else {
-				bleat_printf( 1, "vlan set event rejected; vlan not not configured: port=%d vf=%d vlan=%d (responding noop-ack)", port_id, vf, (int) p[1] );
-				*(int*) param = RTE_ETH_MB_EVENT_NOOP_NACK;     // VM should see failure
+				bleat_printf( 1, "vlan set event rejected; vlan not not configured: port=%d vf=%d vlan=%d (responding noop-ack)", port_id, vf, (int) msgbuf[1] );
+				p.retval = RTE_ETH_MB_EVENT_NOOP_NACK;     // VM should see failure
 			}
 
 			//bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_VLAN");
@@ -963,13 +850,13 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			break;
 
 		case IXGBE_VF_SET_LPE:
-			bleat_printf( 1, "set mtu event received %d %d", port_id, (int) p[1] );
-			if( valid_mtu( port_id, (int) p[1] ) ) {
-				bleat_printf( 1, "mtu set event approved: port=%d vf=%d mtu=%d", port_id, vf, (int) p[1] );
-				*((int*) param) = RTE_ETH_MB_EVENT_PROCEED;
+			bleat_printf( 1, "set mtu event received %d %d", port_id, (int) msgbuf[1]  );
+			if( valid_mtu( port_id, (int) msgbuf[1] ) ) {
+				bleat_printf( 1, "mtu set event approved: port=%d vf=%d mtu=%d", port_id, vf, (int) msgbuf[1]  );
+				p.retval = RTE_ETH_MB_EVENT_PROCEED;
 			} else {
-				bleat_printf( 1, "mtu set event rejected: port=%d vf=%d mtu=%d", port_id, vf, (int) p[1] );
-				*((int*) param) = RTE_ETH_MB_EVENT_NOOP_NACK;     /* noop & nack */
+				bleat_printf( 1, "mtu set event rejected: port=%d vf=%d mtu=%d", port_id, vf, (int) msgbuf[1] );
+				p.retval = RTE_ETH_MB_EVENT_NOOP_NACK;     /* noop & nack */
 			}
 
 			//bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_LPE");
@@ -978,65 +865,39 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 
 		case IXGBE_VF_SET_MACVLAN:
 			bleat_printf( 1, "set macvlan event received: port=%d (responding nop+nak)", port_id );
-			*(int*) param =  RTE_ETH_MB_EVENT_NOOP_NACK;    /* noop & nack */
-			bleat_printf( 3, "type: %d, port: %d, vf: %d, out: %d, _T: %s ", type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_MACVLAN");
-			bleat_printf( 3, "setting mac_vlan = %d", p[1]);
+			p.retval =  RTE_ETH_MB_EVENT_NOOP_NACK;    /* noop & nack */
+			bleat_printf( 3, "type: %d, port: %d, vf: %d, out: %d, _T: %s ", type, port_id, vf, p.retval, "IXGBE_VF_SET_MACVLAN");
+			bleat_printf( 3, "setting mac_vlan = %d", msgbuf[1] );
 			//bleat_printf( 3, "calling enable with: %d %d", port_id, vf );
 
 			// ### this is a hack, but until we see a queue ready everywhere/everytime we assume we can enable things when we see this message
-			enable_refresh_queue( port_id, vf );
+			//enable_refresh_queue( port_id, vf );
 			break;
 
 		case IXGBE_VF_API_NEGOTIATE:
 			bleat_printf( 1, "set negotiate event received: port=%d (responding proceed)", port_id );
-			*(int*) param =  RTE_ETH_MB_EVENT_PROCEED;   /* do what's needed */
+			p.retval =  RTE_ETH_MB_EVENT_PROCEED;   /* do what's needed */
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
-				type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_API_NEGOTIATE");
+				type, port_id, vf, p.retval, "IXGBE_VF_API_NEGOTIATE");
 			break;
 
 		case IXGBE_VF_GET_QUEUES:
 			bleat_printf( 1, "get queues  event received: port=%d (responding proceed)", port_id );
-			*(int*) param =  RTE_ETH_MB_EVENT_PROCEED;   /* do what's needed */
+			p.retval =  RTE_ETH_MB_EVENT_PROCEED;   /* do what's needed */
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
-				type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_GET_QUEUES");
+				type, port_id, vf, p.retval, "IXGBE_VF_GET_QUEUES");
 			break;
 
 		default:
 			bleat_printf( 1, "unknown  event request received: port=%d (responding nop+nak)", port_id );
-			*(int*) param = RTE_ETH_MB_EVENT_NOOP_NACK;     /* noop & nack */
+			p.retval = RTE_ETH_MB_EVENT_NOOP_NACK;     /* noop & nack */
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, MBOX_TYPE: %d",
-				type, port_id, vf, *(uint32_t*) param, mbox_type);
+				type, port_id, vf, p.retval, mbox_type);
 			break;
 	}
 
   bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %d",
-      type, port_id, vf, *(uint32_t*) param, mbox_type);
-  /*
-  struct rte_eth_dev_info dev_info;
-  rte_eth_dev_info_get(port_id, &dev_info);
-
-
-	bleat_printf( 3, "driver_name = %s", dev_info.driver_name);
-	bleat_printf( 3, "if_index = %d", dev_info.if_index);
-	bleat_printf( 3, "min_rx_bufsize = %d", dev_info.min_rx_bufsize);
-	bleat_printf( 3, "max_rx_pktlen = %d", dev_info.max_rx_pktlen);
-	bleat_printf( 3, "max_rx_queues = %d", dev_info.max_rx_queues);
-	bleat_printf( 3, "max_tx_queues = %d", dev_info.max_tx_queues);
-	bleat_printf( 3, "max_mac_addrs = %d", dev_info.max_mac_addrs);
-	bleat_printf( 3, "max_hash_mac_addrs = %d", dev_info.max_hash_mac_addrs);
-	// Maximum number of hash MAC addresses for MTA and UTA.
-	bleat_printf( 3, "max_vfs = %d", dev_info.max_vfs);
-	bleat_printf( 3, "max_vmdq_pools = %d", dev_info.max_vmdq_pools);
-	bleat_printf( 3, "rx_offload_capa = %d", dev_info.rx_offload_capa);
-	bleat_printf( 3, "reta_size = %d", dev_info.reta_size);
-	// Device redirection table size, the total number of entries.
-	bleat_printf( 3, "hash_key_size = %d", dev_info.hash_key_size);
-	///Bit mask of RSS offloads, the bit offset also means flow type
-	bleat_printf( 3, "flow_type_rss_offloads = %lu", dev_info.flow_type_rss_offloads);
-	bleat_printf( 3, "vmdq_queue_base = %d", dev_info.vmdq_queue_base);
-	bleat_printf( 3, "vmdq_queue_num = %d", dev_info.vmdq_queue_num);
-	bleat_printf( 3, "vmdq_pool_base = %d", dev_info.vmdq_pool_base);
-  */
+      type, port_id, vf, p.retval, mbox_type);
 }
 
 

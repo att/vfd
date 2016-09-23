@@ -148,39 +148,7 @@ static const struct rte_eth_conf port_conf_default = {
 };
 
 
-/**
- * The data structure associated with each port.
- */
-struct rte_port {
-	uint8_t                 enabled;    /**< Port enabled or not */
-	struct rte_eth_dev_info dev_info;   /**< PCI info + driver name */
-	struct rte_eth_conf     dev_conf;   /**< Port configuration. */
-	struct ether_addr       eth_addr;   /**< Port ethernet address */
-	struct rte_eth_stats    stats;      /**< Last port statistics */
-	uint64_t                tx_dropped; /**< If no descriptor in TX ring */
-	struct fwd_stream       *rx_stream; /**< Port RX stream, if unique */
-	struct fwd_stream       *tx_stream; /**< Port TX stream, if unique */
-	unsigned int            socket_id;  /**< For NUMA support */
-	uint16_t                tx_ol_flags;/**< TX Offload Flags (TESTPMD_TX_OFFLOAD...). */
-	uint16_t                tso_segsz;  /**< MSS for segmentation offload. */
-	uint16_t                tx_vlan_id;/**< The tag ID */
-	uint16_t                tx_vlan_id_outer;/**< The outer tag ID */
-	void                    *fwd_ctx;   /**< Forwarding mode context */
-	uint64_t                rx_bad_ip_csum; /**< rx pkts with bad ip checksum  */
-	uint64_t                rx_bad_l4_csum; /**< rx pkts with bad l4 checksum */
-	uint8_t                 tx_queue_stats_mapping_enabled;
-	uint8_t                 rx_queue_stats_mapping_enabled;
-	volatile uint16_t       port_status;    /**< port started or not */
-	uint8_t                 need_reconfig;  /**< need reconfiguring port or not */
-	uint8_t                 need_reconfig_queues; /**< need reconfiguring queues or not */
-	uint8_t                 rss_flag;   /**< enable rss or not */
-	uint8_t                 dcb_flag;   /**< enable dcb */
-	struct rte_eth_rxconf   rx_conf;    /**< rx configuration */
-	struct rte_eth_txconf   tx_conf;    /**< tx configuration */
-	struct ether_addr       *mc_addr_pool; /**< pool of multicast addrs */
-	uint32_t                mc_addr_nb; /**< nb. of addr. in mc_addr_pool */
-	uint8_t                 slave_flag; /**< bonding slave port */
-};
+
 
 
 unsigned int itvl_idx;
@@ -268,8 +236,6 @@ enum print_warning {
 	DISABLED_WARN
 };
 
-int port_id_is_invalid(portid_t port_id, enum print_warning warning);
-int port_reg_off_is_invalid(portid_t port_id, uint32_t reg_off);
 
 
 /**
@@ -313,37 +279,16 @@ port_pci_reg_write(portid_t port, uint32_t reg_off, uint32_t reg_v)
 
 void port_mtu_set(portid_t port_id, uint16_t mtu);
 
-void rx_vlan_strip_set(portid_t port_id, int on);
-void rx_vlan_strip_set_on_queue(portid_t port_id, uint16_t queue_id, int on);
+
 void rx_vlan_strip_set_on_vf(portid_t port_id, uint16_t vf_id, int on);
 void tx_vlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id);
-
-void rx_vlan_filter_set(portid_t port_id, int on);
-void rx_vlan_all_filter_set(portid_t port_id, int on);
 int  rx_vft_set(portid_t port_id, uint16_t vlan_id, int on);
-void vlan_extend_set(portid_t port_id, int on);
-void vlan_tpid_set(portid_t port_id, uint16_t tp_id);
-void tx_vlan_set(portid_t port_id, uint16_t vlan_id);
-void tx_qinq_set(portid_t port_id, uint16_t vlan_id, uint16_t vlan_id_outer);
-void tx_vlan_reset(portid_t port_id);
-void tx_vlan_pvid_set(portid_t port_id, uint16_t vlan_id, int on);
-
-int set_queue_rate_limit(portid_t port_id, uint16_t queue_idx, uint16_t rate);
-
-void dev_set_link_up(portid_t pid);
-void dev_set_link_down(portid_t pid);
 void init_port_config(void);
-
-
-int start_port(portid_t pid);
-void stop_port(portid_t pid);
-void close_port(portid_t pid);
 
 int get_split_ctlreg( portid_t port_id, uint16_t vf_id );
 void set_queue_drop( portid_t port_id, int state );
 void set_split_erop( portid_t port_id, uint16_t vf_id, int state );
 
-int port_is_started(portid_t port_id);
 void set_vf_allow_bcast(portid_t port_id, uint16_t vf_id, int on);
 void set_vf_allow_mcast(portid_t port_id, uint16_t vf_id, int on);
 void set_vf_allow_un_ucast(portid_t port_id, uint16_t vf_id, int on);
@@ -356,9 +301,6 @@ void set_vf_vlan_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on);
 void set_vf_mac_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on);
 
 int set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk);
-
-
-void get_ethertype_filter(uint8_t port_id, uint16_t index);
 
 void nic_stats_clear(portid_t port_id);
 int nic_stats_display(uint8_t port_id, char * buff, int blen);
@@ -414,12 +356,12 @@ void dump_sriov_config(struct sriov_conf_c config);
 void dump_dev_info( int num_ports );
 int update_ports_config(void);
 int cmp_vfs (const void * a, const void * b);
+void disable_default_pool(portid_t port_id);
 
 
 void lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
 void vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
 void restore_vf_setings(uint8_t port_id, int vf);
-int check_mcast_mbox(uint32_t * mb);
 
 // callback validation support 
 int valid_mtu( int port, int mtu );
@@ -437,15 +379,17 @@ uint32_t spoffed[MAX_PORTS];
 */
 struct rq_entry 
 {
+	struct rq_entry* next;		// link references
+	struct rq_entry* prev;
+
 	uint8_t	port_id;
 	uint16_t vf_id;
 	uint8_t enabled;
 	int		mcounter;			// message counter so as not to flood the log
-
-	TAILQ_ENTRY(rq_entry) rq_entries;
 };
 
-TAILQ_HEAD(, rq_entry) rq_head;
+struct rq_entry *rq_list;		// reset queue list of VMs we are waiting on queue ready bits for
+
 void add_refresh_queue(u_int8_t port_id, uint16_t vf_id);
 void process_refresh_queue(void);
 int is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter );

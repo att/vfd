@@ -19,7 +19,7 @@ function build_it
 	(
 		set -e
         cd $src_dir/src/lib
-        git clone https://github.com/att/dpdk.git -b vf-agent-dpdk
+        git clone https://github.com/att/dpdk.git -b vfd-1607
 		cd $src_dir/src/lib/dpdk
 		echo "building dpdk...."
         cat <<endKat >config/defconfig_x86_64-vfd-linuxapp-gcc
