@@ -112,7 +112,7 @@ static void qos_enable_arb( portid_t pf ) {
 
 /*
 	Set dcb transmit descriptor plane t2 config [0-7].
-	For now we set equallay.
+	For now we set equally.
 
 	FUTURE:  if setting gsp or lsp changes will be needed
 
@@ -147,7 +147,7 @@ static void qos_set_tdplane( portid_t pf ) {
 
 /*
 	Set dcb transmit packet plane t2 config [0-7].
-	For now we set equallay.
+	For now we set equally.
 
 	See qos_set_tdplane flower box for values.
 */
