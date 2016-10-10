@@ -131,6 +131,8 @@ tx_vlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id)
 	diag = rte_eth_dev_set_vf_vlan_insert(port_id, vf_id, vlan_id);
 	if (diag < 0) {
 		bleat_printf( 3, "rte_eth_dev_set_vf_vlan_insert(port_pi=%d, vf_id=%d, vlan_id=%d) failed " "diag=%d", port_id, vf_id, vlan_id, diag);
+	} else {
+		bleat_printf( 3, "set vlan insert on vf successful: port=%d, vf=%d vlan=%d", port_id, vf_id, vlan_id );
 	}
 }
 
