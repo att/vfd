@@ -773,6 +773,7 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 	vf->num = vfc->vfid;
 	port->vfs[vidx].last_updated = ADDED;		// signal main code to configure the buggger
 	vf->strip_stag = vfc->strip_stag;
+	vf->insert_stag = vfc->strip_stag;			// both are pulled from same config parm
 	vf->allow_bcast = vfc->allow_bcast;
 	vf->allow_mcast = vfc->allow_mcast;
 	vf->allow_un_ucast = vfc->allow_un_ucast;
@@ -1250,7 +1251,7 @@ static int vfd_req_if( parms_t *parms, struct sriov_conf_c* conf, int forever ) 
 
 				case RT_SHOW:
 					if( parms->forreal ) {
-						if( req->resource != NULL  &&  strcmp( req->resource, "pfs" ) == 0 ) {				// dump just the VF information
+						if( req->resource != NULL && strcmp( req->resource, "pfs" ) == 0 ) {				// dump just the VF information
 							if( (buf = gen_stats( conf, 1 )) != NULL )  {		// todo need to replace 1 with actual number of ports
 								vfd_response( req->resp_fifo, 0, buf );
 								free( buf );
@@ -1423,7 +1424,7 @@ static int vfd_set_ins_strip( struct sriov_port_s *port, struct vf_s *vf ) {
 		bleat_printf( 2, "pf: %s vf: %d set strip vlan tag %d", port->name, vf->num, vf->strip_stag );
 		rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag );			// if just one in the list, push through user strip option
 
-		if( vf->strip_stag ) {																// when stripping, we must also insert
+		if( vf->insert_stag ) {																// when stripping, we must also insert
 			bleat_printf( 2, "%s vf: %d set insert vlan tag with id %d", port->name, vf->num, vf->vlans[0] );
 			tx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->vlans[0] );
 		} else {
@@ -1863,6 +1864,9 @@ main(int argc, char **argv)
 	int		forreal = 1;				// -n sets to 0 to keep us from actually fiddling the nic
 	int		opt;
 	int		fd = -1;
+	int		enable_qos = 1;			// on by default -q turns it off
+int p;
+int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 
 
   const char * main_help =
@@ -1873,7 +1877,7 @@ main(int argc, char **argv)
 		"\t -f        keep in 'foreground'\n"
 		"\t -n        no-nic actions executed\n"
 		"\t -p <file> parmm file (/etc/vfd/vfd.cfg)\n"
-		"\t -q        enable dcb qos (tmp until parm file enabled)\n"
+		"\t -q        disable dcb qos (tmp until parm file config added)\n"
 		"\t -h|?  Display this help screen\n"
 		"\n";
 
@@ -1887,7 +1891,7 @@ main(int argc, char **argv)
 	log_file = (char *) malloc( sizeof( char ) * BUF_1K );
 
   // Parse command line options
-  while ( (opt = getopt(argc, argv, "?fhnqv:p:s:")) != -1)
+  while ( (opt = getopt(argc, argv, "?oqfhnqv:p:s:")) != -1)
   {
     switch (opt)
     {
@@ -1899,6 +1903,10 @@ main(int argc, char **argv)
 			forreal = 0;						// do NOT actually make calls to change the nic
 			break;
 
+		case 'o':
+			qos_option = 0;
+			break;
+
 		case 'p':
 			if( parm_file )
 				free( parm_file );
@@ -1908,6 +1916,10 @@ main(int argc, char **argv)
 		case 's':
 		  logFacility = (atoi(optarg) << 3);
 		  break;
+
+		case 'q':
+			enable_qos = 0;
+			break;
 
 		case 'h':
 		case '?':
@@ -2059,6 +2071,20 @@ main(int argc, char **argv)
 					running_config.ports[i].rte_port_number = port; 				// point config port back to rte port
 				}
 			}
+/*
+			if( enable_qos ) {
+				int pctgs[32];
+				int	v;
+				for( v = 0; v < 32; v++ ) {
+					pctgs[v] = 1;
+				}
+				pctgs[0] = 68;
+
+				bleat_printf( 1, "enabling qos for port %d", port );
+				enable_dcb_qos( port, pctgs, 0, qos_option );
+			}
+*/
+
 	  	}
 
 		// read PCI config to get VM offset and stride 
@@ -2081,6 +2107,7 @@ main(int argc, char **argv)
 		g_parms->initialised = 1;										// safe to update nic now, but only if in forreal mode
 	}
 
+
 	vfd_add_all_vfs( g_parms, &running_config );						// read all existing config files and add the VFs to the config
 	if( vfd_update_nic( g_parms, &running_config ) != 0 ) {				// now that dpdk is initialised run the list and 'activate' everything
 		bleat_printf( 0, "CRI: abort: unable to initialise nic with base config:" );
@@ -2091,10 +2118,26 @@ main(int argc, char **argv)
 		}
 	}
 
+	if( enable_qos ) {
+		for( p = 0; p < 2; p++ ) {
+			int pctgs[32];
+			int	v;
+			for( v = 0; v < 32; v++ ) {
+				pctgs[v] = 1;
+			}
+			pctgs[0] = 68;
+
+			bleat_printf( 1, "enabling qos for p %d qos_option=%d", p, qos_option );
+			enable_dcb_qos( p, pctgs, 0, qos_option );
+		}
+	}  else {
+		bleat_printf( 1, "qos is disabled" );
+	}
+
 	
 	run_start_cbs( &running_config );				// run any user startup callback commands defined in VF configs
 
-	bleat_printf( 1, "initialisation complete, setting bleat level to %d; starting to looop", g_parms->log_level );
+	bleat_printf( 1, "%s initialisation complete, setting bleat level to %d; starting to looop", version, g_parms->log_level );
 	bleat_set_lvl( g_parms->log_level );					// initialisation finished, set log level to running level
 	if( forreal ) {
 		rte_set_log_level( g_parms->dpdk_log_level );
