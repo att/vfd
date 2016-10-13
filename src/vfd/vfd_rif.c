@@ -43,8 +43,7 @@ static int vfd_init_fifo( parms_t* parms ) {
 	Return code of 0 indicates failure; non-zero is success.
 	
 */
-static int check_tcs( struct sriov_port_s* port, uint8_t *tc_pctgs ) {
-
+static int check_tcs( sriov_conf_t* conf, uint32_t port, uint8_t *tcpctgs ) {
 	int	totals[MAX_TCS];			// current pct totals
 	int	i;
 	int j;
@@ -53,21 +52,21 @@ static int check_tcs( struct sriov_port_s* port, uint8_t *tc_pctgs ) {
 	memset( totals, 0, sizeof( totals ) );
 
 	for( i = 0; i < MAX_VFS; i++ ) {				// sum the pctgs for each TC across all VFs
-		if( port->vfs[i].num >= 0 ) {				// active VF
+		if( conf->vfs[i].num >= 0 ) {				// active VF
 			for( j = 0; j < MAX_TCS; j++ ) {
-				totals[j] += port->vfs[i].tc_pctgs[j];	// add in this total
+				totals[j] += conf->vfs[i].tc_pctgs[j];	// add in this total
 			}
 		}
 	}
 
 	for( i = 0; i < MAX_TCS; i++ ) {
-		if( totals[i] + tc_pctgs[i] > 100 ) {
+		if( totals[i] + tcpctgs[i] > 100 ) {
 			rc = 0;
-			bleat_printf( 1, "requested traffic class percentage causes limit to be exceeded: tc=%d current=%d requested=%d", i, totals[i], tc_pctgs[i] );
+			bleat_printf( 1, "requested traffic class percentage causes limit to be exceeded: tc=%d current=%d requested=%d", i, totals[i], tcpctgs[i] );
 		}
 	}
 
-	return rc;
+	return rc
 }
 
 //  --------------------- global config management ------------------------------------------------------------
@@ -87,8 +86,9 @@ static void vfd_add_ports( parms_t* parms, sriov_conf_t* conf ) {
 	called = 1;
 	
 	for( i = 0; pidx < MAX_PORTS  && i < parms->npciids; i++, pidx++ ) {
-		port = &conf->ports[pidx];
 		port->flags = 0;									// default all flags off
+
+		port = &conf->ports[pidx];
 		port->last_updated = ADDED;												// flag newly added so the nic is configured next go round
 		snprintf( port->name, sizeof( port->name ), "port-%d",  i);				// TODO--- support getting a name from the config
 		snprintf( port->pciid, sizeof( port->pciid ), "%s", parms->pciids[i].id );
@@ -361,9 +361,9 @@ static int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		}
 	}
 
-	if( ! (port->flags & PF_OVERSUB) ) {						// if in strict mode, ensure TC amounts can be added to current settings without busting ceil
-		if( ! check_tcs( port, vfc->tc_pctgs ) ) {
-			snprintf( mbuf, sizeof( mbuf ), "TC percentages cause one or more total allocation to exceed 100%%" );
+	if( ! conf->flags & PF_OVERSUB ) {						// if in strict mode, ensure TC amounts can be added to current settings without busting ceil
+		if( ! check_tcs( conf, port, vfc->tcpctgs ) ) {
+			snprintf( mbuf, sizeof( mbuf ), "TC percentages cause one or more total allocation to exceed 100%" );
 			bleat_printf( 1, "vf not added: %s", mbuf );
 			if( reason ) {
 				*reason = strdup( mbuf );
