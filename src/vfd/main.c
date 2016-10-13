@@ -1345,7 +1345,8 @@ int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 
 			pctgs = gen_tc_pctgs( &running_config->ports[p] );					// build the set of TC percentages for each configured VF
 			bleat_printf( 1, "enabling qos for p %d qos_option=%d", p, qos_option );
-			enable_dcb_qos( p, pctgs, 0, qos_option );
+			enable_dcb_qos( &running_config->ports[p], pctgs, 0, qos_option );
+			free( pctgs );
 		}
 	}  else {
 		bleat_printf( 1, "qos is disabled" );

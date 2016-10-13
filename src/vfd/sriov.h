@@ -1,4 +1,4 @@
-// vi: sw=4 ts=4:
+// vi: sw=4 ts=4 noet:
 /*
 	Mnemonic:	sriov.h 
 	Abstract: 	Main header file for vfd.
@@ -6,6 +6,7 @@
 
 	Date:		February 2016
 	Authors:	Alex Zelezniak (original code)
+				E. Scott Daniels
 */
 
 #ifndef _SRIOV_H_
@@ -73,7 +74,9 @@
 
 #define BURST_SIZE 32
 #define MAX_VFS    254
+#define MAX_QUEUES	128			// max supported queues
 #define MAX_PORTS  16
+#define MAX_TCS		8			// max number of TCs possible
 #define RESTORE_DELAY 2
 
 
@@ -129,7 +132,15 @@ typedef uint16_t streamid_t;
 
 #define BUF_SIZE 1024
 
+#define ENABLED		1
+#define DISABLED	0
+								// port flags
+#define PF_LOOPBACK	0x01		// loopback is enabled
+#define PF_OVERSUB	0x02
 
+/*
+	Provides a static port configuration struct with defaults.
+*/
 static const struct rte_eth_conf port_conf_default = {
 	.rxmode = { 
 		.max_rx_pkt_len = 9000,
@@ -142,8 +153,7 @@ static const struct rte_eth_conf port_conf_default = {
 		.hw_strip_crc   = 0, /**< CRC stripped by hardware */
 		},
 	.intr_conf = {
-		.lsc = 1, /**< lsc interrupt feature enabled */
-    //.lsc = 0, /**< lsc interrupt feature disabled */
+		.lsc = ENABLED, 		// < lsc interrupt feature enabled
 	},
 };
 
@@ -164,6 +174,9 @@ struct itvl_stats
 
   
 
+/*
+	Manages information for a single virtual function (VF).
+*/
 struct vf_s
 {
   int     num;
@@ -192,6 +205,7 @@ struct vf_s
 	uid_t	owner;					// user id which 'owns' the VF (owner of the config file from stat())
 	char*	start_cb;				// user commands driven just after initialisation and just before termination
 	char*	stop_cb;
+	uint8_t	tc_pctgs[MAX_TCS];		// percentage of the TC that the VF has been allocated (configured)
 };
 
 
@@ -202,32 +216,39 @@ struct mirror_s
 };
 
 
-struct sriov_port_s
+/*
+	Manages information for a single NIC port. Each port may have up to MAX_VFS configured.
+*/
+typedef struct sriov_port_s
 {
-  int     rte_port_number;
-  char    name[64];
+	int		flags;					// PF_ constants
+	int     rte_port_number;
+	char    name[64];
 	char    pciid[64];
-  int     last_updated;
-  int     mtu;
-  int     num_mirros;
-	int		nvfs_config;		// actual number of configured vfs; could be less than max
-	int		enable_loopback;		// allow VM-VM traffic looping back through the NIC
-  int     num_vfs;
-  struct  mirror_s mirror[MAX_VFS];
-  struct  vf_s vfs[MAX_VFS];
-};
+	int     last_updated;
+	int     mtu;
+	int     num_mirrors;
+	int		nvfs_config;			// actual number of configured vfs; could be less than max
+	int		ntcs;					// number traffic clases (must be 4 or 8)
+	//int		enable_loopback;		// allow VM-VM traffic looping back through the NIC
+	int     num_vfs;
+	struct  mirror_s mirror[MAX_VFS];
+	struct  vf_s vfs[MAX_VFS];
+	uint8_t	tc_pctgs[MAX_TCS];		// percentage of total bandwidth for each traffic class
+	uint8_t	tc2bwg[MAX_TCS];		// maps TCs to bandwidth groups
+} sriov_port_t;
 
-
-struct sriov_conf_c
+/*
+	Overall configuration anchor.
+*/
+typedef struct sriov_conf_c
 {
-  int     num_ports;
+  int     num_ports;						// number of ports actually used in ports
   struct sriov_port_s ports[MAX_PORTS];
-} sriov_config;
+} sriov_conf_t;
 
 
-
-struct sriov_conf_c running_config;
-
+sriov_conf_t* running_config;		// global so that callbacks can access
 
 int rte_config_portmap[MAX_PORTS];
 
@@ -352,7 +373,7 @@ void daemonize( char* pid_fname );
 void detachFromTerminal( void );
 void traceLog(int eventTraceLevel, const char * file, int line, const char * format, ...);
 int readConfigFile(char *fname);
-void dump_sriov_config(struct sriov_conf_c config);
+void dump_sriov_config( sriov_conf_t* config);
 void dump_dev_info( int num_ports );
 int update_ports_config(void);
 int cmp_vfs (const void * a, const void * b);
@@ -395,7 +416,7 @@ void process_refresh_queue(void);
 int is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter );
 
 // ------------ qos ------------
-extern int enable_dcb_qos( portid_t pf, int* pctgs, int tc8_mode, int option );
+extern int enable_dcb_qos( sriov_port_t *port, int* pctgs, int tc8_mode, int option );
 
 
 #endif /* _SRIOV_H_ */
