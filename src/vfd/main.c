@@ -42,6 +42,7 @@
 				09 Aug 2016 - Block VF0 from being used.
 				07 Sep 2016 - Drop use of TAILQ as odd things were happening realted to removing 
 							items from the list.
+				14 Oct 2016 - Changes to work with dpdk-1611 differences.
 
 */
 
@@ -93,7 +94,7 @@ typedef struct request {
 } req_t;
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-static const char* version = "v1.2/19236";
+static const char* version = "v1.3/1a146e";
 static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
 
 // --- local protos so we can break a few things out of main.c --------------------------------------------------
@@ -1285,8 +1286,8 @@ int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 					addr.addr_bytes[4], addr.addr_bytes[5]);
 
 			bleat_printf( 1, "driver: %s, index %d, pkts rx: %lu", dev_info.driver_name, dev_info.if_index, st.pcount);
-			bleat_printf( 1, "pci: %04X:%02X:%02X.%01X, max VF's: %d, numa: %d", dev_info.pci_dev->addr.domain, dev_info.pci_dev->addr.bus,
-				dev_info.pci_dev->addr.devid , dev_info.pci_dev->addr.function, dev_info.max_vfs, dev_info.pci_dev->numa_node);
+			bleat_printf( 1, "pci: %04X:%02X:%02X.%01X, max VF's: %d", dev_info.pci_dev->addr.domain, dev_info.pci_dev->addr.bus,
+				dev_info.pci_dev->addr.devid , dev_info.pci_dev->addr.function, dev_info.max_vfs );
 				
 			/*
 			* rte could enumerate ports differently than in config files
