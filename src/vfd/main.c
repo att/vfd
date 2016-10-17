@@ -42,6 +42,7 @@
 				09 Aug 2016 - Block VF0 from being used.
 				07 Sep 2016 - Drop use of TAILQ as odd things were happening realted to removing 
 							items from the list.
+				14 Oct 2016 - Changes to work with dpdk-1611 differences.
 
 */
 
@@ -97,7 +98,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
 static char* gen_stats( struct sriov_conf_c* conf, int pf_only );
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-static const char* version = "v1.2/19236";
+static const char* version = "v1.3/1a146e";
 static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
 
 // --- misc support ----------------------------------------------------------------------------------------------
@@ -773,6 +774,7 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 	vf->num = vfc->vfid;
 	port->vfs[vidx].last_updated = ADDED;		// signal main code to configure the buggger
 	vf->strip_stag = vfc->strip_stag;
+	vf->insert_stag = vfc->strip_stag;		// for now they are based on the same flag
 	vf->allow_bcast = vfc->allow_bcast;
 	vf->allow_mcast = vfc->allow_mcast;
 	vf->allow_un_ucast = vfc->allow_un_ucast;
@@ -2038,8 +2040,8 @@ main(int argc, char **argv)
 					addr.addr_bytes[4], addr.addr_bytes[5]);
 
 			bleat_printf( 1, "driver: %s, index %d, pkts rx: %lu", dev_info.driver_name, dev_info.if_index, st.pcount);
-			bleat_printf( 1, "pci: %04X:%02X:%02X.%01X, max VF's: %d, numa: %d", dev_info.pci_dev->addr.domain, dev_info.pci_dev->addr.bus,
-				dev_info.pci_dev->addr.devid , dev_info.pci_dev->addr.function, dev_info.max_vfs, dev_info.pci_dev->numa_node);
+			bleat_printf( 1, "pci: %04X:%02X:%02X.%01X, max VF's: %d", dev_info.pci_dev->addr.domain, dev_info.pci_dev->addr.bus,
+				dev_info.pci_dev->addr.devid , dev_info.pci_dev->addr.function, dev_info.max_vfs );
 				
 			/*
 			* rte could enumerate ports differently than in config files
