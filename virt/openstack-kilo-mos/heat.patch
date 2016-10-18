@@ -1,0 +1,181 @@
+ heat/engine/resources/openstack/neutron/port.py | 145 ++++++++++++++++++++++++
+ 1 file changed, 145 insertions(+)
+
+diff --git a/heat/engine/resources/openstack/neutron/port.py b/heat/engine/resources/openstack/neutron/port.py
+index 2a17ec1..43ef132 100644
+--- a/heat/engine/resources/openstack/neutron/port.py
++++ b/heat/engine/resources/openstack/neutron/port.py
+@@ -33,11 +33,33 @@ class Port(neutron.NeutronResource):
+         ADMIN_STATE_UP, FIXED_IPS, MAC_ADDRESS,
+         DEVICE_ID, SECURITY_GROUPS, ALLOWED_ADDRESS_PAIRS,
+         DEVICE_OWNER, REPLACEMENT_POLICY, VNIC_TYPE,
++        ATT_VF_VLAN_FILTER,
++        ATT_VF_MAC_FILTER,
++        ATT_VF_VLAN_STRIP,
++        ATT_VF_MIRRORS,
++        ATT_VF_BROADCAST_ALLOW,
++        ATT_VF_UNKNOWN_MULTICAST_ALLOW,
++        ATT_VF_UNKNOWN_UNICAST_ALLOW,
++        ATT_VF_INSERT_STAG,
++        ATT_VF_LINK_STATUS,
++        ATT_VF_VLAN_ANTI_SPOOF_CHECK,
++        ATT_VF_MAC_ANTI_SPOOF_CHECK,
+     ) = (
+         'network_id', 'network', 'name', 'value_specs',
+         'admin_state_up', 'fixed_ips', 'mac_address',
+         'device_id', 'security_groups', 'allowed_address_pairs',
+         'device_owner', 'replacement_policy', 'binding:vnic_type',
++        'ATT_VF_VLAN_FILTER',
++        'ATT_VF_MAC_FILTER',
++        'ATT_VF_VLAN_STRIP',
++        'ATT_VF_MIRRORS',
++        'ATT_VF_BROADCAST_ALLOW',
++        'ATT_VF_UNKNOWN_MULTICAST_ALLOW',
++        'ATT_VF_UNKNOWN_UNICAST_ALLOW',
++        'ATT_VF_INSERT_STAG',
++        'ATT_VF_LINK_STATUS',
++        'ATT_VF_VLAN_ANTI_SPOOF_CHECK',
++        'ATT_VF_MAC_ANTI_SPOOF_CHECK',
+     )
+ 
+     _FIXED_IP_KEYS = (
+@@ -202,6 +224,110 @@ class Port(neutron.NeutronResource):
+             support_status=support.SupportStatus(version='2015.1'),
+             update_allowed=True
+         ),
++        ATT_VF_VLAN_FILTER: properties.Schema(
++            properties.Schema.LIST,
++            _('List of VLAN filters applied on VF to pass the traffic to VM'),
++            update_allowed=False
++        ),
++        ATT_VF_MAC_FILTER: properties.Schema(
++            properties.Schema.LIST,
++            _('List of MAC filters'),
++            update_allowed=False
++        ),
++        ATT_VF_VLAN_STRIP: properties.Schema(
++            properties.Schema.BOOLEAN,
++            _('VF will be configured to strip the outer TAG before the '
++              'traffic is passed to VM'),
++            update_allowed=False
++        ),
++        ATT_VF_MIRRORS: properties.Schema(
++            properties.Schema.LIST,
++            _('List of mirrors with vlans and port ids'),
++            update_allowed=False,
++            constraints=[
++                # we need at least one entry in this field
++                constraints.Length(min=1)
++            ],
++            schema=properties.Schema(
++                properties.Schema.MAP,
++                schema={
++                    "mirror": properties.Schema(
++                        properties.Schema.MAP,
++                        required=True,
++                        schema={
++                            'Vlan': properties.Schema(
++                                properties.Schema.LIST,
++                                required=True,
++                                constraints=[
++                                    # at least one entry required
++                                    constraints.Length(min=1)
++                                ],
++                                schema=properties.Schema(
++                                    # type is string, because we are expected
++                                    # to accept both integers and
++                                    # ranges such as 30-33, that has to be
++                                    # expanded to 30, 31, 32, 33
++                                    properties.Schema.STRING
++                                )
++                            ),
++                            'Target': properties.Schema(
++                                properties.Schema.LIST,
++                                required=True,
++                                constraints=[
++                                    # at least one entry required
++                                    constraints.Length(min=1)
++                                ],
++                                schema=properties.Schema(
++                                    properties.Schema.STRING,
++                                    constraints=[
++                                        constraints.CustomConstraint(
++                                            'neutron.port')
++                                    ]
++                                )
++                            )
++                        }
++                    )
++                }
++            )
++        ),
++        ATT_VF_BROADCAST_ALLOW: properties.Schema(
++            properties.Schema.BOOLEAN,
++            _('Allow broadcast to reach vm'),
++            update_allowed=False
++        ),
++        ATT_VF_UNKNOWN_MULTICAST_ALLOW: properties.Schema(
++            properties.Schema.BOOLEAN,
++            _('Allow multicast to reach vm'),
++            update_allowed=False
++        ),
++        ATT_VF_UNKNOWN_UNICAST_ALLOW: properties.Schema(
++            properties.Schema.BOOLEAN,
++            _('Allow unicast to reach vm'),
++            update_allowed=False
++        ),
++        ATT_VF_INSERT_STAG: properties.Schema(
++            properties.Schema.BOOLEAN,
++            _('Insert vlan tags'),
++            update_allowed=False
++        ),
++        ATT_VF_LINK_STATUS: properties.Schema(
++            properties.Schema.STRING,
++            _('Link status of port'),
++            update_allowed=False,
++            constraints=[
++                constraints.AllowedValues(['on', 'off', 'auto']),
++            ]
++        ),
++        ATT_VF_VLAN_ANTI_SPOOF_CHECK: properties.Schema(
++            properties.Schema.BOOLEAN,
++            _('Perform anti spoof check on VLAN'),
++            update_allowed=False
++        ),
++        ATT_VF_MAC_ANTI_SPOOF_CHECK: properties.Schema(
++            properties.Schema.BOOLEAN,
++            _('Perform anti spoof check on MAC'),
++            update_allowed=False
++        ),
+     }
+ 
+     attributes_schema = {
+@@ -312,6 +438,25 @@ class Port(neutron.NeutronResource):
+ 
+         del(props[self.REPLACEMENT_POLICY])
+ 
++        ATT_DICT = {}
++        for prop in [self.ATT_VF_MIRRORS,
++                     self.ATT_VF_MAC_FILTER,
++                     self.ATT_VF_VLAN_STRIP,
++                     self.ATT_VF_VLAN_FILTER,
++                     self.ATT_VF_BROADCAST_ALLOW,
++                     self.ATT_VF_UNKNOWN_UNICAST_ALLOW,
++                     self.ATT_VF_UNKNOWN_MULTICAST_ALLOW,
++                     self.ATT_VF_INSERT_STAG,
++                     self.ATT_VF_LINK_STATUS,
++                     self.ATT_VF_MAC_ANTI_SPOOF_CHECK,
++                     self.ATT_VF_VLAN_ANTI_SPOOF_CHECK]:
++            if props.get(prop):
++                ATT_DICT[prop] = props[prop]
++                del props[prop]
++        # if any items in ATT_DICT -> insert binding:profile field
++        if ATT_DICT:
++            props["binding:profile"] = ATT_DICT
++
+     def _show_resource(self):
+         return self.neutron().show_port(
+             self.resource_id)['port']
+-- 
+2.7.4 (Apple Git-66)
+
