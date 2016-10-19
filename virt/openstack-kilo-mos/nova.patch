@@ -1,0 +1,828 @@
+ etc/nova/rootwrap.d/compute.filters       |   3 +
+ nova/compute/manager.py                   |  51 ++++++
+ nova/network/neutronv2/api.py             |  17 +-
+ nova/pci/utils.py                         |  33 ++++
+ nova/tests/unit/network/test_neutronv2.py |  14 +-
+ nova/tests/unit/pci/test_utils.py         |   8 +
+ nova/tests/unit/virt/libvirt/test_vif.py  | 261 ++++++++++++++++++++++++++++++
+ nova/virt/libvirt/vif.py                  | 215 +++++++++++++++++++++++-
+ 8 files changed, 586 insertions(+), 16 deletions(-)
+
+diff --git a/etc/nova/rootwrap.d/compute.filters b/etc/nova/rootwrap.d/compute.filters
+index acb5b25..affdac6 100644
+--- a/etc/nova/rootwrap.d/compute.filters
++++ b/etc/nova/rootwrap.d/compute.filters
+@@ -235,3 +235,6 @@ ploop: CommandFilter, ploop, root
+ 
+ # nova/virt/libvirt/utils.py: 'xend', 'status'
+ xend: CommandFilter, xend, root
++
++# nova/virt/libvirt/vif.py
++iplex: CommandFilter, iplex, root
+diff --git a/nova/compute/manager.py b/nova/compute/manager.py
+index 0b69bb4..42d2c55 100644
+--- a/nova/compute/manager.py
++++ b/nova/compute/manager.py
+@@ -82,6 +82,7 @@ from nova.objects import base as obj_base
+ from nova.openstack.common import loopingcall
+ from nova.openstack.common import periodic_task
+ from nova import paths
++from nova.pci.utils import get_vf_num_by_pci_address
+ from nova import rpc
+ from nova import safe_utils
+ from nova.scheduler import client as scheduler_client
+@@ -1867,6 +1868,56 @@ class ComputeManager(manager.Manager):
+         network_info = self._allocate_network(context, instance,
+                 requested_networks, macs, security_groups, dhcp_options)
+ 
++        def substitute_for_vfid(port_id):
++            # fvid = virtual function id
++            # each SR IOV direct port has associated virtual function with it
++            # By design port can be mirrored only to SR IOV ports on the same
++            # compute node
++            # all port mirroring job is delegated to vf-agent.
++            # vf-agent does not know anything about port_ids
++            # vf-agent can only deal with pciids and vfids
++            # at this point we have to substitute port_ids from
++            # "ATT_VF_MIRRORS" field to vfid of corresponding port
++            # if provided port_id is on other compute that original one
++            # then we need to raise error
++            mirror_port_object = self.network_api.show_port(context, port_id)
++            port = mirror_port_object['port']
++            if port["device_id"]:
++                if port["binding:vnic_type"] == "direct":
++                    # check if device_id is on the same host
++                    vm = self.compute_api.get(context, port['device_id'])
++                    if vm.get("host") == instance.host:
++                        # we have it on the same host - substitute for vfid
++                        return int(get_vf_num_by_pci_address(
++                            port["binding:profile"]["pci_slot"]))
++                    else:
++                        raise RuntimeError("vm with port {port_id} has "
++                                           "host mismatch".format(
++                                               port_id=port_id))
++                else:
++                    raise RuntimeError("port {port_id} is not direct".format(
++                        port_id=port_id))
++            else:
++                raise RuntimeError("port {port_id} is not attached to"
++                                   " any vm".format(port_id=port_id))
++
++        # the point of these codes is to properly substitute "ATT_VF_MIRRORS"
++        # fields, according to specification. This place was selected, because
++        # at the moment of substitution we need to know what host our vm will
++        # be schedulled to (to find corresponding ports on the same host),
++        # on top of that this codes has to work every time
++        # the vm is booted (created, live-migrated, etc.)
++        if network_info:
++            for vif_net in network_info:
++                # we apply these rules only to direct type ports
++                # ATT_VF_MIRRORS must be present
++                if vif_net["vnic_type"] == "direct" and vif_net["profile"].get(
++                        "ATT_VF_MIRRORS"):
++                    for att_mirror in vif_net["profile"].get("ATT_VF_MIRRORS"):
++                        att_mirror["mirror"]["Target"] = map(
++                            substitute_for_vfid,
++                            att_mirror["mirror"]["Target"])
++
+         if not instance.access_ip_v4 and not instance.access_ip_v6:
+             # If CONF.default_access_ip_network_name is set, grab the
+             # corresponding network and set the access ip values accordingly.
+diff --git a/nova/network/neutronv2/api.py b/nova/network/neutronv2/api.py
+index 55bc30d..16f9a87 100644
+--- a/nova/network/neutronv2/api.py
++++ b/nova/network/neutronv2/api.py
+@@ -554,9 +554,11 @@ class API(base_api.NetworkAPI):
+             port_req_body = {'port': {'device_id': instance.uuid,
+                                       'device_owner': zone}}
+             try:
++                port = ports[request.port_id] if request.port_id else None
+                 self._populate_neutron_extension_values(context,
+                                                         instance,
+                                                         request.pci_request_id,
++                                                        port,
+                                                         port_req_body,
+                                                         neutron=neutron)
+                 if request.port_id:
+@@ -611,7 +613,7 @@ class API(base_api.NetworkAPI):
+ 
+     @staticmethod
+     def _populate_neutron_binding_profile(instance, pci_request_id,
+-                                          port_req_body):
++                                          port, port_req_body):
+         """Populate neutron binding:profile.
+ 
+         Populate it with SR-IOV related information
+@@ -620,17 +622,21 @@ class API(base_api.NetworkAPI):
+             pci_dev = pci_manager.get_instance_pci_devs(
+                 instance, pci_request_id).pop()
+             devspec = pci_whitelist.get_pci_device_devspec(pci_dev)
+-            profile = {'pci_vendor_info': "%s:%s" % (pci_dev.vendor_id,
++            if port:
++                profile = port.get("binding:profile", {}).copy()
++            else:
++                profile = {}
++            profile.update({'pci_vendor_info': "%s:%s" % (pci_dev.vendor_id,
+                                                      pci_dev.product_id),
+                        'pci_slot': pci_dev.address,
+                        'physical_network':
+                            devspec.get_tags().get('physical_network')
+-                      }
++                      })
+             port_req_body['port']['binding:profile'] = profile
+ 
+     def _populate_neutron_extension_values(self, context, instance,
+-                                           pci_request_id, port_req_body,
+-                                           neutron=None):
++                                           pci_request_id, port,
++                                           port_req_body, neutron=None):
+         """Populate neutron extension values for the instance.
+ 
+         If the extensions loaded contain QOS_QUEUE then pass the rxtx_factor.
+@@ -644,6 +650,7 @@ class API(base_api.NetworkAPI):
+             port_req_body['port']['binding:host_id'] = instance.get('host')
+             self._populate_neutron_binding_profile(instance,
+                                                    pci_request_id,
++                                                   port,
+                                                    port_req_body)
+ 
+     def _delete_ports(self, neutron, instance, ports, raise_if_fail=False):
+diff --git a/nova/pci/utils.py b/nova/pci/utils.py
+index 736e80d..46e038c 100644
+--- a/nova/pci/utils.py
++++ b/nova/pci/utils.py
+@@ -69,6 +69,10 @@ def get_pci_address_fields(pci_addr):
+     return (domain, bus, slot, func)
+ 
+ 
++def get_pci_address(domain, bus, slot, func):
++    return '%s:%s:%s.%s' % (domain, bus, slot, func)
++
++
+ def get_function_by_ifname(ifname):
+     """Given the device name, returns the PCI address of a an device
+     and returns True if the address in a physical function.
+@@ -139,3 +143,32 @@ def get_vf_num_by_pci_address(pci_addr):
+     if vf_num is None:
+         raise exception.PciDeviceNotFoundById(id=pci_addr)
+     return vf_num
++
++
++def get_pf_pci_by_vfpci_address(pci_addr):
++    PCI_SLOT_FIELD_NAME = "PCI_SLOT_NAME"
++
++    dev_path = "/sys/bus/pci/devices/{pci_addr}/physfn/uevent".format(
++        pci_addr=pci_addr)
++
++    if os.path.isfile(dev_path):
++        with open(dev_path) as ifp:
++            for line in ifp:
++                if PCI_SLOT_FIELD_NAME in line:
++                    pciid = line.strip().split('=')[1]
++                    # check if we have value after '='
++                    if not pciid:
++                        raise exception.NovaException(
++                            "No value on '{PCI_SLOT_FIELD_NAME}' "
++                            " field in file {dev_path}".format(
++                                PCI_SLOT_FIELD_NAME=PCI_SLOT_FIELD_NAME,
++                                dev_path=dev_path))
++                    return pciid
++            # if pciid was not found in the file -> we need to throw exception
++            raise exception.NovaException(
++                "No '{PCI_SLOT_FIELD_NAME}' field in file {dev_path}".format(
++                    PCI_SLOT_FIELD_NAME=PCI_SLOT_FIELD_NAME,
++                    dev_path=dev_path))
++    else:
++        raise exception.NovaException(
++            "No device on path {dev_path}".format(dev_path=dev_path))
+diff --git a/nova/tests/unit/network/test_neutronv2.py b/nova/tests/unit/network/test_neutronv2.py
+index 8c8ece7..d534f30 100644
+--- a/nova/tests/unit/network/test_neutronv2.py
++++ b/nova/tests/unit/network/test_neutronv2.py
+@@ -496,7 +496,7 @@ class TestNeutronv2Base(test.TestCase):
+                     self.instance.get('host'))
+             if not has_portbinding:
+                 api._populate_neutron_extension_values(mox.IgnoreArg(),
+-                    self.instance, mox.IgnoreArg(),
++                    self.instance, mox.IgnoreArg(), mox.IgnoreArg(),
+                     mox.IgnoreArg(), neutron=self.moxed_client).AndReturn(None)
+             else:
+                 # since _populate_neutron_extension_values() will call
+@@ -866,7 +866,7 @@ class TestNeutronv2(TestNeutronv2Base):
+             instance.set_flavor(flavor)
+         port_req_body = {'port': {}}
+         api._populate_neutron_extension_values(self.context, instance,
+-                                               None, port_req_body)
++                                               None, None, port_req_body)
+         self.assertEqual(port_req_body['port']['rxtx_factor'], 1)
+ 
+     def test_allocate_for_instance_1(self):
+@@ -1076,7 +1076,7 @@ class TestNeutronv2(TestNeutronv2Base):
+             port = {'id': 'portid_' + network['id']}
+ 
+             api._populate_neutron_extension_values(self.context,
+-                self.instance, None, binding_port_req_body,
++                self.instance, None, None, binding_port_req_body,
+                 neutron=self.moxed_client).AndReturn(None)
+             if index == 0:
+                 self.moxed_client.create_port(
+@@ -1130,7 +1130,7 @@ class TestNeutronv2(TestNeutronv2Base):
+             },
+         }
+         api._populate_neutron_extension_values(self.context,
+-            self.instance, None, binding_port_req_body,
++            self.instance, None, None, binding_port_req_body,
+             neutron=self.moxed_client).AndReturn(None)
+         self.moxed_client.create_port(
+             MyComparator(port_req_body)).AndRaise(
+@@ -3497,7 +3497,7 @@ class TestNeutronv2Portbinding(TestNeutronv2Base):
+         instance = {'host': host_id}
+         port_req_body = {'port': {}}
+         api._populate_neutron_extension_values(self.context, instance,
+-                                               None, port_req_body)
++                                               None, None, port_req_body)
+         self.assertEqual(port_req_body['port']['binding:host_id'], host_id)
+         self.assertFalse(port_req_body['port'].get('binding:profile'))
+ 
+@@ -3527,8 +3527,8 @@ class TestNeutronv2Portbinding(TestNeutronv2Base):
+         devspec = mock.Mock()
+         devspec.get_tags.return_value = {'physical_network': 'phynet1'}
+         mock_get_pci_device_devspec.return_value = devspec
+-        api._populate_neutron_binding_profile(instance,
+-                                              pci_req_id, port_req_body)
++        api._populate_neutron_binding_profile(instance, pci_req_id,
++                                              None, port_req_body)
+ 
+         self.assertEqual(port_req_body['port']['binding:profile'], profile)
+ 
+diff --git a/nova/tests/unit/pci/test_utils.py b/nova/tests/unit/pci/test_utils.py
+index 77a0ce2..c4c2542 100644
+--- a/nova/tests/unit/pci/test_utils.py
++++ b/nova/tests/unit/pci/test_utils.py
+@@ -59,3 +59,11 @@ class PciDeviceAddressParserTestCase(test.NoDBTestCase):
+     def test_parse_address_invalid_character(self):
+         self.assertRaises(exception.PciDeviceWrongAddressFormat,
+             utils.parse_address, "0000:h4.12:6")
++
++
++class PciDeviceGetAddressTestCase(test.NoDBTestCase):
++
++    def test_get_pci_address(self):
++        domain, bus, slot, func = "abcd"
++        self.assertEqual("a:b:c.d", utils.get_pci_address(
++            domain, bus, slot, func))
+diff --git a/nova/tests/unit/virt/libvirt/test_vif.py b/nova/tests/unit/virt/libvirt/test_vif.py
+index 6c82092..80e9cb1 100644
+--- a/nova/tests/unit/virt/libvirt/test_vif.py
++++ b/nova/tests/unit/virt/libvirt/test_vif.py
+@@ -700,12 +700,14 @@ class LibvirtVifTestCase(test.NoDBTestCase):
+ 
+     def test_plug_hw_veb(self):
+         d = vif.LibvirtGenericVIFDriver()
++        d.notify_add_vf_agent = mock.MagicMock()
+         self._test_hw_veb_op(
+             d.plug_hw_veb,
+             self.vif_macvtap['details'][network_model.VIF_DETAILS_VLAN])
+ 
+     def test_unplug_hw_veb(self):
+         d = vif.LibvirtGenericVIFDriver()
++        d.notify_del_vf_agent = mock.MagicMock()
+         self._test_hw_veb_op(d.unplug_hw_veb, 0)
+ 
+     def test_unplug_ovs_hybrid_bridge_does_not_exist(self):
+@@ -1262,3 +1264,262 @@ class LibvirtVifTestCase(test.NoDBTestCase):
+             d._vrouter_port_delete(self.instance, self.vif_vhostuser_vrouter)
+ 
+             execute_cmd.assert_has_calls(calls['execute'])
++
++    @mock.patch("nova.pci.utils.get_vf_num_by_pci_address", return_value='4')
++    @mock.patch("nova.pci.utils.get_pf_pci_by_vfpci_address",
++                return_value="0000:44:10.6")
++    def test_get_config_vf_agent_plain(self, p1, p2):
++        # create instance and vif
++        fake_instance = {
++            'display_name': 'display_name'
++        }
++        fake_vif = {
++            'profile': {
++                'pci_slot': '0000:44:10.6',
++            },
++            'id': "fake_id",
++            'address': '00:00:00:00:00:00',
++        }
++        d = vif.LibvirtGenericVIFDriver()
++        # call function to be tested
++        result = d.get_config_vf_agent(fake_instance, fake_vif)
++        # compare result and expected result
++        expected_result = {
++            "name": "display_name/fake_id",
++            "pciid": "0000:44:10.6",
++            "vfid": 4,
++            "allow_bcast": True,
++            "allow_mcast": True,
++            "allow_un_ucast": True,
++            "insert_stag": True,
++            "link_status": 'auto',
++            "macs": ['00:00:00:00:00:00'],
++            "strip_stag": True,
++            "vlan_anti_spoof": True,
++            "mac_anti_spoof": True,
++        }
++        self.assertEqual(result, expected_result)
++
++    @mock.patch("nova.pci.utils.get_vf_num_by_pci_address", return_value='4')
++    @mock.patch("nova.pci.utils.get_pf_pci_by_vfpci_address",
++                return_value="0000:44:10.6")
++    def test_get_config_vf_agent_no_broadcast(self, p1, p2):
++        # create instance and vif
++        fake_instance = {
++            'display_name': 'display_name'
++        }
++        fake_vif = {
++            'profile': {
++                'pci_slot': '0000:44:10.6',
++                "ATT_VF_BROADCAST_ALLOW": False
++            },
++            'id': "fake_id",
++            'address': '00:00:00:00:00:00',
++        }
++        d = vif.LibvirtGenericVIFDriver()
++        # call function to be tested
++        result = d.get_config_vf_agent(fake_instance, fake_vif)
++        # compare result and expected result
++        expected_result = {
++            "name": "display_name/fake_id",
++            "pciid": "0000:44:10.6",
++            "vfid": 4,
++            "allow_bcast": False,
++            "allow_mcast": True,
++            "allow_un_ucast": True,
++            "insert_stag": True,
++            "link_status": 'auto',
++            "macs": ['00:00:00:00:00:00'],
++            "strip_stag": True,
++            "vlan_anti_spoof": True,
++            "mac_anti_spoof": True,
++        }
++        self.assertEqual(result, expected_result)
++
++    @mock.patch("nova.pci.utils.get_vf_num_by_pci_address", return_value='4')
++    @mock.patch("nova.pci.utils.get_pf_pci_by_vfpci_address",
++                return_value="0000:44:10.6")
++    def test_get_config_vf_agent_no_multicast(self, p1, p2):
++        # create instance and vif
++        fake_instance = {
++            'display_name': 'display_name'
++        }
++        fake_vif = {
++            'profile': {
++                'pci_slot': '0000:44:10.6',
++                "ATT_VF_UNKNOWN_MULTICAST_ALLOW": False
++            },
++            'id': "fake_id",
++            'address': '00:00:00:00:00:00',
++        }
++        d = vif.LibvirtGenericVIFDriver()
++        # call function to be tested
++        result = d.get_config_vf_agent(fake_instance, fake_vif)
++        # compare result and expected result
++        expected_result = {
++            "name": "display_name/fake_id",
++            "pciid": "0000:44:10.6",
++            "vfid": 4,
++            "allow_bcast": True,
++            "allow_mcast": False,
++            "allow_un_ucast": True,
++            "insert_stag": True,
++            "link_status": 'auto',
++            "macs": ['00:00:00:00:00:00'],
++            "strip_stag": True,
++            "vlan_anti_spoof": True,
++            "mac_anti_spoof": True,
++        }
++        self.assertEqual(result, expected_result)
++
++    @mock.patch("nova.pci.utils.get_vf_num_by_pci_address", return_value='4')
++    @mock.patch("nova.pci.utils.get_pf_pci_by_vfpci_address",
++                return_value="0000:44:10.6")
++    def test_get_config_vf_agent_no_unicast(self, p1, p2):
++        # create instance and vif
++        fake_instance = {
++            'display_name': 'display_name'
++        }
++        fake_vif = {
++            'profile': {
++                'pci_slot': '0000:44:10.6',
++                "ATT_VF_UNKNOWN_UNICAST_ALLOW": False
++            },
++            'id': "fake_id",
++            'address': '00:00:00:00:00:00',
++        }
++        d = vif.LibvirtGenericVIFDriver()
++        # call function to be tested
++        result = d.get_config_vf_agent(fake_instance, fake_vif)
++        # compare result and expected result
++        expected_result = {
++            "name": "display_name/fake_id",
++            "pciid": "0000:44:10.6",
++            "vfid": 4,
++            "allow_bcast": True,
++            "allow_mcast": True,
++            "allow_un_ucast": False,
++            "insert_stag": True,
++            "link_status": 'auto',
++            "macs": ['00:00:00:00:00:00'],
++            "strip_stag": True,
++            "vlan_anti_spoof": True,
++            "mac_anti_spoof": True,
++        }
++        self.assertEqual(result, expected_result)
++
++    @mock.patch("nova.pci.utils.get_vf_num_by_pci_address", return_value='4')
++    @mock.patch("nova.pci.utils.get_pf_pci_by_vfpci_address",
++                return_value="0000:44:10.6")
++    def test_get_config_vf_agent_link_status(self, p1, p2):
++        # create instance and vif
++        fake_instance = {
++            'display_name': 'display_name'
++        }
++        fake_vif = {
++            'profile': {
++                'pci_slot': '0000:44:10.6',
++                "ATT_VF_LINK_STATUS": "on"
++            },
++            'id': "fake_id",
++            'address': '00:00:00:00:00:00',
++        }
++        d = vif.LibvirtGenericVIFDriver()
++        # call function to be tested
++        result = d.get_config_vf_agent(fake_instance, fake_vif)
++        # compare result and expected result
++        expected_result = {
++            "name": "display_name/fake_id",
++            "pciid": "0000:44:10.6",
++            "vfid": 4,
++            "allow_bcast": True,
++            "allow_mcast": True,
++            "allow_un_ucast": True,
++            "insert_stag": True,
++            "link_status": 'on',
++            "macs": ['00:00:00:00:00:00'],
++            "strip_stag": True,
++            "vlan_anti_spoof": True,
++            "mac_anti_spoof": True,
++        }
++        self.assertEqual(result, expected_result)
++
++    @mock.patch("nova.pci.utils.get_vf_num_by_pci_address", return_value='4')
++    @mock.patch("nova.pci.utils.get_pf_pci_by_vfpci_address",
++                return_value="0000:44:10.6")
++    def test_get_config_vf_agent_vlans(self, p1, p2):
++        # create instance and vif
++        fake_instance = {
++            'display_name': 'display_name'
++        }
++        fake_vif = {
++            'profile': {
++                'pci_slot': '0000:44:10.6',
++                'ATT_VF_VLAN_FILTER': [100, 200]
++            },
++            'id': "fake_id",
++            'address': '00:00:00:00:00:00',
++        }
++        d = vif.LibvirtGenericVIFDriver()
++        # call function to be tested
++        result = d.get_config_vf_agent(fake_instance, fake_vif)
++        # compare result and expected result
++        expected_result = {
++            "name": "display_name/fake_id",
++            "pciid": "0000:44:10.6",
++            "vfid": 4,
++            "allow_bcast": True,
++            "allow_mcast": True,
++            "allow_un_ucast": True,
++            "insert_stag": True,
++            "link_status": 'auto',
++            "vlans": [100, 200],
++            "macs": ['00:00:00:00:00:00'],
++            "strip_stag": True,
++            "vlan_anti_spoof": True,
++            "mac_anti_spoof": True,
++        }
++        self.assertEqual(result, expected_result)
++
++    @mock.patch("nova.pci.utils.get_vf_num_by_pci_address", return_value='4')
++    @mock.patch("nova.pci.utils.get_pf_pci_by_vfpci_address",
++                return_value="0000:44:10.6")
++    def test_get_config_vf_agent_mirrors(self, p1, p2):
++        # create instance and vif
++        fake_instance = {
++            'display_name': 'display_name'
++        }
++        fake_vif = {
++            'profile': {
++                'pci_slot': '0000:44:10.6',
++                'ATT_VF_MIRRORS': [
++                    {"mirror": {"Vlan": [100, "200-204"], "Target": [2]}},
++                    {"mirror": {"Vlan": [200], "Target": [4]}},
++                ]
++            },
++            'id': "fake_id",
++            'address': '00:00:00:00:00:00',
++        }
++        d = vif.LibvirtGenericVIFDriver()
++        # call function to be tested
++        result = d.get_config_vf_agent(fake_instance, fake_vif)
++        # compare result and expected result
++        expected_result = {
++            "name": "display_name/fake_id",
++            "pciid": "0000:44:10.6",
++            "vfid": 4,
++            "allow_bcast": True,
++            "allow_mcast": True,
++            "allow_un_ucast": True,
++            "insert_stag": True,
++            "link_status": 'auto',
++            "mirror": [
++                {'vfid': [2], 'vlan': [100, 200, 201, 202, 203, 204]},
++                {'vfid': [4], 'vlan': [200]}
++            ],
++            "macs": ['00:00:00:00:00:00'],
++            "strip_stag": True,
++            "vlan_anti_spoof": True,
++            "mac_anti_spoof": True,
++        }
++        self.assertEqual(result, expected_result)
+diff --git a/nova/virt/libvirt/vif.py b/nova/virt/libvirt/vif.py
+index da7fe72..4dc87ba 100644
+--- a/nova/virt/libvirt/vif.py
++++ b/nova/virt/libvirt/vif.py
+@@ -23,12 +23,14 @@ import os
+ from oslo_concurrency import processutils
+ from oslo_config import cfg
+ from oslo_log import log as logging
++from oslo_serialization import jsonutils
+ 
+ from nova import exception
+ from nova.i18n import _
+ from nova.i18n import _LE, _LW
+ from nova.network import linux_net
+ from nova.network import model as network_model
++from nova.pci import utils as pci_utils
+ from nova import utils
+ from nova.virt.libvirt import config as vconfig
+ from nova.virt.libvirt import designer
+@@ -41,8 +43,21 @@ libvirt_vif_opts = [
+                 help='Use virtio for bridge interfaces with KVM/QEMU'),
+ ]
+ 
++vf_agent_integration_opts = [
++    cfg.StrOpt('config_path_template',
++               default='/var/lib/vfd/config/{port_uuid}.json',
++               help='Path to store port configuration for vf-agent'),
++    cfg.StrOpt('iplex_command',
++               default='iplex',
++               help='Command to add port to vf-agent'),
++    cfg.BoolOpt('use_vf_agent',
++                default=False,
++                help='Use custom SRIOV approach with vf_agent')
++]
++
+ CONF = cfg.CONF
+ CONF.register_opts(libvirt_vif_opts, 'libvirt')
++CONF.register_opts(vf_agent_integration_opts, 'vf_agent')
+ CONF.import_opt('use_ipv6', 'nova.netconf')
+ 
+ DEV_PREFIX_ETH = 'eth'
+@@ -133,6 +148,13 @@ class LibvirtGenericVIFDriver(object):
+ 
+         return conf
+ 
++    def get_base_hostdev_pci_config(self, vif):
++        conf = vconfig.LibvirtConfigGuestHostdevPCI()
++        pci_slot = vif['profile']['pci_slot']
++        designer.set_vif_host_backend_hostdev_config(conf, pci_slot)
++
++        return conf
++
+     def get_bridge_name(self, vif):
+         return vif['network']['bridge']
+ 
+@@ -278,10 +300,20 @@ class LibvirtGenericVIFDriver(object):
+         return conf
+ 
+     def get_config_hw_veb(self, instance, vif, image_meta,
+-                            inst_type, virt_type):
+-        conf = self.get_base_config(instance, vif, image_meta,
+-                                    inst_type, virt_type)
+-
++                          inst_type, virt_type):
++        # as soon as vf-agent approach requires our virtual functions
++        # to be binded with vfio-pci driver -> libvirt throws
++        # unexpected error, because qemu 2.2 does not support mac
++        # address as '-device vfio-pci' parameter
++        # unfortunately, to pass our mac address to vm -> we use
++        # really untraditional way for that. We would pass MAC
++        # as an argument to vf-agent, and vf-agent would set that MAC
++        # instead of QEMU
++        if CONF.vf_agent.use_vf_agent:
++            conf = self.get_base_hostdev_pci_config(vif)
++        else:
++            conf = self.get_base_config(instance, vif, image_meta,
++                                        inst_type, virt_type)
+         profile = vif["profile"]
+         vif_details = vif["details"]
+         net_type = 'direct'
+@@ -543,7 +575,179 @@ class LibvirtGenericVIFDriver(object):
+     def plug_802qbh(self, instance, vif):
+         pass
+ 
++    def get_config_vf_agent(self, instance, vif):
++
++        # link to binding:profile with all custom data
++        profile = vif['profile']
++
++        # as soon as vf-agent approach requires our virtual functions
++        # to be binded with vfio-pci driver -> libvirt throws
++        # unexpected error, because qemu 2.2 does not support mac
++        # address as '-device vfio-pci' parameter
++        # unfortunately, to pass our mac address to vm -> we use
++        # really untraditional way for that. We would pass MAC
++        # as an argument to vf-agent, and vf-agent would set that MAC
++        # instead of QEMU
++        #
++        # We always pass our own mac as first element of 'macs' array
++        filters_macs_list = [vif['address']]
++
++        # map between properties provided in binding:profile and expected in
++        # vf-agent as input
++        binding_to_vfagent = {
++            "ATT_VF_INSERT_STAG": {
++                "vf_agent_name": "insert_stag",
++                "default": True,
++            },
++            "ATT_VF_BROADCAST_ALLOW": {
++                "vf_agent_name": "allow_bcast",
++                "default": True,
++            },
++            "ATT_VF_UNKNOWN_MULTICAST_ALLOW": {
++                "vf_agent_name": "allow_mcast",
++                "default": True,
++            },
++            "ATT_VF_UNKNOWN_UNICAST_ALLOW": {
++                "vf_agent_name": "allow_un_ucast",
++                "default": True,
++            },
++            "ATT_VF_LINK_STATUS": {
++                "vf_agent_name": "link_status",
++                "default": 'auto',
++            },
++            "ATT_VF_VLAN_FILTER": {
++                "vf_agent_name": "vlans",
++            },
++            "ATT_VF_VLAN_STRIP": {
++                "vf_agent_name": "strip_stag",
++                "default": True,
++            },
++            "ATT_VF_VLAN_ANTI_SPOOF_CHECK": {
++                "vf_agent_name": "vlan_anti_spoof",
++                "default": True,
++            },
++            "ATT_VF_MAC_ANTI_SPOOF_CHECK": {
++                "vf_agent_name": "mac_anti_spoof",
++                "default": True,
++            },
++        }
++
++        # this parameters are not in binding:profile
++        # to identify our SR IOV port - vf-agent needs to know parent
++        # pciid and vfid of port on parend card
++        vf_agent_config = {
++            "name": instance.get('display_name') + "/" + vif.get("id"),
++            "pciid": pci_utils.get_pf_pci_by_vfpci_address(
++                vif['profile']['pci_slot']),
++            "vfid": int(pci_utils.get_vf_num_by_pci_address(
++                vif['profile']['pci_slot'])),
++        }
++
++        # check if we have additional macs to filter
++        MAC_FILTER = profile.get("ATT_VF_MAC_FILTER")
++        if MAC_FILTER:
++            filters_macs_list.extend(MAC_FILTER)
++
++        # add filter macs to vf_agent json
++        vf_agent_config['macs'] = filters_macs_list
++
++        def expand_vlan_ranges(vlans_list):
++            # vlan ranges can be specified by single int, or range like 10-12
++            # that means that 10-12 has to be expanded into 10, 11, 12
++            result_list = []
++            for vlan_range in vlans_list:
++                # if vlan list was not parsed by json loads - it means that
++                # it has some separator inside
++                if isinstance(vlan_range, basestring):
++                    # if there is no "-" character in range - ignore
++                    if "-" in vlan_range:
++                        # we need to check if first <= last and if
++                        # we are still in vlan range (1-4094)
++                        first, last = map(int, vlan_range.split("-"))
++                        if 1 <= first <= last <= 4094:
++                            result_list.extend(range(first, last))
++                            # insert last, because we assume inclusive range
++                            result_list.append(last)
++                else:
++                    result_list.append(vlan_range)
++            # return ordered unique list
++            return sorted(list(set(result_list)))
++
++        if profile.get("ATT_VF_MIRRORS"):
++            vf_agent_config['mirror'] = [{
++                "vlan": expand_vlan_ranges(mirror["mirror"]["Vlan"]),
++                "vfid": mirror["mirror"]["Target"]
++            } for mirror in profile["ATT_VF_MIRRORS"]]
++
++        # update configuration with binding:profile items
++        for binding_key, vf_properties in binding_to_vfagent.items():
++            value = profile.get(
++                binding_key, vf_properties.get("default"))
++            if value is not None:
++                vf_agent_config[vf_properties.get("vf_agent_name")] = value
++
++        return vf_agent_config
++
++    def vf_agent_config_path(self, vif):
++        return CONF.vf_agent.config_path_template.format(
++            port_uuid=vif.get("id"))
++
++    def notify_add_vf_agent(self, instance, vif):
++        # open file for writing (create new or replace old config)
++        # it is assumed that nova creates config file and
++        # vf-agent is responsible for file removal
++        with open(self.vf_agent_config_path(vif), 'w') as vf_agent_config:
++            jsonutils.dump(self.get_config_vf_agent(instance, vif),
++                           vf_agent_config)
++
++        # execute nonblocking call to vf-agent
++        # for some reason standart nova utils does not provide the way to get
++        # return status from call result. Assumed, that if agent does not
++        # return anything in stderr, then call was successfull
++        try:
++            stdout, stderr = utils.execute(
++                CONF.vf_agent.iplex_command, "add", vif.get("id"),
++                run_as_root=True)
++        except processutils.ProcessExecutionError:
++            LOG.exception(_LE("Failed while calling vf-agent"),
++                          instance=instance)
++            raise exception.NovaException(_("Processing Failure during "
++                                            "calling to vf-agent"))
++
++        # if something is in stderr -> throw an err
++        if stderr:
++            raise exception.NovaException(_("Failed while executing "
++                                            "vf-agent functions with error"
++                                            " {stderr} ").format(
++                                                stderr=stderr))
++
++    def notify_del_vf_agent(self, instance, vif):
++        # execute nonblocking call to vf-agent
++        # for some reason standart nova utils does not provide the way to get
++        # return status from call result. Assumed, that if agent does not
++        # return anything in stderr, then call was successfull
++        try:
++            stdout, stderr = utils.execute(
++                CONF.vf_agent.iplex_command, "delete", vif.get("id"),
++                run_as_root=True)
++        except processutils.ProcessExecutionError:
++            LOG.exception(_LE("Failed while calling vf-agent"),
++                          instance=instance)
++            raise exception.NovaException(_("Processing Failure during "
++                                            "calling to vf-agent"))
++
++        # if something is in stderr -> throw an err
++        if stderr:
++            raise exception.NovaException(_("Failed while executing "
++                                            "vf-agent functions with error"
++                                            " {stderr} ").format(
++                                                stderr=stderr))
++
+     def plug_hw_veb(self, instance, vif):
++        # we need to create config file and call to vf-agent only
++        # if option is specified
++        if CONF.vf_agent.use_vf_agent:
++            self.notify_add_vf_agent(instance, vif)
+         if vif['vnic_type'] == network_model.VNIC_TYPE_MACVTAP:
+             linux_net.set_vf_interface_vlan(
+                 vif['profile']['pci_slot'],
+@@ -791,6 +995,9 @@ class LibvirtGenericVIFDriver(object):
+         pass
+ 
+     def unplug_hw_veb(self, instance, vif):
++        # we need to call to vf-agent only if option is specified
++        if CONF.vf_agent.use_vf_agent:
++            self.notify_del_vf_agent(instance, vif)
+         if vif['vnic_type'] == network_model.VNIC_TYPE_MACVTAP:
+             # The ip utility doesn't accept the MAC 00:00:00:00:00:00.
+             # Therefore, keep the MAC unchanged.  Later operations on
+-- 
+2.7.4 (Apple Git-66)
+
