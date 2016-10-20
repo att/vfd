@@ -7,7 +7,7 @@
 	Mods:		06 May 2016 - Added some doc and changed port_init() to return rather
 					than to exit.
 				18 May 2016 - Verify vlan is configured for the port/vf before acking it; nak
-					if it is not. 
+					if it is not.
 				19 May 2016 - Added check for VF range in print function.
 				05 Aug 2016 - Changes to work with dpdk16.04.
 				15 Aug 2016 - Changes to work with dpdk16.07.
@@ -348,7 +348,7 @@ void set_queue_drop( portid_t port_id, int state ) {
 	/*
 	 disable default pool to avoid DMAR errors when we get packets not destined to any VF
 	*/
-	 
+	
 	disable_default_pool(port_id);
 }
 
@@ -399,7 +399,7 @@ is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter )
 	}
 }
 
-/* 
+/*
 	Drop packets which are not directed to any of VF's
 	instead of sending them to default pool
 */
@@ -521,7 +521,7 @@ process_refresh_queue(void)
 				}
 				memset( refresh_item, 0, sizeof( *refresh_item ) );
 				free(refresh_item);
-			} 
+			}
 			else
 			{
 				refresh_item->enabled = is_rx_queue_on(refresh_item->port_id, refresh_item->vf_id, &refresh_item->mcounter );
@@ -582,10 +582,10 @@ nic_stats_display(uint8_t port_id, char * buff, int bsize)
 	Returns number of characters placd into buff, or -1 if error (vf not in use
 	or out of range).  The parm ivf is the virtual function number which is maintained
 	as integer in our datstructs allowing -1 to indicate an uninstalled/delted VF.
-	It is converted to uint32 for calculations here. 
-* 
+	It is converted to uint32 for calculations here.
+*
 */
-int 
+int
 vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsize)
 {
 	uint32_t vf;
@@ -629,24 +629,24 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 	return 	snprintf(buff, bsize, "%s   %4d    %04X:%02X:%02X.%01X    %s %32"PRIu32" %10"PRIu64" %32"PRIu32" %10"PRIu64"\n",
 				"vf",
 				vf,
-				vf_pci_addr.domain, 
-				vf_pci_addr.bus, 
-				vf_pci_addr.devid, 
+				vf_pci_addr.domain,
+				vf_pci_addr.bus,
+				vf_pci_addr.devid,
 				vf_pci_addr.function,
 				status,
-				rx_pkts, 
-				rx_octets, 
-				tx_pkts, 
+				rx_pkts,
+				rx_octets,
+				tx_pkts,
 				tx_octets);
 }
 
 
 /*
-  dumps all LAN ID's configured 
-  to be used for debugging  
+  dumps all LAN ID's configured
+  to be used for debugging 
   or to check if number of vlans doesn't exceed MAX (64)
 */
-int 
+int
 dump_vlvf_entry(portid_t port_id)
 {
 	uint32_t res;
@@ -840,7 +840,7 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			if( valid_vlan( port_id, vf, (int) msgbuf[1] )) {
 				bleat_printf( 1, "vlan set event approved: port=%d vf=%d vlan=%d (responding noop-ack)", port_id, vf, (int) msgbuf[1] );
 				//*((int*) param) = RTE_ETH_MB_EVENT_PROCEED;
-				p.retval = RTE_ETH_MB_EVENT_NOOP_ACK;     // good rc to VM while not changing anything 
+				p.retval = RTE_ETH_MB_EVENT_NOOP_ACK;     // good rc to VM while not changing anything
 			} else {
 				bleat_printf( 1, "vlan set event rejected; vlan not not configured: port=%d vf=%d vlan=%d (responding noop-ack)", port_id, vf, (int) msgbuf[1] );
 				p.retval = RTE_ETH_MB_EVENT_NOOP_NACK;     // VM should see failure
