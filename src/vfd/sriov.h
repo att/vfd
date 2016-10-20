@@ -1,6 +1,6 @@
 // vi: sw=4 ts=4:
 /*
-	Mnemonic:	sriov.h
+	Mnemonic:	sriov.h 
 	Abstract: 	Main header file for vfd.
 				Original name was sriov daemon, so some references to that remain.
 
@@ -61,6 +61,7 @@
 #include <rte_ethdev.h>
 #include <rte_string_fns.h>
 #include <rte_spinlock.h>
+#include <rte_pmd_ixgbe.h>
 
 #include "../lib/dpdk/drivers/net/ixgbe/base/ixgbe_mbx.h"
 
@@ -107,10 +108,10 @@
 
 
 typedef unsigned char __u8;
-typedef unsigned int uint128_t __attribute__((mode(TI))); 
+typedef unsigned int uint128_t __attribute__((mode(TI)));  
 
 
-#define __UINT128__
+#define __UINT128__ 
 
 
 #define MAX_VF_VLANS 64
@@ -131,9 +132,9 @@ typedef uint16_t streamid_t;
 
 
 static const struct rte_eth_conf port_conf_default = {
-	.rxmode = {
+	.rxmode = { 
 		.max_rx_pkt_len = 9000,
-		.jumbo_frame 		= 0,
+		.jumbo_frame 		= 0, 
 		.header_split   = 0, /**< Header Split disabled */
 		.hw_ip_checksum = 1, /**< IP checksum offload disabled */
 		.hw_vlan_filter = 0, /**< VLAN filtering disabled */
@@ -153,7 +154,7 @@ static const struct rte_eth_conf port_conf_default = {
 
 unsigned int itvl_idx;
 
-struct itvl_stats
+struct itvl_stats 
 {
   //struct port_s port_stats[2];
   struct timeval tv;
@@ -162,20 +163,20 @@ struct itvl_stats
   uint64_t num_bytes;
 } itvl[2];
 
- 
+  
 
 struct vf_s
 {
   int     num;
-  int     last_updated;        
+  int     last_updated;         
   /**
     *     no app m->ol_flags | PKT_TX_VLAN_PKT   |  app does m->ol_flags | PKT_TX_VLAN_PKT
     *     strip_stag  = 0 Y, 1 strip, 1 Y                                             | 0 NO, 1 Y, 1 Y
     *     insert_stag = 0 Y (q & qinq), xxx same as vlan filter (Y single tag only)   | 0 NO, 0 Y (q & qinq), xxx same as vlan filter (Y single tag only)
     *
    **/
-  int     strip_stag;          
-  int     insert_stag;         
+  int     strip_stag;           
+  int     insert_stag;          
   int     vlan_anti_spoof;      // if use VLAN filter then set VLAN anti spoofing
   int     mac_anti_spoof;       // set MAC anti spoofing when MAC filter is in use
   int     allow_bcast;
@@ -244,10 +245,10 @@ enum print_warning {
 static inline uint32_t
 port_pci_reg_read(portid_t port, uint32_t reg_off)
 {
- 
+  
   struct rte_eth_dev_info dev_info;
   rte_eth_dev_info_get(port, &dev_info);
-
+ 
 	void *reg_addr;
 	uint32_t reg_v;
 
@@ -265,7 +266,7 @@ port_pci_reg_write(portid_t port, uint32_t reg_off, uint32_t reg_v)
 {
   struct rte_eth_dev_info dev_info;
   rte_eth_dev_info_get(port, &dev_info);
- 
+  
 	void *reg_addr;
 
 	reg_addr = (void *)
@@ -342,7 +343,7 @@ struct timeval endTime;
 
 void ether_aton_r(const char *asc, struct ether_addr * addr);
 int xdigit(char c);
-
+ 
 void print_port_errors(struct rte_eth_stats et_stats, int col);
 
 double timeDelta (struct timeval * now, struct timeval * before);
@@ -363,7 +364,7 @@ void lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *par
 void vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
 void restore_vf_setings(uint8_t port_id, int vf);
 
-// callback validation support
+// callback validation support 
 int valid_mtu( int port, int mtu );
 int valid_vlan( int port, int vfid, int vlan );
 
@@ -377,7 +378,7 @@ uint32_t spoffed[MAX_PORTS];
 	Manages a reset for a port/vf pair. These are queued when a reset is received
 	by callback/mbox message until the VF's queues are ready.
 */
-struct rq_entry
+struct rq_entry 
 {
 	struct rq_entry* next;		// link references
 	struct rq_entry* prev;
