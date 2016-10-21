@@ -39,11 +39,11 @@ The following is the expected syntax of the file:
 `strip_stag` A boolean value that when true will cause the NIC to remove the VLAN ID from packets before they are given to the VF.  
 	When true, this option implies that VLAN ID is inserted as packets are sent (there is no separate insert option).
 
-`allow_bacast` A boolean value which when true allows broadcast messages from the VF
+`allow_bcast` A boolean value which when true allows broadcast messages to be received by the VF from the wire
 
-`allow_macast` A boolean value which when true allows multicast messages from the VF
+`allow_mcast` A boolean value which when true allows multicast messages to be received by the VF from the wire
 
-`allow_un_uacast` A boolean value which when true allows unicast messages from the VF
+`allow_un_ucast` A boolean value which when true allows unicast messages to MACs not belonging to the VF to be received by the VF from the wire, i.e., promiscous mode
 
 `link_status` Sets one of three possible modes: on (status always reported to the VF), off (status never reported), auto (NIC decides when to report)
 
@@ -54,5 +54,4 @@ The following is the expected syntax of the file:
 `vlans`  An array of VLAN IDs which are used as a filter for the VF; only packets with these IDs will be passed by the NIC.  If the 
 	list contains more than one value, then `strip_stag` *must* be false or VFd will toss and error and refuse to add the VF.
 
-`macs`   An array of mac addresses which are used to filter incoming packets.  This array may be empty (e.g. []) to indicate the 
-	current MAC address of the VF is the only address which should be used as a filter.
+`macs`   An array of mac addresses which are used to filter outgoing packets to the wire. I.e., this acts as an anti-spoof filter. The MAC address of the VF is always an implied member. So, this array may be empty (e.g. []) to indicate the current MAC address of the VF is the only address which should be used as a filter.
