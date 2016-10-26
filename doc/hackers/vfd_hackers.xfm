@@ -6,7 +6,7 @@
 .st 10
 
 .dh 1 m=.5i  e=no s=21 i=0 p=16 f=Helvetica-bold
-.dh 2  m=.5i s=11 i=0      p=14 f=Helvetica-bold 
+.dh 2  m=.5i s=21 i=0      p=14 f=Helvetica-bold 
 .dh 3  m=.5i s=10 i=0      p=12 f=Helvetica-bold
 
 .cd 1 7i
@@ -19,14 +19,14 @@
 .dv extextsize 8p
 .dv ditext Helvetica-bold
 
-.dv indent .ll -1i .in +.5i
-.dv uindent .in -.5i .ll +1i
+.dv indent .ll -.75i .in +.5i
+.dv uindent .in -.5i .ll +.75i
 .dv smindent .ll -1i .in +.25i
 .dv smuindent .in -.25i .ll +1i
 
 .dv ex_start .ll -.25i .in +.25i .sf Courier .st &extextsize .fo off
 .** ex_end macro _must_ be placed in col 0 to cause an exit from no-format mode.
-.dv ex_end .fo on .sf Helvetica .st ^&textsize .in -.25i .ll +.25i
+.dv ex_end .fo on .sf Helvetica .st ^&textsize .in -.25i .ll +.25i .sp .1
 
 .** insert $2 if there is more than $1 inches remaining on the page; else insert at top of new page
 .** a .gv remain command must be executed before each use of this macro
@@ -35,7 +35,7 @@
 .if pfm
 	.dv cw .tf Courier 8p  $1 ^:
 	.dv bold .tf Helvetica-bold  ^&fontsize $1  ^:
-	.dv ital .tf Helvetica-oblique  ^&fontsize $1  ^:
+	.dv ital .tf Helvetica-Oblique  ^&fontsize $1  ^:
 	.dv lic1 l
 	.dv lic2 m
 	.ll 5.75i
@@ -61,7 +61,7 @@
 Virtual Function  Daemon
 .br
 .st 14
-Hacker's Guide
+User's Guide
 .bc end
 .st &fontsize
 
@@ -83,7 +83,7 @@ controlled:
 .sp .3
 .li Addition of VLAN ID (single) to outbound traffic
 .sp .3
-.li Enabling/disableing broadcast, multicast, unicast 
+.li Enabling/disabling broadcast, multicast, unicast 
 .el
 &uindent
 .sp
@@ -130,7 +130,8 @@ Before VFd can be started, the PF which will provide VFs must be identified and 
 created. 
 The &cw( lspci ) command, generally using &cw( grep ) to limit the output to ethernet devices, can 
 be used to identify the NICs on the system, and from that list the PFs which need to be set up 
-with VFs can be determined and the VFs added.  
+with VFs can be determined and the VFs added (see the &ital( Limitations and Requirements ) section later in 
+this document for information regarding the number of VFs which must be created for each PF).  
 
 
 .h2 Adding VFs to a PF
@@ -145,7 +146,7 @@ Assuming the PF is &cw( 0000:01:00.1, ) the following can be used to add VFs und
 .sp
 .di : Disable all current VFs ( .sm &cw( echo 0 >sriov_numfs ) .sm )
 .sp
-.di : Enable the number of VFs desired ( .sm &cw( echo 13 >sriov_numfs ) .sm )
+.di : Enable the number of VFs desired ( .sm &cw( echo 32 >sriov_numfs ) .sm )
 .sp
 .di : Verify that the VFs were added (ls -al in the directory and expect to find symbolic links like &cw( virtfn3->../0000:01:10.7 ) .sm )
 .ed
@@ -153,7 +154,7 @@ Assuming the PF is &cw( 0000:01:00.1, ) the following can be used to add VFs und
 &uindent
 .sp
 
-The above example shows the creation of 13 VFs; up to 32 VFs may be added to a single PF. 
+The above example shows the creation of 32 VFs; up to 32 VFs may be added to a single PF. 
 As a final step, the &cw(ixgbe) driver should be unbound from the PF and VFs, and the &cw( vfio-pci ) driver
 bound to each. 
 .gv figure
@@ -224,7 +225,7 @@ generated as VFd attempts to initialise, and the DPDK library will abort.
 .sp 1
 
 .cn start atbot Times-roman 8p 1i
-All code snipits provided in this document assume Kshell; your mileage may vary with bash or other shells.
+All code fragments provided in this document assume Kshell; your mileage may vary with bash or other shells.
 .cn end
 Given a known PF, it is simple to determine which other devices also belong to the same group. 
 .gv figure
@@ -272,15 +273,18 @@ programmes into &cw(/usr/bin:)
 .ed
 &uindent
 .sp 
-The installation process also installs the necessary &ital(upstart) mechanism allowing the familar 
+The installation process also installs the necessary &ital(upstart) mechanism allowing the familiar 
 &ital(service) command to be used to start and stop VFd. 
 
 .h2 Configuration 
 The configuration file, &cw(vfd.conf,) must be created in &cw(/etc/vfd) before VFd can be started. 
 .gv fig
-The file contains a set of JSON encoded variables which are illustratted in figure &_fig.
+The file contains a set of JSON encoded variables which are illustrated in figure &_fig.
 
-.ca conf.ca start
+.ca start conf.ca 
+.pu
+.in .5i
+.ll 6i
 &ex_start
  {
    "comments": [
@@ -301,17 +305,19 @@ The file contains a set of JSON encoded variables which are illustratted in figu
    "default_mtu": 1500,
 
    "pciids": [ 
-      { "id": "0000:01:00.0", "mtu": 9000 }, 
-      { "id": "0000:01:00.1", "mtu": 9000 } 
+      { "id": "0000:01:00.0", "mtu": 9000, "enable_loopback": false }, 
+      { "id": "0000:01:00.1", "mtu": 9000, "enable_loopback": false } 
    ]
   }
 &ex_end
 .fg A sample vfd.cfg configuration file.
 .sp
+.po
 .ca end
 .gv remain
 &ifroom(3:conf.ca)
 
+.sp 1
 .cc 4i
 Items worth noting in the config file are:
 .sp .5
@@ -321,7 +327,7 @@ Items worth noting in the config file are:
 .sp .4
 .di log levels : The verbosity of running chatter emitted by VFd can be controlled by these 
 	settings. Four options are provided which control the chattiness during initialisation (usually
-	more information is desired) and a level which affects the dirvel after initialisation is 
+	more information is desired) and a level which affects the drivel after initialisation is 
 	complete.   Log levels are supplied for both VFd proper and for the DPDK library functions
 	as it is useful to control them separately.
 .sp .4
@@ -339,13 +345,24 @@ Items worth noting in the config file are:
 
 
 .h3 Pciid Array
-The array of pciids supplied in the configuration file defines the &bold( PFs ) which VFd will 
+The array of pciids supplied in the configuration file defines the PFs which VFd will 
 attempt to manage.  
-In addition to the PCI address, the mtu value for the device should be supplied; if omitted, 
-the default value supplied in the upper section of the file is used. 
+In addition to the PCI address, the following value should be supplied:
+.sp .5
+
+&indent
+.bd 1i
+.di mtu : The mtu value for the device. If omitted the &ital( default_mtu ) value described earlier is used.
+.sp .3
+.di enable_loopback : When set to true allows the NIC to act as a bridge and permits traffic from one guest
+	to another, hosted on the same PF, to be looped directly back without going out on the physical wire. 
+	The default value is false.
+.ed
+&uindent
+.sp
 
 .h3 Comments And Other Elements
-Any field which Vfd doesn't expect is ignored, and thus the comments array allows the 
+Any field which VFd doesn't expect is ignored, and thus the comments array allows the 
 creator to document the configuration without interfering with VFd
 Order of the fields is unimportant, however the field names are case sensitive. 
 
@@ -454,7 +471,7 @@ Figure &_fig provides a sample configuration which contains the following inform
 .sp .3
 .di vlans : Is an array of one or more VLAN IDs which VFd will configure on the VF.
 .sp .3
-.di macs : Is an array of one or more MAC addresses which VFd will configure on the VF.
+.di macs : Is an array of one or more MAC addresses which VFd will configure on the VF. It is generally &bold( not ) necessary to configure any MAC addresses.
 .sp .3
 .di start_cb : Is a command (script) which VFd will execute as the last step in the VFd start up process.
 (See section on callback command hooks below.)
@@ -499,7 +516,7 @@ command, to add &cw(VM1.json,) is illustrated in figure &add_fig.
      --debug         show debugging output
      --loglevel=<value>  Default logvalue [default: 0]
 &ex_end
-.fg The overall usage for the iplex command line utility.
+.fg The usage output from the iplex command.
 .sp
 .ca end
 &ifroom(3i:iplex.ca)
@@ -507,7 +524,7 @@ command, to add &cw(VM1.json,) is illustrated in figure &add_fig.
 &ex_start
   iplex add VM1
 &ex_end
-.fg Using iplex to add a configuration to VFd's view of the world.
+.fg Sample iplex command to add a file named VM1.json to VFd's direct control.
 .sp
 If the &cw(loglevel) value is given on the command line the logging that VFd does during the 
 processing of the command will be increased to this level. 
@@ -527,7 +544,7 @@ When VFd is started, it makes a pass through the configuration directory and wil
 JSON files which it finds in the directory.  
 This allows the existing configuration to be reloaded easily when VFd is restarted. 
 VFd will ignore any files in the directory which &bold( do not ) have a &cw( .json ) suffix; from 
-a hacking perspective this allows test configuration files to be kept in the directory (e.g. VM1.x) 
+a manual testing perspective this allows test configuration files to be kept in the directory (e.g. VM1.x) 
 and copied into the desired JSON file when needed. 
 
 .h3 Callback Command Hooks
@@ -567,6 +584,34 @@ When things seem to behaving badly, set &bold( both ) of the dpdk log level sett
 .h2 Service Start Messages
 The upstart script(s) will also add a log file which might provide useful information should it 
 appear that VFd is not starting properly. 
+
+.h1 Limitations And Requirements
+There are several limitations and/or requirements which must be observed when configuring both 
+the PFs on a system, and with respect to the configuration of each VF within VFd. 
+The following must be observed, or unexpected behaviour will result.
+
+.h2 Number of VFs Per PF
+While it is possible to configure a small number of VFs for each PF, VFd requires that &bold( all 32 VFs )
+be configured for each PF listed in the VFd configuration file. 
+If fewer than 32 Vfs are configured VFd is unable to properly see the queue ready (enabled) indicator
+and as a result the necessary NIC configuration which must wait until the guest enables the Tx queues
+is never performed.  
+Fewer than 32 VFs configured for a PF also interferes with VFd's ability to properly observe and report
+statistics about each VF (up/down state and counts).
+
+.h2 MAC Limits
+The number of MAC addresses which may be defined across all VFs for a PF is limited by hardware to 128.
+When this limit is reached VFd will refuse to allow a VF configuration to be added (the result of the 
+&cw( iplex add ) command will be an error). 
+Hardware also limits the number of MAC addresses which may be supplied for a single VF to 64.
+
+.h2 VLAN ID Limits
+In a similar fashion to the MAC limits, the hardware limits the number of VLAN IDs which are configured 
+across all VFs on a single PF to 64.  
+VFd will enforce this limit by rejecting the attempt to add a VF configuration if the number of VLAN IDs
+supplied in the configuration file causes the total number of VLAN IDs defined for the PF to exceed this 
+value.
+
 
 .** -----------------------------------------------------------------------------------------------
 .gv remain
