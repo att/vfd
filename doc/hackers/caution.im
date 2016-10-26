@@ -1,0 +1,8 @@
+
+.ln 
+CAUTION: .br
+This document is generated output from {X}fm source. Any modifications made to this file
+will certainly be overlaid by subsequent revisions.  The proper way of maintaining the
+document is to modify the source file(s) in the repo, and generating the desired .pdf or ^.md
+versions of the document using {X}fm.
+.ln 
