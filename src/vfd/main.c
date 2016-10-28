@@ -43,6 +43,7 @@
 				07 Sep 2016 - Drop use of TAILQ as odd things were happening realted to removing
 							items from the list.
 				14 Oct 2016 - Changes to work with dpdk-1611 differences.
+				26 Oct 2016 - Removed invalid option listed in usage message. Added long version string support.
 
 */
 
@@ -98,7 +99,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
 static char* gen_stats( struct sriov_conf_c* conf, int pf_only );
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-static const char* version = "v1.3/1a146e";
+static const char* version = VFD_VERSION;
 static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
 
 // --- misc support ----------------------------------------------------------------------------------------------
@@ -1875,7 +1876,6 @@ main(int argc, char **argv)
 		"\t -f        keep in 'foreground'\n"
 		"\t -n        no-nic actions executed\n"
 		"\t -p <file> parmm file (/etc/vfd/vfd.cfg)\n"
-		"\t -q        enable dcb qos (tmp until parm file enabled)\n"
 		"\t -h|?  Display this help screen\n"
 		"\n";
 

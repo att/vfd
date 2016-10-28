@@ -6,6 +6,7 @@
 #					non-standard/unpredictable at times.
 # Author:	Alex Zelezniak
 # Date:		February 2016
+# Mods:		28 Oct 2016 - Add version string based on commit
 # -------------------------------------------------------------------------------------
 
 #### change this if needed
@@ -25,8 +26,18 @@ include $(RTE_SDK)/mk/rte.vars.mk
 
 
 # binary name (all build rules are in rte.extapp.mk in the dpdk clone)
-#APP = sriovctl
 APP = vfd
+
+# Build the version string. Would have been better to do in a local script
+# but dpdk make process shifts things away to the point that invoking a 
+# script here seemed even more dodgy.
+#
+VFD_VERSION = $(shell junk=$$( git log -n 1 | awk '/[Cc]ommit/ { cid=$$NF; next; } /Date:/ {$$1=""; d=$$0} END { printf( "%s|%s\n", cid, d ) }' );\
+	  cid="$${junk%%\|*}";\
+	 date="$${junk\#\#*\|}";\
+	 tag=$$( git tag -l --contains $$cid | head -1 );\
+	 mod=$$( git status | awk '/modified:/ { m="+++" } END { print m }' );\
+	 printf "%s%s%s\n" "$$mod" "$$cid($$tag)" "$$date"; )
 
 # all source are stored in SRCS-y	(again, for the dpdk mk file)
 #SRCS-y := main.c sriov.c /usr/local/lib/libconfig.a
@@ -41,7 +52,7 @@ ifeq ($(CONFIG_RTE_TOOLCHAIN_GCC),y)
 CFLAGS_main.o += -Wno-return-type
 endif
 
-EXTRA_CFLAGS += -O3 -g -Wfatal-errors
+EXTRA_CFLAGS += -O3 -g -Wfatal-errors -DVFD_VERSION='"$(VFD_VERSION)"'
 
 include $(RTE_SDK)/mk/rte.extapp.mk
 
