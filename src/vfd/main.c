@@ -99,7 +99,7 @@ static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
 static char* gen_stats( struct sriov_conf_c* conf, int pf_only );
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-static const char* version = VFD_VERSION;
+static const char* version = VFD_VERSION "   build: " __DATE__ " " __TIME__;
 static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
 
 // --- misc support ----------------------------------------------------------------------------------------------
