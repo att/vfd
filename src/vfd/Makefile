@@ -32,10 +32,10 @@ APP = vfd
 # but dpdk make process shifts things away to the point that invoking a 
 # script here seemed even more dodgy.
 #
-VFD_VERSION = $(shell junk=$$( git log -n 1 | awk '/[Cc]ommit/ { cid=$$NF; next; } /Date:/ {$$1=""; d=$$0} END { printf( "%s|%s\n", cid, d ) }' );\
-	  cid="$${junk%%\|*}";\
+VFD_VERSION = $(shell junk=$$( git log -n 1 | awk '/^[Cc]ommit / { cid=$$NF; next; } /Date:/ {$$1=""; d=$$0} END { printf( "%s|%s\n", cid, d ) }' );\
+	 cid="$${junk%%\|*}";\
 	 date="$${junk\#\#*\|}";\
-	 tag=$$( git tag -l --contains $$cid | head -1 );\
+	 tag=$$( git tag -l --contains $$cid 2>/dev/null | head -1 );\
 	 mod=$$( git status | awk '/modified:/ { m="+++" } END { print m }' );\
 	 printf "%s%s%s\n" "$$mod" "$$cid($$tag)" "$$date"; )
 
@@ -61,3 +61,6 @@ include $(RTE_SDK)/mk/rte.extapp.mk
 	
 clean: 
 	rm -rf build/*
+
+verify:
+	echo "$(VFD_VERSION)"
