@@ -15,6 +15,7 @@
 				07 Sep 2016 - Remvoed TAILQ macros as these seemed to be freeing a block of memory
 					without discarding the pointer.
 				20 Oct 2016 - Changes to support the dpdk 16.11 rc1 code.
+				01 Nov 2016 - Correct queue drop enable bug (wrong ixgbe function invoked).
 
 	useful doc:
 				 http://www.intel.com/content/dam/doc/design-guide/82599-sr-iov-driver-companion-guide.pdf
@@ -329,16 +330,14 @@ void set_split_erop( portid_t port_id, uint16_t vf_id, int state ) {
 	Set/reset the queue drop enable bit for all pools. State is either 1 (on) or 0 (off).
 */
 void set_queue_drop( portid_t port_id, int state ) {
-	int 		i;
 	int		result;
 
 	bleat_printf( 2, "setting queue drop for port %d on all queues to: on/off=%d", port_id, !!state );
-	for( i = 0; i < 128; i++ ) {
-		result = rte_pmd_ixgbe_set_vf_split_drop_en( port_id, i, !!state );
-		if( result != 0 ) {
-			bleat_printf( 0, "fail: unable to set drop enable for port %d vf %d on/off=%d: errno=%d", port_id, i, !!state, -result );
-		}
+	result = rte_pmd_ixgbe_set_all_queues_drop_en( port_id, !!state );			// (re)sete flag for all queues on the port
+	if( result != 0 ) {
+		bleat_printf( 0, "fail: unable to set drop enable for port %d on/off=%d: errno=%d", port_id, !state, -result );
 	}
+
 	
 	/*
 	 disable default pool to avoid DMAR errors when we get packets not destined to any VF
