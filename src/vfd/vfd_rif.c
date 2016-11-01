@@ -8,6 +8,13 @@
 	Date:		11 October 2016 (broken out of main.c)
 */
 
+
+#include "vfdlib.h"
+#include "sriov.h"
+#include "vfd_rif.h"
+
+//--------------------------------------------------------------------------------------------------------------
+
 /*
 	Create our fifo and tuck the handle into the parm struct. Returns 0 on
 	success and <0 on failure.
