@@ -66,10 +66,8 @@
 //#include "ixgbe_ethdev.h"
 //#include "ixgbe_ethdev.h"
 
+
 #define DEBUG
-
-// -------------------------------------------------------------------------------------------------------------
-
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
 static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
@@ -195,6 +193,7 @@ static void run_stop_cbs( sriov_conf_t* conf ) {
 
 	Oversubscription policy is enforced when the VF's config file is parsed and added to the 
 	running config.
+
 static int* gen_tc_pctgs( sriov_port_t *port ) {
 	int*	norm_pctgs;				// normalised percentages (to be returned)
 	int 	i;
