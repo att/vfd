@@ -1,0 +1,304 @@
+ neutron/api/v2/attributes.py                       | 103 ++++++++++++++++++++-
+ neutron/extensions/portbindings.py                 |   3 +-
+ neutron/tests/unit/_test_extension_portbindings.py |  39 ++++++++
+ requirements.txt                                   |   2 +
+ 4 files changed, 145 insertions(+), 2 deletions(-)
+
+diff --git a/neutron/api/v2/attributes.py b/neutron/api/v2/attributes.py
+index 9ceee78..a578332 100644
+--- a/neutron/api/v2/attributes.py
++++ b/neutron/api/v2/attributes.py
+@@ -15,6 +15,7 @@
+ 
+ import re
+ 
++import jsonschema
+ import netaddr
+ from oslo_log import log as logging
+ 
+@@ -632,6 +633,105 @@ def convert_to_list(data):
+         return [data]
+ 
+ 
++ATT_TAGS_SCHEMA = {
++    "type": "object",
++    "properties": {
++        "ATT_VF_VLAN_FILTER": {
++            "type": "array",
++            "minItems": 1,
++            "uniqueItems": True,
++            "items": {
++                "type": "integer",
++                "maximum": 4096,
++                "minimum": 1,
++            }
++        },
++        "ATT_VF_MAC_FILTER": {
++            "type": "array",
++            "minItems": 1,
++            "uniqueItems": True,
++            "items": {
++                "type": "string",
++                "pattern": r"^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$"
++            }
++        },
++        "ATT_VF_VLAN_STRIP": {
++            "type": "boolean"
++        },
++        "ATT_VF_VLAN_ANTI_SPOOF_CHECK": {
++            "type": "boolean"
++        },
++        "ATT_VF_MAC_ANTI_SPOOF_CHECK": {
++            "type": "boolean"
++        },
++        "ATT_VF_MIRRORS": {
++            "type": "array",
++            "minItems": 1,
++            "items": {
++                "type": "object",
++                "required": [
++                    "mirror"
++                ],
++                "properties": {
++                    "mirror": {
++                        "type": "object",
++                        "required": [
++                            "Vlan", "Target"
++                        ],
++                        "properties": {
++                            "Vlan": {
++                                "type": "array",
++                                "minItems": 1,
++                                "uniqueItems": True,
++                                "items": {
++                                    "oneOf": [
++                                        {"type": "string",
++                                         "pattern": r"^\d+-\d+$"
++                                         },
++                                        {"type": "integer",
++                                         "maximum": 4096,
++                                         "minimum": 1
++                                         }
++                                    ]
++                                }
++                            },
++                            "Target": {
++                                "type": "array",
++                                "minItems": 1,
++                                "uniqueItems": True,
++                                "items": {
++                                    "type": "string"
++                                }
++                            }
++                        }
++                    }
++                }
++            }
++        },
++        "ATT_VF_BROADCAST_ALLOW": {
++            "type": "boolean"
++        },
++        "ATT_VF_UNKNOWN_MULTICAST_ALLOW": {
++            "type": "boolean"
++        },
++        "ATT_VF_UNKNOWN_UNICAST_ALLOW": {
++            "type": "boolean"
++        }
++    },
++    "required": [
++        "ATT_VF_VLAN_FILTER"
++    ]
++}
++
++
++def _validate_att_tags(data, key_specs=None):
++    if data and any(key.startswith('ATT_') for key in data.keys()):
++        try:
++            jsonschema.validate(data, ATT_TAGS_SCHEMA)
++        except jsonschema.exceptions.ValidationError as e:
++            return e.message
++
++
+ HEX_ELEM = '[0-9A-Fa-f]'
+ UUID_PATTERN = '-'.join([HEX_ELEM + '{8}', HEX_ELEM + '{4}',
+                          HEX_ELEM + '{4}', HEX_ELEM + '{4}',
+@@ -669,7 +769,8 @@ validators = {'type:dict': _validate_dict,
+               'type:uuid_or_none': _validate_uuid_or_none,
+               'type:uuid_list': _validate_uuid_list,
+               'type:values': _validate_values,
+-              'type:boolean': _validate_boolean}
++              'type:boolean': _validate_boolean,
++              'type:att_tags': _validate_att_tags}
+ 
+ # Define constants for base resource name
+ NETWORK = 'network'
+diff --git a/neutron/extensions/portbindings.py b/neutron/extensions/portbindings.py
+index 4e199e5..5575e40 100644
+--- a/neutron/extensions/portbindings.py
++++ b/neutron/extensions/portbindings.py
+@@ -98,7 +98,8 @@ EXTENDED_ATTRIBUTES_2_0 = {
+         PROFILE: {'allow_post': True, 'allow_put': True,
+                   'default': attributes.ATTR_NOT_SPECIFIED,
+                   'enforce_policy': True,
+-                  'validate': {'type:dict_or_none': None},
++                  'validate': {'type:dict_or_none': None,
++                               'type:att_tags': None},
+                   'is_visible': True},
+     }
+ }
+diff --git a/neutron/tests/unit/_test_extension_portbindings.py b/neutron/tests/unit/_test_extension_portbindings.py
+index 1c2dac7..275f7ef 100644
+--- a/neutron/tests/unit/_test_extension_portbindings.py
++++ b/neutron/tests/unit/_test_extension_portbindings.py
+@@ -15,6 +15,7 @@
+ 
+ import contextlib
+ import httplib
++from oslo_serialization import jsonutils
+ 
+ from oslo_config import cfg
+ from webob import exc
+@@ -163,6 +164,44 @@ class PortBindingsTestCase(test_db_base_plugin_v2.NeutronDbPluginV2TestCase):
+                                         expected_code=exc.HTTPForbidden.code,
+                                         neutron_context=ctx)
+ 
++    def test_update_port_binding_profile_att_tags(self):
++        test_json = """{
++  "ATT_VF_VLAN_FILTER": [
++    200,
++    100
++  ],
++  "ATT_VF_MAC_FILTER": [
++    "20-58-AD-DB-9D-ED",
++    "BA:67:AC:0B:12:41",
++    "02-6c-01-55-b3-f1",
++    "1f:7b:1a:8f:43:e4"
++  ],
++  "ATT_VF_VLAN_STRIP": false,
++  "ATT_VF_VLAN_ANTI_SPOOF_CHECK": true,
++  "ATT_VF_MAC_ANTI_SPOOF_CHECK": true,
++  "ATT_VF_MIRRORS": [
++    {
++      "mirror": {
++        "Vlan": [
++          100,
++          200,
++          "31-34"
++        ],
++        "Target": [
++          "0531273c-9394-4c18-a12f-2fd8a133d920",
++          "a82e1c12-4952-4e43-81e7-e9ed35eb3df3"
++        ]
++      }
++    }
++  ],
++  "ATT_VF_BROADCAST_ALLOW": false,
++  "ATT_VF_UNKNOWN_MULTICAST_ALLOW": false,
++  "ATT_VF_UNKNOWN_UNICAST_ALLOW": false
++}
++"""
++        profile = jsonutils.loads(test_json)
++        self._test_create_port_binding_profile(profile)
++
+ 
+ class PortBindingsHostTestCaseMixin(object):
+     fmt = 'json'
+diff --git a/requirements.txt b/requirements.txt
+index 1b125d5..8ed3ea7 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -38,3 +38,5 @@ python-novaclient<2.24.0,>=2.22.0
+ 
+ # MOS libs
+ pyroute2==0.3.5
++
++jsonschema>=2.5.1
+\ No newline at end of file
+---
+ neutron/api/v2/attributes.py                       | 9 ++++++++-
+ neutron/tests/unit/_test_extension_portbindings.py | 4 +++-
+ 2 files changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/neutron/api/v2/attributes.py b/neutron/api/v2/attributes.py
+index a578332..e3394cc 100644
+--- a/neutron/api/v2/attributes.py
++++ b/neutron/api/v2/attributes.py
+@@ -716,7 +716,14 @@ ATT_TAGS_SCHEMA = {
+         },
+         "ATT_VF_UNKNOWN_UNICAST_ALLOW": {
+             "type": "boolean"
+-        }
++        },
++        "ATT_VF_INSERT_STAG": {
++            "type": "boolean"
++        },
++        "ATT_VF_LINK_STATUS": {
++            "type": "string",
++            "pattern": r"^auto|on|off$"
++        },
+     },
+     "required": [
+         "ATT_VF_VLAN_FILTER"
+diff --git a/neutron/tests/unit/_test_extension_portbindings.py b/neutron/tests/unit/_test_extension_portbindings.py
+index 275f7ef..88c3a65 100644
+--- a/neutron/tests/unit/_test_extension_portbindings.py
++++ b/neutron/tests/unit/_test_extension_portbindings.py
+@@ -196,7 +196,9 @@ class PortBindingsTestCase(test_db_base_plugin_v2.NeutronDbPluginV2TestCase):
+   ],
+   "ATT_VF_BROADCAST_ALLOW": false,
+   "ATT_VF_UNKNOWN_MULTICAST_ALLOW": false,
+-  "ATT_VF_UNKNOWN_UNICAST_ALLOW": false
++  "ATT_VF_UNKNOWN_UNICAST_ALLOW": false,
++  "ATT_VF_LINK_STATUS": "auto",
++  "ATT_VF_INSERT_STAG": false
+ }
+ """
+         profile = jsonutils.loads(test_json)
+-- 
+ neutron/api/v2/attributes.py | 30 ++++++++++++++++++++++++++++++
+ 1 file changed, 30 insertions(+)
+
+diff --git a/neutron/api/v2/attributes.py b/neutron/api/v2/attributes.py
+index e3394cc..4f3bc43 100644
+--- a/neutron/api/v2/attributes.py
++++ b/neutron/api/v2/attributes.py
+@@ -734,7 +734,37 @@ ATT_TAGS_SCHEMA = {
+ def _validate_att_tags(data, key_specs=None):
+     if data and any(key.startswith('ATT_') for key in data.keys()):
+         try:
++            # step 1 - validate if json schema is valid
+             jsonschema.validate(data, ATT_TAGS_SCHEMA)
++
++            # step 2 - validate that "ATT_VF_INSERT_STAG" and
++            # "ATT_VF_VLAN_STRIP" are set to false if
++            # there is more than one item in "ATT_VF_VLAN_FILTER" array.
++            # We need this requirement for correct Q-in-Q functionality.
++            # in case user did not provide this field because this field
++            # is not required - help him and set it to false for him.
++
++            error_messages = []
++
++            # "ATT_VF_VLAN_FILTER" is a required argument, so it is
++            # fine to access it directly without using *.get(<arg>)
++            vlan_filters_length = len(data["ATT_VF_VLAN_FILTER"])
++            if vlan_filters_length > 1:
++                for field in ["ATT_VF_INSERT_STAG", "ATT_VF_VLAN_STRIP"]:
++                    value = data.get(field)
++                    if value:
++                        # user set this field to True and it is not correct
++                        error_messages.append(
++                            "'{field}' is set to 'True' when "
++                            "'ATT_VF_VLAN_FILTER' holds more then one"
++                            " element".format(field=field)
++                        )
++                    elif (value is None):
++                        # user did not provide a value for this field
++                        # set it to False
++                        data[field] = False
++            if error_messages:
++                return ", ".join(error_messages)
+         except jsonschema.exceptions.ValidationError as e:
+             return e.message
+ 
+-- 
+

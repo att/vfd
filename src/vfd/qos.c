@@ -8,6 +8,7 @@
 */
 
 #include "sriov.h"
+#include "vfd_qos.h"
 #include <vfdlib.h>		// if vfdlib.h needs an include it must be included there, can't be include prior
 
 static int option1 = 1;
@@ -178,13 +179,13 @@ static void qos_set_txpplane( portid_t pf ) {
 */
 static void qos_set_rxpplane( portid_t pf ) {
 	int i;
-	uint32_t cval;			// current value
+	uint32_t cval;				// current value
 	uint32_t offset;
 	uint32_t val = 0x1ff0ff;	// max=1ff group=0 credits=ff
 	uint32_t mask = 0x3f000000;
 	uint32_t group = 0x00;		// we'll just use a sequential group and assign each tc to its own for now
 
-	offset = 0x02140;		//RTRPT4C
+	offset = 0x02140;			//RTRPT4C
 	for( i = 0; i < 8; i++ ) {
 		group = i << 9;
 		cval = port_pci_reg_read( pf, offset );
@@ -196,35 +197,69 @@ static void qos_set_rxpplane( portid_t pf ) {
 }
 
 /*
-	Set queue transmit/receive 'rates'.
-	FIXME: Right now this assumes 4 TCs and assigns the same percentage of credits to each.
+	Accepts an array of percentages, where each element defines a percentage of the related
+	TC that the queue is to be given.  These percentages are converted into refil credits
+	which are then written to the NIC for the corresponding queue.
+	Credits are based on the upper limit of the MTU for the PF such that the 
+	MTU/64 is used as the base credit value for the smallest queue in each traffic
+	class. The credit values assigned to the other queues in the traffic class are 
+	determined using the ratio of the queue's percentage and the minimal percentage as a 
+	multiplier.
+	As an example:
+			MTU = 9000
+			base = 9000/64 = 141
+			qpctgs for TC0 = 10 13 20 57  (assuming 4 VFs)
+			q0 would receive 141 credits (the base)
+			q1 receives (13/10) * 141 = 184 credits
+			q2 receives (20/10) * 141 = 282 credits
+			q3 receives (57/10) * 141 = 804 credits
+
+	MTU cannot be less than 1806 bytes (1.5 * 1024) and thus the minmum number of credits
+	is 24.
 */
-static void qos_set_rates( portid_t pf, int* rates ) {
+static void qos_set_credits( portid_t pf, int mtu, int* rates, int tc8_mode ) {
 	uint32_t	sel_offset = 0x04904;				// offset of the selector register
 	uint32_t	reg_offset = 0x04908;				// register offset
-	uint32_t	one_cred = 163;						// credits for one percent (100% would be about the max of 0x3fff)
+	double		cred_factor[MAX_TCS];				// multiplier which converts a percentage into credit value
 	uint32_t	cval;
-	int v;											// VF index
-	int t;											// tc index
-	uint32_t q;										// q index
+	uint32_t	q;									// q index
 	uint32_t	amt;								// amount to assign to each tc in the pool/queue
 	uint32_t	mask;
+	int			tc;
+	int			i;
+	int			j;
 
-	mask = 0xffffc000;								// we set bits 0:13; we'll mask those off the current value first to preserve what might be set
-	q = 0;
-	for( v = 0; v < 32; v++ ) {						// set the credits for each of the possible queues
-		amt = rates[v] * one_cred;					// figure the amount for this pool
+	int 	num_tcs = 4;
 
-		for( t = 0; t < 4; t++ ) {
-			// --- this seems dodgy if another process/thread can select before we make our second write ----
-			port_pci_reg_write( pf, sel_offset, q );						// select the queue to work on
-			cval = port_pci_reg_read( pf, reg_offset );						// read to preserve reserved bits
-			port_pci_reg_write( pf, reg_offset, (cval & mask) | amt );		// set the credits 
-			bleat_printf( 2, "qos set rate: [%d=%d] rate=%d%% credits=%d (%08x)", t, q, rates[v], amt, (cval & mask) | amt );
-			q++;
+	if( tc8_mode ) {
+		num_tcs = 8;
+	}
+
+	for( i = 0; i < num_tcs; i++ ) {				// find base for each TC
+		cred_factor[i] = 100;						// start with a max pct value
+
+		for( j = i; j < MAX_QUEUES; j += num_tcs ) {				// first find min pctg for this tc
+			if( rates[j] > 0 && rates[j] < cred_factor[i] ) {
+				cred_factor[i] = rates[j];
+			}
 		}
+
+		cred_factor[i] = ((mtu/64.0) / cred_factor[i]);				// cred_factor is now a multiplier to convert pct into creds for the TC
+	}
+	
+	mask = 0xffffc000;								// we set bits 0:13; we'll mask those off the current value first to preserve what might be set
+	for( q = 0; q < MAX_QUEUES; q++ ) {				// set the credits for each of the possible queues
+		tc = q % num_tcs;
+		amt = ceil( (double)rates[q] * cred_factor[tc] );					// figure the amount for this pool
+
+		// --- this seems dodgy if another process/thread can select before we make our second write ----
+		port_pci_reg_write( pf, sel_offset, q );						// select the queue to work on
+		cval = port_pci_reg_read( pf, reg_offset );						// read to preserve reserved bits
+		port_pci_reg_write( pf, reg_offset, (cval & mask) | amt );		// set the credits 
+		fprintf( stderr, "qos set rate: q=%d rate=%d%% credits=%d (%08x)\n", q, rates[q], amt, (cval & mask) | amt );
 	}
 }
+
 
 /*
 	Set the flow control config for QoS.
@@ -486,13 +521,14 @@ static void qos_set_sizes( portid_t pf, int tc8_mode ) {
 	Returns 0 if error (percentags total != 100% etc), 1 
 	otherwise.
 */
-extern int enable_dcb_qos( portid_t pf, int* pctgs, int tc8_mode, int option ) {
-	int i;
-	int sum;
+extern int enable_dcb_qos( sriov_port_t *port, int* pctgs, int tc8_mode, int option ) {
+	portid_t pf;			// the port number for nic writes
 
 	option1 = option;		// TESTING to set arbitor selector bit
 
-	sum = 0;
+	pf = port-> rte_port_number;
+
+/*
 	for( i = 0; i < 32; i++ ) {
 		if( pctgs[i] > 0 ) {
 			sum += pctgs[i];
@@ -503,6 +539,7 @@ extern int enable_dcb_qos( portid_t pf, int* pctgs, int tc8_mode, int option ) {
 		bleat_printf( 2, "qos enable: bad sum for pf %d: %d", pf, sum );
 		return -1;
 	}
+*/
 
 												// from the list on pg 181, step 1
 	qos_set_sizes( pf, tc8_mode );				// set packet buffer sizes and threshold
@@ -510,9 +547,12 @@ extern int enable_dcb_qos( portid_t pf, int* pctgs, int tc8_mode, int option ) {
 	qos_set_mtqc( pf, tc8_mode );
 	qos_set_vtctl( pf );
 	set_queue_drop( pf, 1 );					// enable queue dropping for all
+	/*
+	DEPRECATED == this is handled by set_queue_drop
 	for( i = 0; i < 32; i ++ ) {
 		set_split_erop( pf, i, 1 );				// set split drop for all VFs
 	}
+	*/
 	qos_set_rup2tc( pf, tc8_mode );				// user priority to traffic class mapping
 	qos_set_tup2tc( pf, tc8_mode );
 	qos_set_maxszreq( pf );
@@ -520,7 +560,7 @@ extern int enable_dcb_qos( portid_t pf, int* pctgs, int tc8_mode, int option ) {
 	qos_set_fcc( pf ); 							// from the list -- step 2
 
 												// from the list step 3
-	qos_set_rates( pf, pctgs );					// set quantums based on percentages
+	qos_set_credits( pf, port->mtu, pctgs, tc8_mode );		// set quantums based on percentages
 	qos_set_tdplane( pf );				// tc plane
 	qos_set_txpplane( pf );			// tx and rx packet plane
 	qos_set_rxpplane( pf );
