@@ -8,6 +8,7 @@
 */
 
 #include "sriov.h"
+#include "vfd_qos.h"
 #include <vfdlib.h>		// if vfdlib.h needs an include it must be included there, can't be include prior
 
 static int option1 = 1;
@@ -522,7 +523,6 @@ static void qos_set_sizes( portid_t pf, int tc8_mode ) {
 */
 extern int enable_dcb_qos( sriov_port_t *port, int* pctgs, int tc8_mode, int option ) {
 	portid_t pf;			// the port number for nic writes
-	int i;
 
 	option1 = option;		// TESTING to set arbitor selector bit
 
@@ -547,9 +547,12 @@ extern int enable_dcb_qos( sriov_port_t *port, int* pctgs, int tc8_mode, int opt
 	qos_set_mtqc( pf, tc8_mode );
 	qos_set_vtctl( pf );
 	set_queue_drop( pf, 1 );					// enable queue dropping for all
+	/*
+	DEPRECATED == this is handled by set_queue_drop
 	for( i = 0; i < 32; i ++ ) {
 		set_split_erop( pf, i, 1 );				// set split drop for all VFs
 	}
+	*/
 	qos_set_rup2tc( pf, tc8_mode );				// user priority to traffic class mapping
 	qos_set_tup2tc( pf, tc8_mode );
 	qos_set_maxszreq( pf );
