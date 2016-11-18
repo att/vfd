@@ -19,7 +19,7 @@
 
 
 void pprint( parms_t* parms ) {
-	int  i;
+	int  i, j, k, l;
 
 	fprintf( stderr, "  parms read:\n" );
 	fprintf( stderr, "\tlog dir: %s\n", parms->log_dir );
@@ -35,11 +35,22 @@ void pprint( parms_t* parms ) {
 	fprintf( stderr, "\tnpciids: %d\n", parms->npciids );
 	for( i = 0; i < parms->npciids; i++ ) {
 		fprintf( stderr, "\tpciid[%d]: %s %d flags=%02x\n", i, parms->pciids[i].id, parms->pciids[i].mtu, parms->pciids[i].flags );
+        for( j = 0; j < parms->pciids[i].ntcs; j++ ) {
+            if( parms->pciids[i].tcs[j] != 0 ) {
+                fprintf( stderr, "\ttclasses[%d]: %s, flags=%02x, max_bw: %d, min_bw: %d\n", j, parms->pciids[i].tcs[j]->hr_name, parms->pciids[i].tcs[j]->flags, parms->pciids[i].tcs[j]->max_bw, parms->pciids[i].tcs[j]->min_bw );
+            }
+        }
+        for( k = 0; k < sizeof(parms->pciids[i].bw_grps)/sizeof(bw_grp_t); k++) {
+            fprintf(stderr, "\tbw_grps[%d]\n", k);
+            for( l = 0; l < parms->pciids[i].bw_grps[k].ntcs; l++) {
+                fprintf( stderr, "\t\t%d\n", parms->pciids[i].bw_grps[k].tcs[l]);
+            }
+        }
 	}
 }
 
 int main( int argc, char** argv ) {
-	char*	fname = "vfd.cfg";
+	char*	fname = argv[1];
 	parms_t* parms;
 	int	rc = 0;
 
