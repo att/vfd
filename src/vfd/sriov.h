@@ -223,7 +223,7 @@ struct mirror_s
 typedef struct sriov_port_s
 {
 	int		flags;					// PF_ constants
-	int     rte_port_number;
+	int     rte_port_number;		// the real device number
 	char    name[64];
 	char    pciid[64];
 	int     last_updated;
@@ -251,7 +251,7 @@ typedef struct sriov_conf_c
 
 sriov_conf_t* running_config;		// global so that callbacks can access
 
-int rte_config_portmap[MAX_PORTS];
+int port2config_map[MAX_PORTS];		// map hardware port number to our config array index
 
 enum print_warning {
 	ENABLED_WARN = 0,
@@ -415,6 +415,7 @@ struct rq_entry *rq_list;		// reset queue list of VMs we are waiting on queue re
 void add_refresh_queue(u_int8_t port_id, uint16_t vf_id);
 void process_refresh_queue(void);
 int is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter );
+//static int get_max_qpp( uint32_t port_id );
 
 // ------------ qos ------------
 extern int enable_dcb_qos( sriov_port_t *port, int* pctgs, int tc8_mode, int option );

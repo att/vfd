@@ -16,6 +16,7 @@
 					without discarding the pointer.
 				20 Oct 2016 - Changes to support the dpdk 16.11 rc1 code.
 				01 Nov 2016 - Correct queue drop enable bug (wrong ixgbe function invoked).
+				10 Nov 2016 - Extend queue ready to support less than 32 configured VFs.
 
 	useful doc:
 				 http://www.intel.com/content/dam/doc/design-guide/82599-sr-iov-driver-companion-guide.pdf
@@ -23,6 +24,7 @@
 
 #include "vfdlib.h"
 #include "sriov.h"
+#include "vfd_dcb.h"
 
 
 #define RTE_PMD_PARAM_UNSET -1
@@ -38,7 +40,7 @@ uint64_t RDTSC(void)
   __asm__ volatile("rdtsc" : "=a" (lo), "=d" (hi));
   return ((uint64_t)hi << 32) | lo;
 }
-	
+
 
 int
 xdigit(char c)
@@ -62,6 +64,25 @@ xdigit(char c)
   return -1;
 }
 
+/*
+	Get_max_qpp returns the maximum number of queues which could be supported
+	by a pool based on the current number of VFs configured for the PF.
+*/
+static int get_max_qpp( uint32_t port_id ) {
+	struct rte_eth_dev_info dev_info;
+
+	rte_eth_dev_info_get( port_id, &dev_info );
+
+	if( dev_info.max_vfs >= 32 ) {				// set the max queues/pool based on the number of VFs which are configured
+		return 2;
+	} else {
+		if( dev_info.max_vfs >= 16 ) {
+			return 4;
+		}
+	}
+
+	return 8;
+}
 
 void
 ether_aton_r(const char *asc, struct ether_addr *addr)
@@ -131,9 +152,9 @@ tx_vlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id)
 	diag = rte_pmd_ixgbe_set_vf_vlan_insert( port_id, vf_id, vlan_id );
 
 	if (diag < 0) {
-		bleat_printf( 0, "rte_eth_dev_set_vf_vlan_insert(port_pi=%d, vf_id=%d, vlan_id=%d) failed " "diag=%d", port_id, vf_id, vlan_id, diag);
+		bleat_printf( 0, "set tx vlan insert on vf failed: port_pi=%d, vf_id=%d, vlan_id=%d) failed " "diag=%d", port_id, vf_id, vlan_id, diag);
 	} else {
-		bleat_printf( 3, "set vlan insert on vf successful: port=%d, vf=%d vlan=%d", port_id, vf_id, vlan_id );
+		bleat_printf( 3, "set tx vlan insert on vf successful: port=%d, vf=%d vlan=%d", port_id, vf_id, vlan_id );
 	}
 }
 
@@ -145,9 +166,9 @@ rx_vlan_strip_set_on_vf(portid_t port_id, uint16_t vf_id, int on)
 
 	diag = rte_pmd_ixgbe_set_vf_vlan_stripq(port_id, vf_id, on);
 	if (diag < 0) {
-		bleat_printf( 0, "rte_eth_dev_set_vf_vlan_strip_on(port_pi=%d, vf_id=%d, on=%d) failed " "diag=%d", port_id, vf_id, on, diag);
+		bleat_printf( 0, "set rx vlan strip on vf failed: port_pi=%d, vf_id=%d, on=%d) failed " "diag=%d", port_id, vf_id, on, diag);
 	} else {
-		bleat_printf( 3, "set vlan strip on vf successful: port=%d, vf_id=%d on/off=%d", port_id, vf_id, on );
+		bleat_printf( 3, "set rx vlan strip on vf successful: port=%d, vf_id=%d on/off=%d", port_id, vf_id, on );
 	}
 }
 
@@ -156,11 +177,11 @@ void
 set_vf_allow_bcast(portid_t port_id, uint16_t vf_id, int on)
 {
   int ret = rte_eth_dev_set_vf_rxmode(port_id, vf_id, ETH_VMDQ_ACCEPT_BROADCAST,(uint8_t) on);
-	
+
 	if (ret < 0) {
-    	bleat_printf( 0, "set_vf_allow_bcast(): bad VF receive mode parameter, return code = %d", ret);
+		bleat_printf( 0, "set allow bcast failed: port/vf %d/%d on/off=%d", port_id, vf_id, on );
 	} else {
-		bleat_printf( 3, "allow bcast successfully set for port/vf %d/%d on/off=%d", port_id, vf_id, on );
+		bleat_printf( 3, "set allow bcast failed: port/vf %d/%d on/off=%d", port_id, vf_id, on );
 	}
 }
 
@@ -169,11 +190,11 @@ void
 set_vf_allow_mcast(portid_t port_id, uint16_t vf_id, int on)
 {
 	int ret = rte_eth_dev_set_vf_rxmode(port_id, vf_id, ETH_VMDQ_ACCEPT_MULTICAST,(uint8_t) on);
-	
+
 	if (ret < 0) {
-    	bleat_printf( 0, "set_vf_allow_mcast(): bad VF receive mode parameter, return code = %d", ret);
+		bleat_printf( 0, "set allow mcast failed: port/vf %d/%d on/off=%d", port_id, vf_id, on );
 	} else {
-		bleat_printf( 3, "allow mcast successfully set for port/vf %d/%d on/off=%d", port_id, vf_id, on );
+		bleat_printf( 3, "set allow mcast failed: port/vf %d/%d on/off=%d", port_id, vf_id, on );
 	}
 }
 
@@ -182,11 +203,11 @@ void
 set_vf_allow_un_ucast(portid_t port_id, uint16_t vf_id, int on)
 {
 	int ret = rte_eth_dev_set_vf_rxmode(port_id, vf_id, ETH_VMDQ_ACCEPT_HASH_UC,(uint8_t) on);
-	
+
 	if (ret < 0) {
-    	bleat_printf( 0, "set_vf_allow_un_ucast(): bad VF receive mode parameter, return code = %dn", ret);
+		bleat_printf( 0, "set allow ucast failed: port/vf %d/%d on/off=%d", port_id, vf_id, on );
 	} else {
-		bleat_printf( 3, "allow un-ucast successfully set for port/vf %d/%d on/off=%d", port_id, vf_id, on );
+		bleat_printf( 3, "set allow ucast successful: port/vf %d/%d on/off=%d", port_id, vf_id, on );
 	}
 }
 
@@ -200,15 +221,18 @@ set_vf_allow_untagged(portid_t port_id, uint16_t vf_id, int on)
   bleat_printf( 3, "set_vf_allow_untagged(): rx_mode = %d, on = %dn", rx_mode, on);
 
 	int ret = rte_eth_dev_set_vf_rxmode(port_id, vf_id, rx_mode, (uint8_t) on);
-	
-	if (ret < 0)
-    	bleat_printf( 0, "set_vf_allow_untagged(): bad VF receive mode parameter, return code = %dn", ret);
+
+	if (ret >= 0) {
+		bleat_printf( 3, "set allow untagged successful: port/vf %d/%d on/off=%d", port_id, vf_id, on );
+	} else {
+		bleat_printf( 3, "set allow untagged successful: port/vf %d/%d on/off=%d", port_id, vf_id, on );
+	}
 }
 
 /*
 	Add one mac to the receive mac filter whitelist.  Only the traffic sent to the dest macs in the
 	list will be passed to the VF.
-	
+
 */
 void
 set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  __attribute__((__unused__)) uint8_t on)
@@ -218,10 +242,10 @@ set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  __attribute__((__
   ether_aton_r(mac, &mac_addr);
 
 	diag = rte_eth_dev_mac_addr_add(port_id, &mac_addr, vf);
-	if (diag == 0) {
-		bleat_printf( 3, "set rx mac successful: port=%d vf=%d on/off=%d mac=%s", (int)port_id, (int)vf, on, mac );
+	if (diag < 0) {
+		bleat_printf( 0, "set rx mac failed: port=%d vf=%d on/off=%d mac=%s", (int)port_id, (int)vf, on, mac );
 	} else {
-		bleat_printf( 0, "rte_eth_dev_mac_addr_add for port_id=%d failed " "diag=%d", port_id, diag);
+		bleat_printf( 3, "set rx mac successful: port=%d vf=%d on/off=%d mac=%s", (int)port_id, (int)vf, on, mac );
 	}
 
 }
@@ -233,10 +257,10 @@ set_vf_rx_vlan(portid_t port_id, uint16_t vlan_id, uint64_t vf_mask, uint8_t on)
 	int diag;
 
 	diag = rte_eth_dev_set_vf_vlan_filter(port_id, vlan_id, vf_mask, on);
-	if (diag == 0) {
-		bleat_printf( 3, "set vlan filter successful: port=%d vlan=%d on/off=%d", (int)port_id, (int) vlan_id, on );
+	if (diag < 0) {
+		bleat_printf( 0, "set rx vlan filter failed: port=%d vlan=%d on/off=%d", (int)port_id, (int) vlan_id, on );
 	} else {
-		bleat_printf( 0, "rte_eth_dev_set_vf_vlan_filter for port_id=%d failed " "diag=%d", port_id, diag);
+		bleat_printf( 3, "set rx vlan filter successful: port=%d vlan=%d on/off=%d", (int)port_id, (int) vlan_id, on );
 	}
 
 }
@@ -248,10 +272,10 @@ set_vf_vlan_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 	int diag;
 
 	diag = rte_pmd_ixgbe_set_vf_vlan_anti_spoof(port_id, vf, on);
-	if (diag == 0) {
-		bleat_printf( 3, "set vlan antispoof successful: port=%d vf=%d on/off=%d", (int)port_id, (int)vf, on );
+	if (diag < 0) {
+		bleat_printf( 0, "set vlan antispoof failed: port=%d vf=%d on/off=%d", (int)port_id, (int)vf, on );
 	} else {
-		bleat_printf( 0, "rte_eth_dev_set_vf_vlan_anti_spoof for port_id=%d failed " "diag=%d vf=%d", port_id, diag, vf);
+		bleat_printf( 3, "set vlan antispoof successful: port=%d vf=%d on/off=%d", (int)port_id, (int)vf, on );
 	}
 
 }
@@ -263,10 +287,10 @@ set_vf_mac_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 	int diag;
 
 	diag = rte_pmd_ixgbe_set_vf_mac_anti_spoof(port_id, vf, on);
-	if (diag == 0) {
-		bleat_printf( 3, "set mac antispoof successful: port=%d vf=%d on/off=%d", (int)port_id, (int)vf, on );
+	if (diag < 0) {
+		bleat_printf( 0, "set mac antispoof failed: port=%d vf=%d on/off=%d", (int)port_id, (int)vf, on );
 	} else {
-		bleat_printf( 0, "rte_eth_dev_set_vf_mac_anti_spoof for port_id=%d failed " "diag=%d vf=%d", port_id, diag, vf);
+		bleat_printf( 3, "set mac antispoof successful: port=%d vf=%d on/off=%d", (int)port_id, (int)vf, on );
 	}
 
 }
@@ -277,34 +301,43 @@ tx_set_loopback(portid_t port_id, u_int8_t on)
 	int diag;
 
 	diag = rte_pmd_ixgbe_set_tx_loopback(port_id, on);
-	if (diag == 0) {
-		bleat_printf( 3, "set tx loopback successful: port=%d on/off=%d", (int)port_id, on );
+	if (diag < 0) {
+		bleat_printf( 0, "set tx loopback failed: port=%d on/off=%d", (int)port_id, on );
 	} else {
-		bleat_printf( 0, "rte_eth_dev_set_loopback_on for port_id=%d failed " "diag=%d on=%d", port_id, diag, on);
+		bleat_printf( 3, "set tx loopback successful: port=%d on/off=%d", (int)port_id, on );
 	}
 }
 
 /*
-	Check the state of the split receive control register
+	Returns the value of the split receive control register for the first queue
+	of the port/vf pair.
 */
 int get_split_ctlreg( portid_t port_id, uint16_t vf_id ) {
-	
-	uint32_t reg_off = 0x01014; 							// split receive control regs (pg598)
+	uint32_t reg_off = 0x01014; 	// split receive control regs (pg598)
+	int queue;						// the first queue for the vf (TODO: expand this to accept a queue 0-max_qpp)
 
-	if( vf_id > 63  ) {				// this offset good only for 0-63; we won't support 64-127
-		return 0;
+	queue = get_max_qpp( port_id ) * vf_id;
+
+	if( queue >= 64 ) {
+		reg_off = 0x0d014;			// high set of queues
 	}
 
-	reg_off += (0x40 * vf_id );
-	
+	reg_off += 0x40 * queue;		// step to the right spot for the given queue
+
 	return (int) port_pci_reg_read( port_id, reg_off );
 }
 
 /*
 	Set/reset the enable drop bit in the split receive control register. State is either 1 (on) or 0 (off).
+
+	DEPRECATED:  per the datasheet, the setting of the SRRCTL drop enable bit is
+			overridden by the setting of the PFQDE drop enable which is a global
+			policy (7.10.3.10) and is set by the rte_pmd_ixgbe_set_all_queues_drop_en()
+			function which should be used instead of a direct NIC access.
 */
+/*
 void set_split_erop( portid_t port_id, uint16_t vf_id, int state ) {
-	
+
 	uint32_t reg_off = 0x01014; 							// split receive control regs (pg598)
 	uint32_t reg_value;
 
@@ -312,8 +345,8 @@ void set_split_erop( portid_t port_id, uint16_t vf_id, int state ) {
 		return;
 	}
 
-	reg_off += (0x40 * vf_id );
-	
+	reg_off += 0x40 * vf_id;
+
 	reg_value =  port_pci_reg_read( port_id, reg_off );
 
 	if( state ) {
@@ -325,6 +358,7 @@ void set_split_erop( portid_t port_id, uint16_t vf_id, int state ) {
 	bleat_printf( 2, "setting split receive drop for port %d vf %d to %d", port_id, vf_id, state );
 	port_pci_reg_write( port_id, reg_off, reg_value );
 }
+*/
 
 /*
 	Set/reset the queue drop enable bit for all pools. State is either 1 (on) or 0 (off).
@@ -333,12 +367,12 @@ void set_queue_drop( portid_t port_id, int state ) {
 	int		result;
 
 	bleat_printf( 2, "setting queue drop for port %d on all queues to: on/off=%d", port_id, !!state );
-	result = rte_pmd_ixgbe_set_all_queues_drop_en( port_id, !!state );			// (re)sete flag for all queues on the port
+	result = rte_pmd_ixgbe_set_all_queues_drop_en( port_id, !!state );			// (re)set flag for all queues on the port
 	if( result != 0 ) {
 		bleat_printf( 0, "fail: unable to set drop enable for port %d on/off=%d: errno=%d", port_id, !state, -result );
 	}
 
-	
+
 	/*
 	 disable default pool to avoid DMAR errors when we get packets not destined to any VF
 	*/
@@ -360,35 +394,51 @@ void set_queue_drop( portid_t port_id, int state ) {
 	the tx/rx queues are ready and if they are we allow the reset to happen.
 */
 /*
-	Check to see if the NIC tx/rx queues are on for the pf/vf pair.
-	Returns 1 if the queues are "ready".
+	Check to see if the NIC tx/rx queues are enabled for the pf/vf pair.
+	Returns 1 if the queues are enabled.
 */
 int
 is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter )
 {
-	/* check if first queue in the pool is active */
-	
-	struct rte_eth_dev *pf_dev = &rte_eth_devices[port_id];
-  uint32_t queues_per_pool = RTE_ETH_DEV_SRIOV(pf_dev).nb_q_per_pool;
-	//queues_per_pool = 2;											// if we don't have RSS or DCB enabled number of queues is 2 per pool ?
-	queues_per_pool = 4; // qos mode we set 4
-	
-  uint32_t reg_off = 0x01028; 							// receive descriptor control reg (pg527/597)
+	int queue;						// queue to set (0-max-queues)
+	uint32_t reg_off;				// control register address
+	uint32_t ctrl;					// value read from nic register
+	uint32_t queues_per_pool = 8;	// maximum number of queues that could be assigned to a pool (based on total VFs configured)
 
-  reg_off += (0x40 * vf_id * queues_per_pool);
-	
-  uint32_t ctrl = port_pci_reg_read(port_id, reg_off);
+	struct rte_eth_dev *pf_dev;
+	struct rte_eth_dev_info dev_info;
 
-  bleat_printf( 5, "RX_QUEUS_ENA, bar=0x%08X, port=%d vfid_id=%d, ctrl=0x%08X)", reg_off, port_id, vf_id, ctrl);		// these happen too frequently if a VM goes away; only if really verbose
-	
+	rte_eth_dev_info_get( port_id, &dev_info );
+ 	pf_dev = &rte_eth_devices[port_id];
+
+	reg_off = 0x01028;							// default to 'low' range (receive descriptor control reg (pg527/597))
+	queues_per_pool = get_max_qpp( port_id );	// set the max possible queues per pool; controls layout at offset
+	queue = vf_id * queues_per_pool;			// compute the offset which is based on the max/pool
+	if( queue > 127 ) {
+		bleat_printf( 2, "warn: can't check rx_queue_on q out of range: port=%d q=%d vfid_id=%d", port_id, queue, vf_id );
+		return 0;								// error -- vf is out of range for the number of queues/pool
+	} else {
+		if( queue > 63 ) {
+			reg_off = 0x0D028;					// must use the 'high' area
+			queue -= 64;						// this now becomes the offset into the dcb space
+		}
+	}
+
+	reg_off += queue * 0x40;					// each block of info is x40 wide (per datasheet)
+
+	ctrl = port_pci_reg_read(port_id, reg_off);
+	bleat_printf( 5, "is_queue_en: offset=0x%08X, port=%d q=%d vfid_id=%d, ctrl=0x%08X)", reg_off, port_id, queue, vf_id, ctrl);
+
 	if( ctrl & 0x2000000) {
-  		bleat_printf( 3, "first queue active: bar=0x%08X, port=%d vfid_id=%d, ctrl=0x%08X)", reg_off, port_id, vf_id, ctrl);
+  		bleat_printf( 3, "first queue active: offset=0x%08X, port=%d vfid_id=%d, q=%d ctrl=0x%08X)", reg_off, port_id, vf_id, queue, ctrl);
 		return 1;
 	} else {
-		if( (*mcounter % 100 ) == 0 ) {
-  			bleat_printf( 4, "still pending: first queue not active: bar=0x%08X, port=%d vfid_id=%d, ctrl=0x%08x q/pool=%d", reg_off, port_id, vf_id, ctrl, (int) RTE_ETH_DEV_SRIOV(pf_dev).nb_q_per_pool);
+		if( mcounter != NULL ) {
+			if( (*mcounter % 100 ) == 0 ) {
+  				bleat_printf( 4, "is_queue_en: still pending: first queue not active: bar=0x%08X, port=%d vfid_id=%d, ctrl=0x%08x q/pool=%d", reg_off, port_id, vf_id, ctrl, (int) RTE_ETH_DEV_SRIOV(pf_dev).nb_q_per_pool);
+			}
+			(*mcounter)++;
 		}
-		(*mcounter)++;
 		return 0;
 	}
 }
@@ -417,21 +467,21 @@ void
 add_refresh_queue(u_int8_t port_id, uint16_t vf_id)
 {
 	struct rq_entry *refresh_item;
-	
+
 	/* look for refresh request and update enabled status if already there */
 	rte_spinlock_lock(&rte_refresh_q_lock);
 	for( refresh_item = rq_list; refresh_item != NULL; refresh_item = refresh_item->next ) {
 		if (refresh_item->port_id == port_id && refresh_item->vf_id == vf_id){
 			if (!refresh_item->enabled)
 				refresh_item->enabled = is_rx_queue_on(port_id, vf_id, &refresh_item->mcounter );
-			
+
 			rte_spinlock_unlock(&rte_refresh_q_lock);
 			return;
 		}
 	}
-	
+
 	rte_spinlock_unlock(&rte_refresh_q_lock);
-	
+
 	refresh_item = malloc(sizeof(*refresh_item));
 	if (refresh_item == NULL)
 		rte_exit(EXIT_FAILURE, "add_refresh_queue(): Can not allocate memory\n");
@@ -442,7 +492,7 @@ add_refresh_queue(u_int8_t port_id, uint16_t vf_id)
 	refresh_item->enabled = is_rx_queue_on(port_id, vf_id, &refresh_item->mcounter );
 	refresh_item->prev = NULL;
 	bleat_printf( 2, "adding refresh to queue for %d/%d", port_id, vf_id );
-	
+
 	rte_spinlock_lock(&rte_refresh_q_lock);
 	refresh_item->next = rq_list;						// push on the head of the list, order is unimportant
 	rq_list = refresh_item;
@@ -463,7 +513,7 @@ DEPRECATED
 static void enable_refresh_queue(u_int8_t port_id, uint16_t vf_id)
 {
 	struct rq_entry *refresh_item;
-	
+
 	bleat_printf( 3, "enable is looking for: %d %d", port_id, vf_id );
 	rte_spinlock_lock(&rte_refresh_q_lock);
 	XXTAILQ_FOREACH(refresh_item, &rq_head, rq_entries) {
@@ -490,10 +540,10 @@ process_refresh_queue(void)
 	struct rq_entry* next_item;		// pointer makes delete and free safe in loop
 
 	while(1) {
-		
+
 		usleep(200000);
 		struct rq_entry *refresh_item;
-		
+
 		rte_spinlock_lock(&rte_refresh_q_lock);
 		for( refresh_item = rq_list; refresh_item != NULL; refresh_item = next_item ) {
 			next_item = refresh_item->next;			// if we delete we need this to go forward
@@ -504,7 +554,7 @@ process_refresh_queue(void)
 				bleat_printf( 2, "refresh item enabled: updating VF: %d", refresh_item->vf_id);
 
 				restore_vf_setings(refresh_item->port_id, refresh_item->vf_id);
-				
+
 				if( refresh_item->prev ) {
 					refresh_item->prev->next = refresh_item->next;
 				} else {
@@ -520,9 +570,9 @@ process_refresh_queue(void)
 			{
 				refresh_item->enabled = is_rx_queue_on(refresh_item->port_id, refresh_item->vf_id, &refresh_item->mcounter );
 				//printf("updating item:  PORT: %d, VF: %d, Enabled: %d\n", refresh_item->port_id, refresh_item->vf_id, refresh_item->enabled);
-			}			
+			}
 		}
-		
+
 		rte_spinlock_unlock(&rte_refresh_q_lock);
 	}
 }
@@ -554,21 +604,21 @@ int
 nic_stats_display(uint8_t port_id, char * buff, int bsize)
 {
 	struct rte_eth_stats stats;
-  struct rte_eth_link link;
-  rte_eth_link_get_nowait(port_id, &link);
+	struct rte_eth_link link;
+	rte_eth_link_get_nowait(port_id, &link);
 	rte_eth_stats_get(port_id, &stats);
 
 	spoffed[port_id] += port_pci_reg_read(port_id, 0x08780);
-	
-			
-  char status[5];
-  if(!link.link_status)
-    stpcpy(status, "DOWN");
-  else
-    stpcpy(status, "UP  ");
 
-  return snprintf(buff, bsize, "    %s %10"PRIu16" %10"PRIu16" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu32"\n",
-    status, link.link_speed, link.link_duplex, stats.ipackets, stats.ibytes, stats.ierrors, stats.imissed, stats.opackets, stats.obytes, stats.oerrors, spoffed[port_id]);
+
+	char status[5];
+	if(!link.link_status)
+		stpcpy(status, "DOWN");
+	else
+		stpcpy(status, "UP  ");
+
+	return snprintf(buff, bsize, "    %s %10"PRIu16" %10"PRIu16" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu32"\n",
+		status, link.link_speed, link.link_duplex, stats.ipackets, stats.ibytes, stats.ierrors, stats.imissed, stats.opackets, stats.obytes, stats.oerrors, spoffed[port_id]);
 }
 
 /*
@@ -588,36 +638,36 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 	}
 
 	vf = (uint32_t) ivf;						// unsinged for rest
-	
+
 	uint32_t new_ari;
 	struct rte_pci_addr vf_pci_addr;
-	
+
 
 	new_ari = pf_ari + vf_offfset + (vf * vf_stride);
-	
+
 	vf_pci_addr.domain = 0;
 	vf_pci_addr.bus = (new_ari >> 8) & 0xff;
 	vf_pci_addr.devid = (new_ari >> 3) & 0x1f;
 	vf_pci_addr.function = new_ari & 0x7;
 
-				
+
 	uint32_t	rx_pkts = port_pci_reg_read(port_id, IXGBE_PVFGPRC(vf));
 	uint64_t	rx_ol = port_pci_reg_read(port_id, IXGBE_PVFGORC_LSB(vf));
 	uint64_t	rx_oh = port_pci_reg_read(port_id, IXGBE_PVFGORC_MSB(vf));
 	uint64_t	rx_octets = (rx_oh << 32) |	rx_ol;		// 36 bit only counter
-	
+
 	uint32_t	tx_pkts = port_pci_reg_read(port_id, IXGBE_PVFGPTC(vf));
 	uint64_t	tx_ol = port_pci_reg_read(port_id, IXGBE_PVFGOTC_LSB(vf));
 	uint64_t	tx_oh = port_pci_reg_read(port_id, IXGBE_PVFGOTC_MSB(vf));
 	uint64_t	tx_octets = (tx_oh << 32) |	tx_ol;		// 36 bit only counter
-	
-	
+
+
 	char status[5];
 	int mcounter = 0;
-  if(!is_rx_queue_on(port_id, vf, &mcounter ))
-    stpcpy(status, "DOWN");
-  else
-    stpcpy(status, "UP  ");
+	if(!is_rx_queue_on(port_id, vf, &mcounter ))
+		stpcpy(status, "DOWN");
+	else
+	    stpcpy(status, "UP  ");
 
 	return 	snprintf(buff, bsize, "%s   %4d    %04X:%02X:%02X.%01X    %s %32"PRIu32" %10"PRIu64" %32"PRIu32" %10"PRIu64"\n",
 				"vf",
@@ -645,7 +695,7 @@ dump_vlvf_entry(portid_t port_id)
 	uint32_t res;
 	uint32_t ix;
 	uint32_t count = 0;
-	
+
 
 	for (ix = 1; ix < IXGBE_VLVF_ENTRIES; ix++) {
 		res = port_pci_reg_read(port_id, IXGBE_VLVF(ix));
@@ -664,18 +714,20 @@ dump_vlvf_entry(portid_t port_id)
 	Initialise a device (port).
 	Return 0 if there were no errors, 1 otherwise.  The calling programme should
 	not continue if this function returns anything but 0.
+
+	This is the basic, non-dcb, port initialisation.
 */
 int
 port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_pool)
 {
 	struct rte_eth_conf port_conf = port_conf_default;
-	const uint16_t rx_rings = 1, tx_rings = 1;
+	const uint16_t rx_rings = 1;
+	const uint16_t tx_rings = 1;
 	int retval;
 	uint16_t q;
 
 	if (port >= rte_eth_dev_count()) {
 		bleat_printf( 0, "CRI: abort: port >= rte_eth_dev_count");
-   		//exit(EXIT_FAILURE);
 		return 1;
 	}
 
@@ -684,14 +736,12 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 	retval = rte_eth_dev_configure(port, rx_rings, tx_rings, &port_conf);
 	if (retval != 0) {
 		bleat_printf( 0, "CRI: abort: cannot configure port %u, retval %d", port, retval);
-   		//exit(EXIT_FAILURE);
 		return 1;
 	}
 
 
-  rte_eth_dev_callback_register(port, RTE_ETH_EVENT_INTR_LSC, lsi_event_callback, NULL);
-
-  rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vf_msb_event_callback, NULL);
+	rte_eth_dev_callback_register(port, RTE_ETH_EVENT_INTR_LSC, lsi_event_callback, NULL);
+	rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vf_msb_event_callback, NULL);
 
 
 	// Allocate and set up 1 RX queue per Ethernet port.
@@ -699,7 +749,6 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 		retval = rte_eth_rx_queue_setup(port, q, RX_RING_SIZE, rte_eth_dev_socket_id(port), NULL, mbuf_pool);
 		if (retval < 0) {
 			bleat_printf( 0, "CRI: abort: cannot setup rx queue, port %u", port);
-   			//exit(EXIT_FAILURE);
 			return 1;
 		}
 	}
@@ -709,7 +758,6 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 		retval = rte_eth_tx_queue_setup(port, q, TX_RING_SIZE, rte_eth_dev_socket_id(port), NULL);
 		if (retval < 0) {
 			bleat_printf( 0, "CRI: abort: cannot setup tx queue, port %u", port);
-   			//exit(EXIT_FAILURE);
 			return 1;
 		}
 	}
@@ -719,10 +767,9 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 	retval = rte_eth_dev_start(port);
 	if (retval < 0) {
 		bleat_printf( 0, "CRI: abort: cannot start port %u", port);
-  		//exit(EXIT_FAILURE);
 		return 1;
 	}
-	
+
 
 	// Display the port MAC address.
 	struct ether_addr addr;
@@ -769,12 +816,12 @@ lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param)
 */
 void
 vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param) {
-	
+
 	struct rte_pmd_ixgbe_mb_event_param p = *(struct rte_pmd_ixgbe_mb_event_param*) param;
   uint16_t vf = p.vfid;
 	uint16_t mbox_type = p.msg_type;
 	uint32_t *msgbuf = (uint32_t *) p.msg;
-	
+
 	struct ether_addr *new_mac;
 
 	/* check & process VF to PF mailbox message */
@@ -785,7 +832,7 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			p.retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_ACK;				/* noop & ack */
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
 				type, port_id, vf, p.retval, "IXGBE_VF_RESET");
-				
+
 			add_refresh_queue(port_id, vf);
 			break;
 
@@ -794,10 +841,10 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			p.retval = RTE_PMD_IXGBE_MB_EVENT_PROCEED;    						// do what's needed
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
 				type, port_id, vf, p.retval, "IXGBE_VF_SET_MAC_ADDR");
-			
+
 			new_mac = (struct ether_addr *) (&msgbuf[1]);
-		
-			
+
+
 			if (is_valid_assigned_ether_addr(new_mac)) {
 				bleat_printf( 3, "setting mac, vf %u, MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
 					" %02" PRIx8 " %02" PRIx8 " %02" PRIx8,
@@ -806,7 +853,7 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 					new_mac->addr_bytes[2], new_mac->addr_bytes[3],
 					new_mac->addr_bytes[4], new_mac->addr_bytes[5]);
 			}
-			
+
 			add_refresh_queue(port_id, vf);
 			break;
 
@@ -934,33 +981,27 @@ detachFromTerminal(void)
 void
 daemonize(  char* pid_fname )
 {
-  int childpid;
+	int childpid;
 
-  //signal(SIGHUP, SIG_IGN);
-  signal(SIGCHLD, SIG_IGN);
-  signal(SIGQUIT, SIG_IGN);
+	signal(SIGCHLD, SIG_IGN);
+	signal(SIGQUIT, SIG_IGN);
 
-  if((childpid = fork()) < 0)
-    bleat_printf( 0, "INIT: Can not fork process (errno = %d)", errno);
-  else {
-#ifdef DEBUG
-    bleat_printf( 1, "DEBUG: after fork() in %s (%d)",
-	       childpid ? "parent" : "child", childpid);
-#endif
-    if(!childpid) {
-      // child
-      bleat_printf( 1, "INIT: Starting Tcap daemon");
-      detachFromTerminal();
-		if( pid_fname != NULL ) {
-			save_pid( pid_fname );
+	if((childpid = fork()) < 0) {
+		bleat_printf( 0, "err: daemonise cannot fork process (errno = %d)", errno);
+	} else {
+		bleat_printf( 1, "daemonise: after fork() in %s (%d)", childpid ? "parent" : "child", childpid);
+		if(!childpid) {
+			// child
+			bleat_printf( 1, "daemonise: child has started" );
+			detachFromTerminal();
+			if( pid_fname != NULL ) {
+				save_pid( pid_fname );
+			}
+		} else {
+			bleat_printf( 1, "daemonise: child process running, parent process exiting: child pid=%d", childpid );
+			exit(EXIT_SUCCESS);
 		}
-    }
-    else {
-      // parent
-      bleat_printf( 1, "INIT: Parent process exits");
-      exit(EXIT_SUCCESS);
-    }
-  }
+	}
 }
 
 /*
@@ -973,7 +1014,7 @@ void dump_dev_info( int num_ports  ) {
 
 	for( i = 0; i < num_ports; i++ ) {
 		rte_eth_dev_info_get( i, &dev_info );
-	
+
 		bleat_printf( 0, "port=%d driver_name = %s", i, dev_info.driver_name);
 		bleat_printf( 0, "port=%d if_index = %d", i, dev_info.if_index);
 		bleat_printf( 0, "port=%d min_rx_bufsize = %d", i, dev_info.min_rx_bufsize);
