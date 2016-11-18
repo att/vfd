@@ -11,10 +11,25 @@
 */
 
 //----------------- config.c --------------------------------------------------------------------------
+                                    // tc_class_t struct flags
+#define TCF_LOW_LATENCY 0x01
+#define TCF_BW_STRICTP  0x02
+#define TCF_LNK_STRICTP 0x04
 
+typedef struct {
+    char* hr_name;          // human readable name used for diagnostics
+    unsigned int flags;     // TCF_ flasg constants
+    int32_t max_bw;         // percentage of link bandwidth (value 0-100) (default == 100)
+    int32_t min_bw;        // percentage of link bandwidth (value 0-100)
+} tc_class_t;
 
+typedef struct {
+    int32_t ntcs;           // number of TCs in the group
+    int32_t tcs[8];         // priority of each TC in the group (index into tcs array in pfdef_t)
+} bw_grp_t;
 									// pfdef_t struct flags
 #define PFF_LOOP_BACK	0x01		// loop back enabled flag
+#define PFF_VF_OVERSUB  0x02        // vf_oversubscription enabled flag
 
 /*
 	pf_def -- definition info picked up from the parm file for a PF
@@ -23,6 +38,10 @@ typedef struct {
 	char*	id;
 	int		mtu;
 	unsigned int flags;		// PFF_ flag constants
+                            // QoS members
+    int32_t ntcs;           // number of TCs (4 or 8)
+    tc_class_t* tcs[8];     // defined TCs (0-3 or 0-8) position in the array is the priority (from pri in the json)
+    bw_grp_t    bw_grps[8]; // definition of each bandwidth group
 } pfdef_t;
 
 /*
