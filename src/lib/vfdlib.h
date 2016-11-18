@@ -3,6 +3,7 @@
 
 #ifndef _vfdlib_h_
 #define _vfdlib_h_
+#include <stdint.h>
 #include <time.h>
 #include <sys/types.h>
 
@@ -30,6 +31,8 @@ typedef struct {
 									// pfdef_t struct flags
 #define PFF_LOOP_BACK	0x01		// loop back enabled flag
 #define PFF_VF_OVERSUB  0x02        // vf_oversubscription enabled flag
+
+#define MAX_TCS			8
 
 /*
 	pf_def -- definition info picked up from the parm file for a PF
@@ -101,6 +104,9 @@ typedef struct {
     "mirror":           [ { "vlan": 100; "vfid": 3 },
                           { "vlan": 430; "vfid": 6 } ]
 	*/
+	// ---- remove these when dj's code is published ------------
+	uint8_t tc_pctgs[MAX_TCS];
+	// ------------------------------------------------
 } vf_config_t;
 
 /*
