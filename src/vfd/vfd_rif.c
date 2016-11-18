@@ -9,7 +9,7 @@
 */
 
 
-#include "vfdlib.h"
+#include <vfdlib.h>		// if vfdlib.h needs an include it must be included there, can't be include prior
 #include "sriov.h"
 #include "vfd_rif.h"
 
@@ -19,7 +19,7 @@
 	Create our fifo and tuck the handle into the parm struct. Returns 0 on
 	success and <0 on failure.
 */
-static int vfd_init_fifo( parms_t* parms ) {
+extern int vfd_init_fifo( parms_t* parms ) {
 	if( !parms ) {
 		return -1;
 	}
@@ -50,7 +50,7 @@ static int vfd_init_fifo( parms_t* parms ) {
 	Return code of 0 indicates failure; non-zero is success.
 	
 */
-static int check_tcs( struct sriov_port_s* port, uint8_t *tc_pctgs ) {
+extern int check_tcs( struct sriov_port_s* port, uint8_t *tc_pctgs ) {
 
 	int	totals[MAX_TCS];			// current pct totals
 	int	i;
@@ -83,7 +83,7 @@ static int check_tcs( struct sriov_port_s* port, uint8_t *tc_pctgs ) {
 	Pull the list of pciids from the parms and set into the in memory configuration that
 	is maintained. If this is called more than once, it will refuse to do anything.
 */
-static void vfd_add_ports( parms_t* parms, sriov_conf_t* conf ) {
+extern void vfd_add_ports( parms_t* parms, sriov_conf_t* conf ) {
 	static int called = 0;		// doesn't makes sense to do this more than once
 	int i;
 	int pidx = 0;				// port idx in conf list
@@ -133,7 +133,7 @@ static void vfd_add_ports( parms_t* parms, sriov_conf_t* conf ) {
 	array of pointers, and config should pull directly into a vf_s and if the
 	parms are valid, then the pointer added to the list.
 */
-static int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
+extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	vf_config_t* vfc;					// raw vf config file contents	
 	int	i;
 	int j;
@@ -473,7 +473,7 @@ static int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	Get a list of all config files and add each one to the current config.
 	If one fails, we will generate an error and ignore it.
 */
-static void vfd_add_all_vfs(  parms_t* parms, sriov_conf_t* conf ) {
+extern void vfd_add_all_vfs(  parms_t* parms, sriov_conf_t* conf ) {
 	char** flist; 					// list of files to pull in
 	int		llen;					// list length
 	int		i;
@@ -511,7 +511,7 @@ static void vfd_add_all_vfs(  parms_t* parms, sriov_conf_t* conf ) {
 	but on restart we'd recreate it, or worse have a conflict with something that
 	was added.
 */
-static int vfd_del_vf( parms_t* parms, sriov_conf_t* conf, char* fname, char** reason ) {
+extern int vfd_del_vf( parms_t* parms, sriov_conf_t* conf, char* fname, char** reason ) {
 	vf_config_t* vfc;					// raw vf config file contents	
 	int	i;
 	int vidx;							// index into the vf array
@@ -617,7 +617,7 @@ static int vfd_del_vf( parms_t* parms, sriov_conf_t* conf, char* fname, char** r
 	Write to an open file des with a simple retry mechanism.  We cannot afford to block forever,
 	so we'll try only a few times if we make absolutely no progress.
 */
-static int vfd_write( int fd, const char* buf, int len ) {
+extern int vfd_write( int fd, const char* buf, int len ) {
 	int	tries = 5;				// if we have this number of times where there is no progress we give up
 	int	nsent;					// number of bytes actually sent
 	int n2send;					// number of bytes left to send
@@ -654,7 +654,7 @@ static int vfd_write( int fd, const char* buf, int len ) {
 	sending the request it does not prevent us from writing to the pipe.  If we don't open in 	
 	blocked mode we could hang foever if the requestor dies/aborts.
 */
-static void vfd_response( char* rpipe, int state, const char* msg ) {
+extern void vfd_response( char* rpipe, int state, const char* msg ) {
 	int 	fd;
 	char	buf[BUF_1K];
 
@@ -689,7 +689,7 @@ static void vfd_response( char* rpipe, int state, const char* msg ) {
 /*
 	Cleanup a request and free the memory.
 */
-static void vfd_free_request( req_t* req ) {
+extern void vfd_free_request( req_t* req ) {
 	if( req->resource != NULL ) {
 		free( req->resource );
 	}
@@ -705,7 +705,7 @@ static void vfd_free_request( req_t* req ) {
 	A pointer to the struct is returned; the caller must use vfd_free_request() to
 	properly free it.
 */
-static req_t* vfd_read_request( parms_t* parms ) {
+extern req_t* vfd_read_request( parms_t* parms ) {
 	void*	jblob;				// json parsing stuff
 	char*	rbuf;				// raw request buffer from the pipe
 	char*	stuff;				// stuff teased out of the json blob
@@ -801,7 +801,7 @@ static req_t* vfd_read_request( parms_t* parms ) {
 	forever is set then this is a black hole (never returns).
 	Returns true if it handled a request, false otherwise.
 */
-static int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
+extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 	req_t*	req;
 	char	mbuf[2048];			// message and work buffer
 	char*	buf;				// buffer gnerated by something else

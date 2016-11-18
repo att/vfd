@@ -43,7 +43,7 @@
 				07 Sep 2016 - Drop use of TAILQ as odd things were happening realted to removing 
 							items from the list.
 				14 Oct 2016 - Changes to work with dpdk-1611 differences.
-
+				01 Nov 2016 - renamed var to port2config_map to avoid looking like dpdk var/function (lead rte)
 */
 
 
@@ -57,84 +57,26 @@
 #include <unistd.h>
 #include <errno.h>
 
-#include "sriov.h"
-#include <vfdlib.h>		// if vfdlib.h needs an include it must be included there, can't be include prior
 
+#include "sriov.h"		// main header file
+#include <vfdlib.h>		// if vfdlib.h needs an include it must be included there, can't be include prior
+#include "vfd_rif.h"	// request interface stuff
+#include "vfd_dcb.h"	// dcb related stuff
+
+//#include "ixgbe_ethdev.h"
+//#include "ixgbe_ethdev.h"
 
 #define DEBUG
 
 // -------------------------------------------------------------------------------------------------------------
 
-#define ADDED	1				// updated states
-#define DELETED (-1)
-#define UNCHANGED 0
-#define RESET	2
-
-#define RT_NOP	0				// request types
-#define RT_ADD	1
-#define RT_DEL	2
-#define RT_SHOW 3
-#define RT_PING 4
-#define RT_VERBOSE 5
-#define RT_DUMP 6
-
-#define BUF_1K	1024			// simple buffer size constants
-#define BUF_10K BUF_1K * 10
-
-#define QOS_4TC_MODE 0			// 4 TCs mode flag
-#define QOS_8TC_MODE 1			// 8 TCs mode flag
-
-// --- local structs --------------------------------------------------------------------------------------------
-
-typedef struct request {
-	int		rtype;				// type: RT_ const
-	char*	resource;			// parm file name, show target, etc.
-	char*	resp_fifo;			// name of the return pipe
-	int		log_level;			// for verbose
-} req_t;
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-static const char* version = "v1.3/1a186";
 static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
 
-// --- local protos so we can break a few things out of main.c --------------------------------------------------
-//static int vfd_update_nic( parms_t* parms, sriov_conf_t* conf );
-//static char* gen_stats( sriov_conf_t* conf, int pf_only );
 
-static int is_valid_mac_str( char* mac );
-
-static void run_start_cbs( sriov_conf_t* conf );
-static void run_stop_cbs( sriov_conf_t* conf );
-
-static struct sriov_port_s *suss_port( int portid );
-static struct vf_s *suss_vf( int port, int vfid );
-static void close_ports( void );
-static int dummy_rte_eal_init( int argc, char** argv );
-static int vfd_eal_init( parms_t* parms );
-
-
-static int vfd_init_fifo( parms_t* parms );
-static void vfd_add_ports( parms_t* parms, sriov_conf_t* conf );
-static int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason );
-static void vfd_add_all_vfs(  parms_t* parms, sriov_conf_t* conf );
-static int vfd_del_vf( parms_t* parms, sriov_conf_t* conf, char* fname, char** reason );
-
-static int vfd_write( int fd, const char* buf, int len );
-static void vfd_response( char* rpipe, int state, const char* msg );
-static void vfd_free_request( req_t* req );
-static req_t* vfd_read_request( parms_t* parms );
-static int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever );
-
-static char*  gen_stats( sriov_conf_t* conf, int pf_only );
-static int vfd_set_ins_strip( struct sriov_port_s *port, struct vf_s *vf );
-static int vfd_update_nic( parms_t* parms, sriov_conf_t* conf );
-static void sig_int( int sig );
-static void set_signals( void );
-
-
-// --------------------- some internal functions maintained in a separate file ------------------------------------------
-#include "vfd_rif.c"			// request interface functions
-
+// -- global initialisation ----
+const char *version = VFD_LONG_VER "    build: " __DATE__ " " __TIME__;
 
 // --- misc support ----------------------------------------------------------------------------------------------
 
@@ -144,8 +86,7 @@ static void set_signals( void );
 
 	Returns -1 if invalid, 0 if ok.
 */
-
-static int is_valid_mac_str( char* mac ) {
+int is_valid_mac_str( char* mac ) {
 	char*	dmac;				// dup so we can bugger it
 	char*	tok;				// pointer at token
 	char*	strtp = NULL;		// strtok_r reference
@@ -254,7 +195,6 @@ static void run_stop_cbs( sriov_conf_t* conf ) {
 
 	Oversubscription policy is enforced when the VF's config file is parsed and added to the 
 	running config.
-*/
 static int* gen_tc_pctgs( sriov_port_t *port ) {
 	int*	norm_pctgs;				// normalised percentages (to be returned)
 	int 	i;
@@ -308,6 +248,7 @@ static int* gen_tc_pctgs( sriov_port_t *port ) {
 
 	return norm_pctgs;
 }
+*/
 
 
 // --- callback/mailbox support - depend on global parms ---------------------------------------------------------
@@ -327,7 +268,10 @@ static struct sriov_port_s *suss_port( int portid ) {
 		return NULL;
 	}
 
-	rc_idx = rte_config_portmap[portid];				// tanslate port to index
+	if( (rc_idx = port2config_map[portid]) < 0 ) { 		// tanslate port to index, it may not xlate if port is not in our config
+		return NULL;
+	}
+
 	if( rc_idx >= running_config->num_ports ) {
 		bleat_printf( 1, "suss_port: port index for port %d (%d) is out of range", portid, rc_idx );
 		return NULL;
@@ -550,7 +494,7 @@ static int vfd_eal_init( parms_t* parms ) {
 	Generate a set of stats to a single buffer. Return buffer to caller (caller must free).
 	If pf_only is true, then the VF stats are skipped.
 */
-static char*  gen_stats( sriov_conf_t* conf, int pf_only ) {
+char*  gen_stats( sriov_conf_t* conf, int pf_only ) {
 	char*	rbuf;			// buffer to return
 	int		rblen = 0;		// lenght
 	int		rbidx = 0;
@@ -700,7 +644,7 @@ static int vfd_set_ins_strip( struct sriov_port_s *port, struct vf_s *vf ) {
 	TODO:  the original, and thus this, function always return 0 (good); we need to
 		figure out how to handle errors back from the rte_ calls.
 */
-static int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
+extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 	int i;
 	int on = 1;
     uint32_t vf_mask;
@@ -817,7 +761,8 @@ static int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 
 				if( vf->num >= 0 ) {
 					if( parms->forreal ) {
-						set_split_erop( i, y, 1 );				// allow drop of packets when there is no matching descriptor
+						// deprecated, now handeled by set queue drop function 
+						//set_split_erop( i, y, 1 );				// allow drop of packets when there is no matching descriptor
 
 						bleat_printf( 2, "%s vf: %d set anti-spoof %d", port->name, vf->num, vf->vlan_anti_spoof );
 						set_vf_vlan_anti_spoofing(port->rte_port_number, vf->num, vf->vlan_anti_spoof);
@@ -1098,6 +1043,7 @@ main(int argc, char **argv)
 	int		opt;
 	int		fd = -1;
 	int		enable_qos = 1;			// on by default -q turns it off
+	int		state;
 int p;
 int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 
@@ -1156,7 +1102,7 @@ int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 
 		case 'h':
 		case '?':
-			printf( "\nvfd %s\n", version );
+			printf( "\nVFd %s\n", version );
 			printf("%s\n", main_help);
 			exit( 0 );
 			break;
@@ -1212,7 +1158,7 @@ int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 	vfd_add_ports( g_parms, running_config );			// add the pciid info from parms to the ports list (must do before dpdk init, config file adds wait til after)
 
 	if( g_parms->forreal ) {										// begin dpdk setup and device discovery
-		int port;
+		//int port;
 		int ret;					// returned value from some call
 		u_int16_t portid;
 		uint32_t pci_control_r;  
@@ -1224,8 +1170,12 @@ int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 		rte_set_log_level( g_parms->dpdk_init_log_level );
 
 		n_ports = rte_eth_dev_count();
-		bleat_printf( 1, "hardware reports %d ports", n_ports );
-
+		if( n_ports > MAX_PORTS ) {
+			bleat_printf( 0, "WARN: hardware reports %d ports which exceeds max supported ports (%d); processing only %d ports", n_ports, MAX_PORTS, MAX_PORTS );
+			n_ports = MAX_PORTS;
+		} else {
+			bleat_printf( 1, "hardware reports %d ports", n_ports );
+		}
 
 		if(n_ports < running_config->num_ports) {
 			bleat_printf( 1, "WRN: port count mismatch: config lists %d device has %d", running_config->num_ports, n_ports );
@@ -1236,7 +1186,7 @@ int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 		}
 
 		static pthread_t tid;
-		rq_list = NULL;						// nothing on the reset list
+		rq_list = NULL;						// nothing initially on the reset list
 		
 		ret = pthread_create(&tid, NULL, (void *)process_refresh_queue, NULL);	
 		if (ret != 0) {
@@ -1245,76 +1195,71 @@ int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 		}
 		bleat_printf( 1, "refresh queue management thread created" );
 	
-		bleat_printf( 1, "creating memory pool" );
-		// Creates a new mempool in memory to hold the mbufs.
-		mbuf_pool = rte_pktmbuf_pool_create("sriovctl", NUM_MBUFS * n_ports,
-						  MBUF_CACHE_SIZE,
-						  0,
-						  RTE_MBUF_DEFAULT_BUF_SIZE,
-						  rte_socket_id());
-
+		bleat_printf( 1, "creating memory pool" ); 									// Creates a new mempool in memory to hold the mbufs.
+		mbuf_pool = rte_pktmbuf_pool_create("sriovctl", NUM_MBUFS * n_ports, MBUF_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
 		if (mbuf_pool == NULL) {
 			bleat_printf( 0, "CRI: abort: mbfuf pool creation failed" );
 			rte_exit(EXIT_FAILURE, "Cannot create mbuf pool\n");
 		}
 
 		bleat_printf( 1, "initialising all (%d) ports", n_ports );
-		for (portid = 0; portid < n_ports; portid++) { 									/* Initialize all ports. */
-			if (port_init(portid, mbuf_pool) != 0) {
-				bleat_printf( 0, "CRI: abort: port initialisation failed: %d", (int) portid );
-				rte_exit(EXIT_FAILURE, "Cannot init port %"PRIu8 "\n", portid);
-			} else {
-				bleat_printf( 2, "port initialisation successful for port %d", portid );
-			}
-		}
-		bleat_printf( 2, "port initialisation complete" );
-	
-	
-		bleat_printf( 1, "looping over %d ports to map indexes", n_ports );
-		for(port = 0; port < n_ports; ++port){					// for each port reported by driver
+		for (portid = 0; portid < n_ports; portid++) { 								// initialize ports, but only the ports listed in our config
 			int i;
 			char pciid[25];
 			struct rte_eth_dev_info dev_info;
+			int	found;
 
-			rte_eth_dev_info_get(port, &dev_info);
-		
-			rte_eth_macaddr_get(port, &addr);
-			bleat_printf( 1,  "mapping port: %u, MAC: %02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ", ",
-					(unsigned)port,
-					addr.addr_bytes[0], addr.addr_bytes[1],
-					addr.addr_bytes[2], addr.addr_bytes[3],
-					addr.addr_bytes[4], addr.addr_bytes[5]);
-
-			bleat_printf( 1, "driver: %s, index %d, pkts rx: %lu", dev_info.driver_name, dev_info.if_index, st.pcount);
-			bleat_printf( 1, "pci: %04X:%02X:%02X.%01X, max VF's: %d", dev_info.pci_dev->addr.domain, dev_info.pci_dev->addr.bus,
-				dev_info.pci_dev->addr.devid , dev_info.pci_dev->addr.function, dev_info.max_vfs );
-				
-			/*
-			* rte could enumerate ports differently than in config files
-			* rte_config_portmap array will hold index to config
-			*/
-			snprintf(pciid, sizeof( pciid ), "%04X:%02X:%02X.%01X",
-				dev_info.pci_dev->addr.domain,
-				dev_info.pci_dev->addr.bus,
-				dev_info.pci_dev->addr.devid,
-				dev_info.pci_dev->addr.function);
-		
-			for(i = 0; i < running_config->num_ports; ++i) {							// suss out the device in our config and map the two indexes
+			found = 0;																// default to PF not in our config list
+			rte_eth_dev_info_get(portid, &dev_info);
+			snprintf(pciid, sizeof( pciid ), "%04x:%02x:%02x.%01x", dev_info.pci_dev->addr.domain, dev_info.pci_dev->addr.bus, dev_info.pci_dev->addr.devid, dev_info.pci_dev->addr.function);
+			for(i = 0; i < running_config->num_ports; ++i) {						// must record the 'real' PF number as that likely won't match array order
 				if (strcmp(pciid, running_config->ports[i].pciid) == 0) {
-					bleat_printf( 2, "physical port %i maps to config %d", port, i );
-					rte_config_portmap[port] = i;
-					running_config->ports[i].nvfs_config = dev_info.max_vfs;			// number of configured VFs (could be less than max)
-					running_config->ports[i].rte_port_number = port; 				// point config port back to rte port
+					bleat_printf( 2, "physical port %i maps to config %d (%s)", portid, i, pciid );
+					found = 1;
+					port2config_map[portid] = i;									// map real port to our array index
+					running_config->ports[i].rte_port_number = portid; 				// record the real pf number
+					running_config->ports[i].nvfs_config = dev_info.max_vfs;		// number of configured VFs (could be less than max)
+					break;
 				}
 			}
+
+			if( found ) {															// initialise only if in our confilg file list (we may not manage everything)
+				if( enable_qos ) {
+					state = dcb_port_init(portid, mbuf_pool);
+				} else {
+					state = port_init(portid, mbuf_pool);
+				}
+
+				if( state != 0 ) {
+					bleat_printf( 0, "CRI: abort: port initialisation failed: %d", (int) portid );
+					rte_exit(EXIT_FAILURE, "Cannot init port %"PRIu8 "\n", portid);
+				} else {
+					bleat_printf( 2, "port initialisation successful for port %d", portid );
+				}
+				
+			
+				rte_eth_macaddr_get(portid, &addr);
+				bleat_printf( 1,  "mapping port: %u, MAC: %02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ", ",
+						(unsigned)portid,
+						addr.addr_bytes[0], addr.addr_bytes[1],
+						addr.addr_bytes[2], addr.addr_bytes[3],
+						addr.addr_bytes[4], addr.addr_bytes[5]);
+	
+				bleat_printf( 1, "driver: %s, index %d, pkts rx: %lu", dev_info.driver_name, dev_info.if_index, st.pcount);
+				bleat_printf( 1, "pci: %04X:%02X:%02X.%01X, max VF's: %d", dev_info.pci_dev->addr.domain, dev_info.pci_dev->addr.bus,
+					dev_info.pci_dev->addr.devid , dev_info.pci_dev->addr.function, dev_info.max_vfs );
+			} else {
+				port2config_map[portid] = -1;					// we must not allow an interrupt to map (we shouldn't get interrupts, but be parinoid)
+				bleat_printf( 0, "pf %d (%s) is NOT in vfd config file and was not initialised", portid, pciid );
+			}
 	  	}
+		bleat_printf( 2, "port initialisation complete" );
 
 		// read PCI config to get VM offset and stride 
 		struct rte_eth_dev *pf_dev = &rte_eth_devices[0];
 		rte_eal_pci_read_config(pf_dev->pci_dev, &pci_control_r, 32, 0x174);
 		vf_offfset = pci_control_r & 0x0ffff;
 		vf_stride = pci_control_r >> 16;
-		bleat_printf( 2, "indexes were mapped" );
 	
 		set_signals();												// register signal handlers 
 
@@ -1340,17 +1285,21 @@ int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 		}
 	}
 
-	if( enable_qos ) {
+	if( g_parms->forreal && enable_qos ) {
 		for( p = 0; p < running_config->num_ports; p++ ) {
-			int* pctgs;
+			//int* pctgs;
 
-			pctgs = gen_tc_pctgs( &running_config->ports[p] );					// build the set of TC percentages for each configured VF
 			bleat_printf( 1, "enabling qos for p %d qos_option=%d", p, qos_option );
+/*
+			pctgs = gen_tc_pctgs( &running_config->ports[p] );					// build the set of TC percentages for each configured VF
 			enable_dcb_qos( &running_config->ports[p], pctgs, 0, qos_option );
 			free( pctgs );
+*/
+
+			vfd_dcb_config( p );
 		}
 	}  else {
-		bleat_printf( 1, "qos is disabled" );
+		bleat_printf( 1, "qos is disabled or forreal mode is off" );
 	}
 
 	
