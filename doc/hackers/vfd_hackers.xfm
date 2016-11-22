@@ -672,6 +672,11 @@ VFd will enforce this limit by rejecting the attempt to add a VF configuration i
 supplied in the configuration file causes the total number of VLAN IDs defined for the PF to exceed this 
 value.
 
+&h2( Kernel Version )
+A kernel version of  3.16.0-60 or later is required. 
+VFd will likely run on earlier kernels, but there have been some which presented very odd packet dropping
+behavour with earlier versions.
+
 
 .** -----------------------------------------------------------------------------------------------
 .if tfm
