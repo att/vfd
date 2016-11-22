@@ -7,4 +7,8 @@ The directories here contain the VFD code and some system tools such as the iple
 command line interface tool which is used to interact with the daemon. 
 
 
-(Requires dpdk version 16.07)
+Some requirements:
+	- DPDK version 16.07 with special AT&T patches (https://github.com/att/dpdk)
+	- Linux kernel version  3.16.0-60 or later.  (VFd will execute on earlier kernels,
+	  however there will be odd behavour with respect to packet dropping in one or 
+	  both directions with seem to be related to shared memory.)
