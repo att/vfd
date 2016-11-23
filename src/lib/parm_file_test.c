@@ -20,6 +20,12 @@
 
 void pprint( parms_t* parms ) {
 	int  i, j, k, l;
+	 tc_class_t* tcp;		// pointer at a traffic class block
+
+	if( ! parms ) {
+		fprintf( stderr, "[FAIL] parm pointer was nil\n" );
+		return;
+	}
 
 	fprintf( stderr, "  parms read:\n" );
 	fprintf( stderr, "\tlog dir: %s\n", parms->log_dir );
@@ -36,31 +42,37 @@ void pprint( parms_t* parms ) {
 	for( i = 0; i < parms->npciids; i++ ) {
 		fprintf( stderr, "\tpciid[%d]: %s %d flags=%02x\n", i, parms->pciids[i].id, parms->pciids[i].mtu, parms->pciids[i].flags );
         for( j = 0; j < parms->pciids[i].ntcs; j++ ) {
-            if( parms->pciids[i].tcs[j] != 0 ) {
-                fprintf( stderr, "\ttclasses[%d]: %s, flags=%02x, max_bw: %d, min_bw: %d\n", j, parms->pciids[i].tcs[j]->hr_name, parms->pciids[i].tcs[j]->flags, parms->pciids[i].tcs[j]->max_bw, parms->pciids[i].tcs[j]->min_bw );
-            }
+            if( (tcp = parms->pciids[i].tcs[j]) != NULL ) {				// traffic class defined for this priority
+                fprintf( stderr, "\t\ttclasses[%d]: %s, flags=%02x, max_bw: %d, min_bw: %d\n", j, tcp->hr_name, tcp->flags, tcp->max_bw, tcp->min_bw );
+            } else {
+				fprintf( stderr, "\t\ttclasses[%d] not found\n", j );
+			}
         }
         for( k = 0; k < sizeof(parms->pciids[i].bw_grps)/sizeof(bw_grp_t); k++) {
-            fprintf(stderr, "\tbw_grps[%d]\n", k);
+            fprintf(stderr, "\t\tbw_grps[%d]", k);
             for( l = 0; l < parms->pciids[i].bw_grps[k].ntcs; l++) {
-                fprintf( stderr, "\t\t%d\n", parms->pciids[i].bw_grps[k].tcs[l]);
+                fprintf( stderr, " %d", parms->pciids[i].bw_grps[k].tcs[l]);
             }
+            fprintf(stderr, "\n" );
         }
 	}
 }
 
 int main( int argc, char** argv ) {
-	char*	fname = argv[1];
+	char*	fname;
 	parms_t* parms;
 	int	rc = 0;
 
 	if( argv[1] != NULL ) {
 		fname = argv[1];
+	} else {
+		fprintf( stderr, "[FAIL] missing parm file name on command line\n" );
+		exit( 1 );
 	}
+
 	parms = read_parms( fname );
 	if( parms == NULL ) {
 		fprintf( stderr, "[FAIL] unable to read parm file %s: %s\n", fname, strerror( errno ) );
-		pprint( parms );
 		free_parms( parms );
 		rc = 1;
 	} else {

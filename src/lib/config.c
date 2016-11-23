@@ -1,4 +1,4 @@
-
+// :vi noet tw=4 ts=4:
 /*
 	Mnemonic:	config.c
 	Abstract:	Functions to read and parse the various config files.
@@ -11,6 +11,7 @@
 				13 Jun 2016 : Changes to allow the more fine graned primative type
 					checking in jwrapper to be used.
 				16 Jun 2016 : Add option to allow loop-back.
+				18 Oct 2016 : Add chenges to support new QoS entries.
 */
 
 #include <fcntl.h>
@@ -27,6 +28,8 @@
 // -------------------------------------------------------------------------------------
 #define SFREE(p) if((p)){free(p);}			// safe free (free shouldn't balk on nil, but don't chance it)
 
+// Ensure low <= v <= high and return v == low if below or v == high if v is over.
+#define IBOUND(v,low,high) ((v) < (low) ? (low) : ((v) > (high) ? (high) : (v)))
 
 // ---- vfd configuration (parms) ------------------------------------------------------
 
@@ -123,6 +126,7 @@ extern parms_t* read_parms( char* fname ) {
 	void*		pobj;			// parsed sub object
 	char*		buf;			// buffer read from file (nil terminated)
 	char*		stuff;
+	char		sm_wrk[128];	// small work buffer
 	int			i, j, k;
 	int			def_mtu;		// default mtu (pulled and used to set pciid struct, but not kept in parms
     tc_class_t* tc_class_ptr;    // ponter to heap location
@@ -194,7 +198,12 @@ extern parms_t* read_parms( char* fname ) {
 		}
 
 		if( (parms->npciids = jw_array_len( jblob, "pciids" )) > 0 ) {			// pick up the list of pciids
-			parms->pciids = (pfdef_t *) malloc( sizeof( *parms->pciids ) * parms->npciids );
+			if( (parms->pciids = (pfdef_t *) malloc( sizeof( *parms->pciids ) * parms->npciids )) == NULL ) {
+				errno = ENOMEM;
+				jw_nuke( jblob );
+				free_parms( parms );
+				return NULL;
+			}
 			memset( parms->pciids, 0, sizeof( *parms->pciids ) * parms->npciids );
 
 			if( parms->pciids != NULL ) {
@@ -206,10 +215,14 @@ extern parms_t* read_parms( char* fname ) {
 						parms->pciids[i].flags &= ~PFF_LOOP_BACK;
 					} else {
 						if( (pobj = jw_obj_ele( jblob, "pciids", i )) != NULL ) {		// full pciid object -- take values from it
+							int jntcs;				// number of tc objects in the json
+
 							if( (stuff = jw_string( pobj, "id" )) == NULL ) {
-								stuff = strdup( "missing-id" );
+								snprintf( sm_wrk, sizeof( sm_wrk ),  "missing-id" );
+								stuff = sm_wrk;
 							}
 							parms->pciids[i].id = strdup( stuff );
+
 							parms->pciids[i].mtu = !jw_is_value( pobj, "mtu" ) ? def_mtu : (int) jw_value( pobj, "mtu" );
 							if( !jw_is_bool( pobj, "enable_loopback" ) ? 0 : (int) jw_value( pobj, "enable_loopback" ) ) {		// default to false if not there
 								parms->pciids[i].flags |= PFF_LOOP_BACK;
@@ -221,18 +234,38 @@ extern parms_t* read_parms( char* fname ) {
                             } else {
                                 parms->pciids[i].flags &= ~PFF_VF_OVERSUB;          // disable if set to false
                             }
-                            if( (parms->pciids[i].ntcs = jw_array_len( pobj, "tclasses" )) > 0 ) {  // pick up the list of tcclasses
-                                printf("%d\n", parms->pciids[i].ntcs);  // **Debugging purpose only
-                                tc_class_ptr = (tc_class_t*) malloc (sizeof(tc_class_t) * parms->pciids[i].ntcs);
-                                memset( tc_class_ptr, 0, sizeof(tc_class_t) * parms->pciids[i].ntcs );
-                                for( j = 0; j < parms->pciids[i].ntcs; j++ ) {
-                                    if( (tcobj = jw_obj_ele( pobj, "tclasses", j )) != NULL ) {
+                            
+                            parms->pciids[i].ntcs = 4;																// default to 4 and we will up to 8 if we see pri > 3
+                            if( (jntcs = jw_array_len( pobj, "tclasses" )) > 0 ) {					  				// number of tcs supplied in the json
+                                //fprintf( stderr, "parsing tclasses = %d\n", parms->pciids[i].ntcs);  // **Debugging purpose only
+                                if( (tc_class_ptr = (tc_class_t*) malloc (sizeof(tc_class_t) * MAX_TCS)) == NULL ) {	// allways allocate a full set
+									errno = ENOMEM;
+									jw_nuke( jblob );
+									free_parms( parms );
+									return NULL;
+								}
+                                memset( tc_class_ptr, 0, sizeof(tc_class_t) * MAX_TCS );
+								parms->pciids[i].tcs[0] = tc_class_ptr;									// dont chance that pri == 0 is always there; this ensures us a ptr to free
+
+                                for( j = 0; j < jntcs; j++ ) {
+                                    if( (tcobj = jw_obj_ele( pobj, "tclasses", j )) != NULL ) {					// pull out the next element
                                         priority = (int) jw_value( tcobj, "pri" );
-                                        parms->pciids[i].tcs[priority] = tc_class_ptr + priority;
+										if( priority < 0 || priority >= MAX_TCS ) {								// don't allow priority out of range
+											continue;
+										}
+
+										if( priority > 3 ) {
+                            				parms->pciids[i].ntcs = 8;
+										}
+
+                                        parms->pciids[i].tcs[priority] = tc_class_ptr + priority;				// use priority as index into the block allocated
+
                                         if( (stuff = jw_string( tcobj, "name" )) == NULL ) {
-                                            stuff = strdup( "TCpri" );
-                                        }
-                                        parms->pciids[i].tcs[priority]->hr_name = strdup( stuff );
+											snprintf( sm_wrk, sizeof( sm_wrk ), "TC-%d", priority );
+                                            stuff = sm_wrk;
+                                        } 
+                                       	parms->pciids[i].tcs[priority]->hr_name = strdup( stuff );
+
                                         if( !jw_is_bool( tcobj, "llatency" ) ? 0 : (int) jw_value( tcobj, "llatency" ) ) {
                                             parms->pciids[i].tcs[priority]->flags |= TCF_LOW_LATENCY;
                                         } else {
@@ -248,17 +281,16 @@ extern parms_t* read_parms( char* fname ) {
                                         } else {
                                             parms->pciids[i].tcs[priority]->flags &= ~TCF_LNK_STRICTP;
                                         }
-                                        parms->pciids[i].tcs[priority]->max_bw = !jw_is_value( tcobj, "max_bw" ) ? 100 : (int) jw_value( tcobj, "max_bw" );
-                                        parms->pciids[i].tcs[priority]->min_bw = (int) jw_value( tcobj, "min_bw" );
+                                        parms->pciids[i].tcs[priority]->max_bw = !jw_is_value( tcobj, "max_bw" ) ? 100 : IBOUND( (int)jw_value( tcobj, "max_bw" ), 1, 100 );
+                                        parms->pciids[i].tcs[priority]->min_bw = !jw_is_value( tcobj, "min_bw" ) ? 1 : IBOUND( (int)jw_value( tcobj, "min_bw" ), 1, 100 );
                                     } else {
-                                        // Remove printf
-                                        printf("Not able to handle tcobj\n");
+										fprintf( stderr, "internal mishap parsing tclasses from config file j=%d expected=%d\n", j, parms->pciids[i].ntcs );
+										jw_nuke( jblob );
+										free_parms( parms );
+										return NULL;
                                     }
                                 }
 
-                            } else {
-                                // Remove printf
-                                printf("Handle if something fails\n");
                             }
                             if (( bwgrpobj = jw_blob( pobj, "bw_grps" )) != NULL) {
                                 for ( j = 0; j < sizeof(parms->pciids[i].bw_grps)/sizeof(bw_grp_t); j++ ) {
@@ -276,9 +308,13 @@ extern parms_t* read_parms( char* fname ) {
 			} else {
 				parms->npciids = 0;			// memory failure; return zip
 			}
+		} else {
+			parms->npciids = 0;				// could be set to neg value as a return length; ensure 0 if missing or none
 		}
 
 		jw_nuke( jblob );
+	} else {
+		fprintf( stderr, "internal mishap parsing json blob\n" );
 	}
 
 	free( buf );
@@ -289,8 +325,14 @@ extern parms_t* read_parms( char* fname ) {
 	Cleanup a parm block and free the data.
 */
 extern void free_parms( parms_t* parms ) {
+	int i;
+
 	if( ! parms ) {
 		return;
+	}
+
+	for( i = 0; i < parms->npciids; i++ ) {
+		SFREE( parms->pciids[i].tcs[0] );			// all of the blocks are allocated in one hunk
 	}
 
 	SFREE( parms->log_dir );
