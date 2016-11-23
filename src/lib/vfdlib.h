@@ -32,7 +32,7 @@ typedef struct {
 #define PFF_LOOP_BACK	0x01		// loop back enabled flag
 #define PFF_VF_OVERSUB  0x02        // vf_oversubscription enabled flag
 
-#define MAX_TCS			8
+#define MAX_TCS			8			// max number of traffic classes supported (0 - 7)
 
 /*
 	pf_def -- definition info picked up from the parm file for a PF
@@ -40,10 +40,10 @@ typedef struct {
 typedef struct {
 	char*	id;
 	int		mtu;
-	unsigned int flags;		// PFF_ flag constants
-                            // QoS members
-    int32_t ntcs;           // number of TCs (4 or 8)
-    tc_class_t* tcs[8];     // defined TCs (0-3 or 0-8) position in the array is the priority (from pri in the json)
+	unsigned int flags;				// PFF_ flag constants
+									// QoS members
+    int32_t ntcs;					// number of TCs (4 or 8)
+    tc_class_t* tcs[MAX_TCS];		// defined TCs (0-3 or 0-8) position in the array is the priority (from pri in the json)
     bw_grp_t    bw_grps[8]; // definition of each bandwidth group
 } pfdef_t;
 
@@ -115,6 +115,7 @@ typedef struct {
 extern parms_t* read_parms( char* fname );
 extern vf_config_t*	read_config( char* fname );
 extern void free_config( vf_config_t* );
+extern void free_parms( parms_t* parms );
 
 //------------------ ng_flowmgr --------------------------------------------------------------------------
 void ng_flow_close( void *vf );
