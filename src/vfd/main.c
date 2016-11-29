@@ -1058,11 +1058,6 @@ int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 	}
 	g_parms->forreal = forreal;
 
-	if( enable_qos ) {							// set any running parms/flags that can be set based on command line
-		g_parms->rflags |= RF_ENABLE_QOS;
-	}
-	g_parms->forreal = forreal;
-
 	running_config = (sriov_conf_t *) malloc( sizeof( *running_config ) );
 	memset( running_config, 0, sizeof( *running_config ) );
 
