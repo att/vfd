@@ -16,6 +16,12 @@
 #define TCF_LOW_LATENCY 0x01
 #define TCF_BW_STRICTP  0x02
 #define TCF_LNK_STRICTP 0x04
+									// pfdef_t struct flags
+#define PFF_LOOP_BACK	0x01		// loop back enabled flag
+#define PFF_VF_OVERSUB  0x02        // vf_oversubscription enabled flag
+
+#define MAX_TCS			8			// max number of traffic classes supported (0 - 7)
+#define NUM_BWGS		8			// number of bandwidth groups
 
 typedef struct {
     char* hr_name;          // human readable name used for diagnostics
@@ -26,16 +32,17 @@ typedef struct {
 
 typedef struct {
     int32_t ntcs;           // number of TCs in the group
-    int32_t tcs[8];         // priority of each TC in the group (index into tcs array in pfdef_t)
+    int32_t tcs[MAX_TCS];	// priority of each TC in the group (index into tcs array in pfdef_t)
 } bw_grp_t;
-									// pfdef_t struct flags
-#define PFF_LOOP_BACK	0x01		// loop back enabled flag
-#define PFF_VF_OVERSUB  0x02        // vf_oversubscription enabled flag
-
-#define MAX_TCS			8			// max number of traffic classes supported (0 - 7)
 
 /*
-	pf_def -- definition info picked up from the parm file for a PF
+	pf_def_t -- definition info picked up from the parm file for a PF.
+	Traffic classes (tcs) exist as either 4 or 8 and are contiguous in
+	the array (0-3 or 0-7). The position is the priority and generally
+	accepted practice is that the higher the number the higher the
+	priority. If a traffic class is not supplied in the parm file
+	it might be represented by a nil pointer, or a pointer to a
+	default struct.
 */
 typedef struct {
 	char*	id;
@@ -43,36 +50,36 @@ typedef struct {
 	unsigned int flags;				// PFF_ flag constants
 									// QoS members
     int32_t ntcs;					// number of TCs (4 or 8)
-    tc_class_t* tcs[MAX_TCS];		// defined TCs (0-3 or 0-8) position in the array is the priority (from pri in the json)
-    bw_grp_t    bw_grps[8]; // definition of each bandwidth group
+    tc_class_t* tcs[MAX_TCS];		// defined TCs (0-3 or 0-7) position in the array is the priority (from pri in the json)
+    bw_grp_t    bw_grps[NUM_BWGS];	// definition of each bandwidth group
 } pfdef_t;
 
 /*
         Parameter file contents parsed from json
 */
 typedef struct {
-	char*	log_dir;        // directory where log files should be written
-	int		log_level;      // verbose (bleat) log level (set after initialisation)
-	int		init_log_level; // vlog level used during initialisation
+	char*	log_dir;        		// directory where log files should be written
+	int		log_level;      		// verbose (bleat) log level (set after initialisation)
+	int		init_log_level; 		// vlog level used during initialisation
 	int		dpdk_log_level;			// log level passed to dpdk; allow it to be different than verbose level
 	int		dpdk_init_log_level;	// log level for dpdk during initialisation
-	char*	fifo_path;      // path to fifo that cli will write to
-	int		log_keep;       // number of days of logs to keep (do we need this?)
-	int		delete_keep;	// if true we will keep the deleted config files in the confid directory (marked with trailing -)
-	char*	config_dir;     // directory where nova writes pf config files
-	char*	stats_path;		// filename where we might dump stats
-	char*	pid_fname;		// if we daemonise we should write our pid here.
-	char*	cpu_mask;		// should be something like 0x04, but could be decimal.  string so it can have lead 0x
+	char*	fifo_path;      		// path to fifo that cli will write to
+	int		log_keep;       		// number of days of logs to keep (do we need this?)
+	int		delete_keep;			// if true we will keep the deleted config files in the confid directory (marked with trailing -)
+	char*	config_dir;     		// directory where nova writes pf config files
+	char*	stats_path;				// filename where we might dump stats
+	char*	pid_fname;				// if we daemonise we should write our pid here.
+	char*	cpu_mask;				// should be something like 0x04, but could be decimal.  string so it can have lead 0x
 
-							// these things have no defaults
-	int		npciids;		// number of pciids specified for us to configure
-	pfdef_t*	pciids;		// list of the pciid and mtu settings from the config file. 
+									// these things have no defaults
+	int		npciids;				// number of pciids specified for us to configure
+	pfdef_t*	pciids;				// list of the pciid and mtu settings from the config file.
 
 
-							// these are NOT populated from the file, but are added so the struct can be the one stop shopping place for info
-	void*	rfifo;			// the read fifo 'handle' where we 'listen' for requests
-	int		forreal;		// if not set we don't execute any dpdk calls
-	int		initialised;	// all things have been initialised
+									// these are NOT populated from the file, but are added so the struct can be the one stop shopping place for info
+	void*	rfifo;					// the read fifo 'handle' where we 'listen' for requests
+	int		forreal;				// if not set we don't execute any dpdk calls
+	int		initialised;			// all things have been initialised
 } parms_t;
 
 /*
