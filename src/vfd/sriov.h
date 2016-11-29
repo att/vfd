@@ -184,7 +184,7 @@ struct vf_s
 	uid_t	owner;					// user id which 'owns' the VF (owner of the config file from stat())
 	char*	start_cb;				// user commands driven just after initialisation and just before termination
 	char*	stop_cb;
-	uint8_t	tc_pctgs[MAX_TCS];		// percentage of the TC that the VF has been allocated (configured)
+	uint8_t	qshares[MAX_TCS];		// percentage of each queue (TC) that has been set in the config for the vf
 };
 
 
@@ -200,21 +200,21 @@ struct mirror_s
 */
 typedef struct sriov_port_s
 {
-	int		flags;					// PF_ constants
-	int     rte_port_number;		// the real device number
-	char    name[64];
-	char    pciid[64];
-	int     last_updated;
-	int     mtu;
-	int     num_mirrors;
-	int		nvfs_config;			// actual number of configured vfs; could be less than max
-	int		ntcs;					// number traffic clases (must be 4 or 8)
-	//int		enable_loopback;		// allow VM-VM traffic looping back through the NIC
-	int     num_vfs;
-	struct  mirror_s mirror[MAX_VFS];
-	struct  vf_s vfs[MAX_VFS];
-	uint8_t	tc_pctgs[MAX_TCS];		// percentage of total bandwidth for each traffic class
-	uint8_t	tc2bwg[MAX_TCS];		// maps TCs to bandwidth groups
+	int			flags;					// PF_ constants (enable loopback etc.)
+	int     	rte_port_number;		// the real device number (as known by rte functions)
+	char    	name[64];				// human readable name (probalby unused)
+	char    	pciid[64];				// the ID of the device
+	int     	last_updated;			// flags a change
+	int     	mtu;
+	int     	num_mirrors;
+	int			nvfs_config;			// actual number of configured vfs; could be less than max
+	int			ntcs;					// number traffic clases (must be 4 or 8)
+	int     	num_vfs;
+	struct  	mirror_s mirror[MAX_VFS];
+	struct  	vf_s vfs[MAX_VFS];
+	tc_class_t*	tc_config[MAX_TCS];		// configuration information (max/min lsp/gsp) for the TC	(set from config)
+	uint8_t*	qshares;				// queue percentages arranged by vf/tc (computed with each add/del of a vf)
+	uint8_t		tc2bwg[MAX_TCS];		// maps each TC to a bandwidth group (set from config info)
 } sriov_port_t;
 
 /*
@@ -399,6 +399,9 @@ int is_valid_mac_str( char* mac );
 char*  gen_stats( sriov_conf_t* conf, int pf_only );
 
 
+// ---- new qos, merge up after initial testing ----
+void gen_port_qshares( sriov_port_t *port );
+int check_qs_oversub( struct sriov_port_s* port, uint8_t *qshares );
 
 //------- these are hacks and we  must find a good way to rid ourselves of them ------
 struct rth_eth_dev;

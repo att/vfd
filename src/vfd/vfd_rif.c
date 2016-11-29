@@ -6,6 +6,8 @@
 				iplex.
 	Author:		E. Scott Daniels
 	Date:		11 October 2016 (broken out of main.c)
+
+	Mods:		29 Nov 2016 : Add queue share support from vf config.
 */
 
 
@@ -50,7 +52,7 @@ extern int vfd_init_fifo( parms_t* parms ) {
 	Return code of 0 indicates failure; non-zero is success.
 	
 */
-extern int check_tcs( struct sriov_port_s* port, uint8_t *tc_pctgs ) {
+extern int check_qs_oversub( struct sriov_port_s* port, uint8_t *qshares ) {
 
 	int	totals[MAX_TCS];			// current pct totals
 	int	i;
@@ -62,19 +64,112 @@ extern int check_tcs( struct sriov_port_s* port, uint8_t *tc_pctgs ) {
 	for( i = 0; i < MAX_VFS; i++ ) {				// sum the pctgs for each TC across all VFs
 		if( port->vfs[i].num >= 0 ) {				// active VF
 			for( j = 0; j < MAX_TCS; j++ ) {
-				totals[j] += port->vfs[i].tc_pctgs[j];	// add in this total
+				totals[j] += port->vfs[i].qshares[j];	// add in this total
 			}
 		}
 	}
 
 	for( i = 0; i < MAX_TCS; i++ ) {
-		if( totals[i] + tc_pctgs[i] > 100 ) {
+		if( totals[i] + qshares[i] > 100 ) {
 			rc = 0;
-			bleat_printf( 1, "requested traffic class percentage causes limit to be exceeded: tc=%d current=%d requested=%d", i, totals[i], tc_pctgs[i] );
+			bleat_printf( 1, "requested traffic class percentage causes limit to be exceeded: tc=%d current=%d requested=%d", i, totals[i], qshares[i] );
 		}
 	}
 
 	return rc;
+}
+
+// -------------- queue share related things ------------------------------------------------------------------------
+/*
+	Generate the array of queue share percentages adjusting for under/over subscription such that the percentages
+	across each TC total exactly 100%.  The output array is grouped by VF (illustrated below) and attached to the
+	port's struct.
+
+	if 4 TCs
+		VF0-TC0 | VF0-TC1 | VF0-TC2 | VF0-TC3 | VF1-TC0 | VF1-TC1 | VF1-TC2 | VF1-TC3 | VF2-TC0 | VF2-TC1 | VF2-TC2 | VF2-TC3 | ...
+	if 8 TCs
+		VF0-TC0 | VF0-TC1 | VF0-TC2 | VF0-TC3 | VF0-TC4 | VF0-TC5 | VF0-TC6 | VF0-TC7 | VF1-TC0 | VF1-TC1 | VF1-TC2 | VF1-TC3 | ...
+
+	Over subscription policy is enforced when the VF's config file is parsed and added to the 
+	running config (rejected if over subscription is not allowed and the requested percentages
+	would take the values out of range). The sum for each TC is normalised here such that values 
+	are increased proportionally if the TC is undersubscribed, and reduced proportionally if the 
+	TC is over subscribed.
+
+	This should be called after every VF add/delete to recompute the queue shares across all.
+*/
+void gen_port_qshares( sriov_port_t *port ) {
+	uint8_t* norm_pctgs;				// normalised percentages (to be returned)
+	int 	i;
+	int		j;
+	int		sums[MAX_TCS];					// TC percentage sums
+	int		ntcs;							// number of TCs
+	double	v;								// computed value
+	int 	minv;							// min value observed
+	int		min_idx = 0;					// index where min value lives
+	double	factor;							// normalisation factor
+
+	norm_pctgs = (uint8_t *) malloc( sizeof( *norm_pctgs ) * MAX_QUEUES );
+	if( norm_pctgs == NULL ) {
+		bleat_printf( 0, "error: unable to allocate %d bytes for max-pctg array", sizeof( *norm_pctgs ) * MAX_QUEUES  );
+		return;
+	}
+	memset( norm_pctgs, 0, sizeof( *norm_pctgs ) * MAX_QUEUES );
+
+	ntcs = port->ntcs;
+	for( i = 0; i < ntcs; i++ ) {			// for each tc, compute the overall sum based on configured 
+		sums[i] = 0;
+
+		for( j = 0; j < MAX_VFS; j++ ) {
+			if( port->vfs[j].num >= 0 ) {					// only for active VFs
+				sums[i] += port->vfs[j].qshares[i];
+			}
+		}
+	}
+
+	for( i = 0; i < ntcs; i++ ) {
+		if( sums[i] != 100 ) {					// over/under subscribed; must normalise
+			factor = (double) sums[i] / 100.0;
+			sums[i] = 0;
+			minv = 100;
+
+			for( j = i; j < MAX_VFS; j++ ) {
+				if( port->vfs[j].num >= 0 ){					// active VF
+					v = port->vfs[j].qshares[i] * factor;		// adjust the configured value
+					norm_pctgs[(j*ntcs)+i] = (uint8_t) v;		// stash it, dropping fractional part
+
+					sums[i] += (int) v;
+					if( (int) v < minv ) {							// new min -- capture it's details
+						minv = (int) v;
+						min_idx = j;							// track where the min value was
+					}
+				}
+			}	
+
+			if( sums[i] < 100 ) {									// rounding will likely leave us short and DPDK demands an exact 100% total
+				norm_pctgs[(min_idx*ntcs)+i] += 100 - sums[i];		// give the fudge factor to the little guy
+			}
+		} else {
+			for( j = i; j < MAX_VFS; j++ ) {
+				norm_pctgs[(j*ntcs)+i] =  port->vfs[j].qshares[i];					// sum is 100, stash unchanged
+			}
+		}
+	}
+
+	if( bleat_will_it( 2 ) ) {
+		for( i = 0; i < 16; i++ ) {
+			bleat_printf( 2, "port %s qshares %d - %d:", port->name, i, i + 15 );
+				bleat_printf( 2, "\t %3d %3d %3d %3d %3d %3d %3d %3d   %3d %3d %3d %3d %3d %3d %3d %3d", 
+					norm_pctgs[i], norm_pctgs[i+1], norm_pctgs[i+2], norm_pctgs[i+3], norm_pctgs[i+4], norm_pctgs[i+5], norm_pctgs[i+6], norm_pctgs[i+7],
+					norm_pctgs[i+8], norm_pctgs[i+9], norm_pctgs[i+10], norm_pctgs[i+11], norm_pctgs[i+12], norm_pctgs[i+13], norm_pctgs[i+14], norm_pctgs[i+15] );
+		}
+	}
+
+	if( port->qshares != NULL ) {
+		free( port->qshares );
+	}
+
+	port->qshares = norm_pctgs;
 }
 
 //  --------------------- global config management ------------------------------------------------------------
@@ -86,32 +181,60 @@ extern int check_tcs( struct sriov_port_s* port, uint8_t *tc_pctgs ) {
 extern void vfd_add_ports( parms_t* parms, sriov_conf_t* conf ) {
 	static int called = 0;		// doesn't makes sense to do this more than once
 	int i;
+	int j;
+	int k;
 	int pidx = 0;				// port idx in conf list
 	struct sriov_port_s* port;
+	pfdef_t*	pfc;			// pointer to the config info for a port (pciid)
 
 	if( called )
 		return;
 	called = 1;
 	
 	for( i = 0; pidx < MAX_PORTS  && i < parms->npciids; i++, pidx++ ) {
+		pfc = &parms->pciids[i];					// point at the pf's configuration info
+
 		port = &conf->ports[pidx];
-		port->flags = 0;									// default all flags off
+		port->flags = 0;
 		port->last_updated = ADDED;												// flag newly added so the nic is configured next go round
 		snprintf( port->name, sizeof( port->name ), "port-%d",  i);				// TODO--- support getting a name from the config
-		snprintf( port->pciid, sizeof( port->pciid ), "%s", parms->pciids[i].id );
-		port->mtu = parms->pciids[i].mtu;
+		snprintf( port->pciid, sizeof( port->pciid ), "%s", pfc->id );
+		port->mtu = pfc->mtu;
 
-		if( parms->pciids[i].flags & PFF_LOOP_BACK ) {
+		if( pfc->flags & PFF_LOOP_BACK ) {
 			port->flags |= PF_LOOPBACK;											// enable VM->VM traffic without leaving nic
 		}
-		if( parms->pciids[i].flags & PFF_VF_OVERSUB ) {
+		if( pfc->flags & PFF_VF_OVERSUB ) {
 			port->flags |= PF_OVERSUB;											// enable VM->VM traffic without leaving nic
 		}
 
 		port->num_mirrors = 0;
 		port->num_vfs = 0;
+		port->ntcs = pfc->ntcs;					// number of traffic classes to maintain
 		
-		bleat_printf( 1, "add pciid to in memory config: %s mtu=%d", parms->pciids[i].id, parms->pciids[i].mtu );
+		for( j = 0; j < MAX_TCS; j++ ) {
+			port->tc_config[j] = pfc->tcs[j];	// point at the config struct
+			pfc->tcs[j] = NULL;					// unmark it so it won't free	
+		}
+
+		memset( port->tc2bwg, 0, sizeof( port->tc2bwg ) );		// by default a tc is in group 0
+		for( j = 0; j < NUM_BWGS; j++ ) {					// set the map which defines the bandwidth group each TC belongs to
+			bw_grp_t*	bwg;
+			
+			bwg = &pfc->bw_grps[j];
+			for( k = 0; k < bwg->ntcs; k++ ) {
+				port->tc2bwg[bwg->tcs[k]] = j;	// map the TC to this bw group
+			}
+		}
+
+		if( bleat_will_it( 2 ) ) {
+			bleat_printf( 2, "pf %d configured: %s %s mtu=%d flags-0x02x ntcs==%d", i, port->name, port->pciid, port->mtu, port->flags, port->ntcs );
+			for( j = 0; j < MAX_TCS; j++ ) {
+				if( port->tc_config[j] != NULL ) {
+					bleat_printf( 2, "pf %d tc[%d]: flags=0x%02x min=%d bwg=%d", i, j, port->tc_config[j]->flags, port->tc_config[j]->min_bw,  port->tc2bwg[j] );
+				}
+			}
+		}
 	}
 
 	conf->num_ports = pidx;
@@ -368,8 +491,8 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		}
 	}
 
-	if( ! (port->flags & PF_OVERSUB) ) {						// if in strict mode, ensure TC amounts can be added to current settings without busting ceil
-		if( ! check_tcs( port, vfc->tc_pctgs ) ) {
+	if( ! (port->flags & PF_OVERSUB) ) {						// if in strict mode, ensure TC amounts can be added to current settings without busting 100% cap
+		if( ! check_qs_oversub( port, vfc->qshare ) ) {
 			snprintf( mbuf, sizeof( mbuf ), "TC percentages cause one or more total allocation to exceed 100%%" );
 			bleat_printf( 1, "vf not added: %s", mbuf );
 			if( reason ) {
@@ -398,7 +521,10 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		return 0;
 	}
 
+	// -------------------------------------------------------------------------------------------------------------
 	// CAUTION: if we fail because of a parm error it MUST happen before here!
+
+	// All validation was successful, safe to update the config data
 	if( vidx == port->num_vfs ) {		// inserting at end, bump the num we have used
 		port->num_vfs++;
 	}
@@ -459,6 +585,10 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		strcpy( vf->macs[i], vfc->macs[i] );		// we vet for length earlier, so this is safe.
 	}
 	vf->num_macs = vfc->nmacs;
+
+	for( i = 0; i < MAX_TCS; i++ ) {				// copy in the VF's share of each traffic class (percentage)
+		vf->qshares[i] = vfc->qshare[i];
+	}
 
 	if( reason ) {
 		*reason = NULL;

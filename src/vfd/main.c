@@ -182,74 +182,6 @@ static void run_stop_cbs( sriov_conf_t* conf ) {
 	}
 }
 
-// --- qos specific things ---------------------------------------------------------------------------------------
-/*
-	Generate the array of TC percentages adjusting for under/over subscription such that the percentages
-	across each TC total exactly 100%.  The output array is grouped by VF:
-	if 4 TCs
-		VF0-TC0 | VF0-TC1 | VF0-TC2 | VF0-TC3 | VF1-TC0 | VF1-TC1 | VF1-TC2 | VF1-TC3 | VF2-TC0 | VF2-TC1 | VF2-TC2 | VF2-TC3 | ...
-	if 8 TCs
-		VF0-TC0 | VF0-TC1 | VF0-TC2 | VF0-TC3 | VF0-TC4 | VF0-TC5 | VF0-TC6 | VF0-TC7 | VF1-TC0 | VF1-TC1 | VF1-TC2 | VF1-TC3 | ...
-
-	Oversubscription policy is enforced when the VF's config file is parsed and added to the 
-	running config.
-
-static int* gen_tc_pctgs( sriov_port_t *port ) {
-	int*	norm_pctgs;				// normalised percentages (to be returned)
-	int 	i;
-	int		j;
-	int		sums[MAX_TCS];					// TC percentage sums
-	int		ntcs;							// number of TCs
-	double	v;								// computed value
-	int 	minv;							// min value observed
-	double	factor;
-
-	norm_pctgs = (int *) malloc( sizeof( *norm_pctgs ) * MAX_QUEUES );
-	if( norm_pctgs == NULL ) {
-		bleat_printf( 0, "error: unable to allocate %d bytes for max-pctg array", sizeof( *norm_pctgs ) * MAX_QUEUES  );
-		return NULL;
-	}
-	memset( norm_pctgs, 0, sizeof( *norm_pctgs ) * MAX_QUEUES );
-
-	ntcs = port->ntcs;
-	for( i = 0; i < port->ntcs; i++ ) {			// for each tc, compute the overall sum based on configured 
-		sums[i] = 0;
-
-		for( j = 0; j < MAX_VFS; j++ ) {
-			if( port->vfs[j].num >= 0 ) {		// if an active VF
-				sums[i] += port->vfs[j].tc_pctgs[i];
-			}
-		}
-	}
-
-	for( i = 0; i < ntcs; i++ ) {
-		if( sums[i] != 100 ) {					// over/under subscribed; must normalise
-			factor = (double) sums[i] / 100.0;
-			sums[i] = 0;
-			minv = 100;
-
-			for( j = i; j < MAX_VFS; j++ ) {
-				if( port->vfs[j].num >= 0 ){					// active VF
-					v = port->vfs[j].tc_pctgs[i] * factor;		// adjust the configured value
-					norm_pctgs[(j*ntcs)+i] = (uint8_t) v;		// stash it, dropping fractional part
-
-					if( v < minv ) {							// new min -- capture it's details
-						minv = v;
-					}
-				}
-			}	
-		} else {
-			for( j = i; j < MAX_VFS; j++ ) {
-				norm_pctgs[(j*ntcs)+i] =  port->vfs[j].tc_pctgs[i];					// sum is 100, stash unchanged
-			}
-		}
-	}
-
-	return norm_pctgs;
-}
-*/
-
-
 // --- callback/mailbox support - depend on global parms ---------------------------------------------------------
 
 /*
@@ -649,7 +581,8 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
     uint32_t vf_mask;
     int y;
 
-	if( parms->initialised == 0 ) {
+	//if( parms->initialised == 0 ) {
+	if( (parms->rflags & RF_INITIALISED) == 0 ) {
 		bleat_printf( 2, "update_nic: not initialised, nic settings not updated" );
 		return 0;
 	}
@@ -1041,7 +974,7 @@ main(int argc, char **argv)
 	int		forreal = 1;				// -n sets to 0 to keep us from actually fiddling the nic
 	int		opt;
 	int		fd = -1;
-	int		enable_qos = 1;			// on by default -q turns it off
+	int		enable_qos = 0;				// off by default enable_qos in config should be used to set on
 	int		state;
 int p;
 int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
@@ -1055,7 +988,7 @@ int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 		"\t -f        keep in 'foreground'\n"
 		"\t -n        no-nic actions executed\n"
 		"\t -p <file> parmm file (/etc/vfd/vfd.cfg)\n"
-		"\t -q        disable dcb qos (tmp until parm file config added)\n"
+		"\t -q        enable dcb qos (use config file parm as general rule)\n"
 		"\t -h|?  Display this help screen\n"
 		"\n";
 
@@ -1096,7 +1029,7 @@ int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 		  break;
 
 		case 'q':
-			enable_qos = 0;
+			enable_qos = 1;
 			break;
 
 		case 'h':
@@ -1121,10 +1054,14 @@ int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 	}
 	free( parm_file );
 
+	if( enable_qos ) {							// set any running parms/flags that can be set based on command line
+		g_parms->rflags |= RF_ENABLE_QOS;
+	}
+	g_parms->forreal = forreal;
+
 	running_config = (sriov_conf_t *) malloc( sizeof( *running_config ) );
 	memset( running_config, 0, sizeof( *running_config ) );
 
-	g_parms->forreal = forreal;												// fill in command line captured things that are passed in parms
 
 	snprintf( log_file, BUF_1K, "%s/vfd.log", g_parms->log_dir );
 	if( run_asynch ) {
@@ -1270,11 +1207,11 @@ int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 	}
 
 	if( g_parms->forreal ) {
-		g_parms->initialised = 1;										// safe to update nic now, but only if in forreal mode
+		g_parms->rflags |= RF_INITIALISED;							// safe to update nic now (modulo forreal mode setting of course)
 	}
 
 
-	vfd_add_all_vfs( g_parms, running_config );						// read all existing config files and add the VFs to the config
+	vfd_add_all_vfs( g_parms, running_config );							// read all existing config files and add the VFs to the config
 	if( vfd_update_nic( g_parms, running_config ) != 0 ) {				// now that dpdk is initialised run the list and 'activate' everything
 		bleat_printf( 0, "CRI: abort: unable to initialise nic with base config:" );
 		if( forreal ) {
@@ -1284,15 +1221,12 @@ int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 		}
 	}
 
-	if( g_parms->forreal && enable_qos ) {
+	if( g_parms->forreal && (g_parms->rflags & RF_ENABLE_QOS) ) {
 		for( p = 0; p < running_config->num_ports; p++ ) {
-			//int* pctgs;
-
 			bleat_printf( 1, "enabling qos for p %d qos_option=%d", p, qos_option );
+			gen_port_qshares( &running_config->ports[p] );					// build the set of TC percentages for each configured VF and store in port struct
 /*
-			pctgs = gen_tc_pctgs( &running_config->ports[p] );					// build the set of TC percentages for each configured VF
 			enable_dcb_qos( &running_config->ports[p], pctgs, 0, qos_option );
-			free( pctgs );
 */
 
 			vfd_dcb_config( p );
