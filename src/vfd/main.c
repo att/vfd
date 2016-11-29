@@ -1052,7 +1052,6 @@ int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 		fprintf( stderr, "CRI: unable to read configuration from %s: %s\n", parm_file, strerror( errno ) );
 		exit( 1 );
 	}
-	free( parm_file );
 
 	if( enable_qos ) {							// set any running parms/flags that can be set based on command line
 		g_parms->rflags |= RF_ENABLE_QOS;
@@ -1160,7 +1159,7 @@ int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 			}
 
 			if( found ) {															// initialise only if in our confilg file list (we may not manage everything)
-				if( enable_qos ) {
+				if( g_parms->rflags & RF_ENABLE_QOS ) {
 					state = dcb_port_init(portid, mbuf_pool);
 				} else {
 					state = port_init(portid, mbuf_pool);
@@ -1243,6 +1242,8 @@ int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 	if( forreal ) {
 		rte_set_log_level( g_parms->dpdk_log_level );
 	}
+
+	free( parm_file );			// now it's safe to free the parm file
 
 	while(!terminated)
 	{
