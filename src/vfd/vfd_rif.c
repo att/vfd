@@ -61,7 +61,7 @@ extern int check_qs_oversub( struct sriov_port_s* port, uint8_t *qshares ) {
 
 	memset( totals, 0, sizeof( totals ) );
 
-	for( i = 0; i < MAX_VFS; i++ ) {				// sum the pctgs for each TC across all VFs
+	for( i = 0; i < port->num_vfs; i++ ) {			// sum the pctgs for each TC across all VFs
 		if( port->vfs[i].num >= 0 ) {				// active VF
 			for( j = 0; j < MAX_TCS; j++ ) {
 				totals[j] += port->vfs[i].qshares[j];	// add in this total
@@ -107,6 +107,7 @@ void gen_port_qshares( sriov_port_t *port ) {
 	double	v;								// computed value
 	int 	minv;							// min value observed
 	int		min_idx = 0;					// index where min value lives
+	int		vfid;							// the vf number we are looking at
 	double	factor;							// normalisation factor
 
 	norm_pctgs = (uint8_t *) malloc( sizeof( *norm_pctgs ) * MAX_QUEUES );
@@ -120,7 +121,7 @@ void gen_port_qshares( sriov_port_t *port ) {
 	for( i = 0; i < ntcs; i++ ) {			// for each tc, compute the overall sum based on configured 
 		sums[i] = 0;
 
-		for( j = 0; j < MAX_VFS; j++ ) {
+		for( j = 0; j < port->num_vfs; j++ ) {
 			if( port->vfs[j].num >= 0 ) {					// only for active VFs
 				sums[i] += port->vfs[j].qshares[i];
 			}
@@ -133,32 +134,34 @@ void gen_port_qshares( sriov_port_t *port ) {
 			sums[i] = 0;
 			minv = 100;
 
-			for( j = i; j < MAX_VFS; j++ ) {
-				if( port->vfs[j].num >= 0 ){					// active VF
+			for( j = i; j < port->num_vfs; j++ ) {
+				if( (vfid = port->vfs[j].num) >= 0 ) {			// only deal with active VFs
 					v = port->vfs[j].qshares[i] * factor;		// adjust the configured value
-					norm_pctgs[(j*ntcs)+i] = (uint8_t) v;		// stash it, dropping fractional part
+					norm_pctgs[(vfid * ntcs)+i] = (uint8_t) v;	// stash it, dropping fractional part
 
 					sums[i] += (int) v;
-					if( (int) v < minv ) {							// new min -- capture it's details
+					if( (int) v < minv ) {					// new min -- capture it's details
 						minv = (int) v;
-						min_idx = j;							// track where the min value was
+						min_idx = vfid;						// track where the min value was
 					}
 				}
 			}	
 
 			if( sums[i] < 100 ) {									// rounding will likely leave us short and DPDK demands an exact 100% total
-				norm_pctgs[(min_idx*ntcs)+i] += 100 - sums[i];		// give the fudge factor to the little guy
+				norm_pctgs[(min_idx * ntcs)+i] += 100 - sums[i];		// give the fudge factor to the little guy
 			}
 		} else {
-			for( j = i; j < MAX_VFS; j++ ) {
-				norm_pctgs[(j*ntcs)+i] =  port->vfs[j].qshares[i];					// sum is 100, stash unchanged
+			for( j = i; j < port->num_vfs; j++ ) {
+				if( (vfid = port->vfs[j].num) >= 0 ){								// active VF
+					norm_pctgs[(vfid * ntcs)+i] =  port->vfs[j].qshares[i];			// sum is 100, stash unchanged
+				}
 			}
 		}
 	}
 
 	if( bleat_will_it( 2 ) ) {
-		for( i = 0; i < 16; i++ ) {
-			bleat_printf( 2, "port %s qshares %d - %d:", port->name, i, i + 15 );
+		for( i = 0; i < MAX_QUEUES; i += 16 ) {
+			bleat_printf( 2, "port %s qshares %d - %d:", port->name, i, i + 15  );
 				bleat_printf( 2, "\t %3d %3d %3d %3d %3d %3d %3d %3d   %3d %3d %3d %3d %3d %3d %3d %3d", 
 					norm_pctgs[i], norm_pctgs[i+1], norm_pctgs[i+2], norm_pctgs[i+3], norm_pctgs[i+4], norm_pctgs[i+5], norm_pctgs[i+6], norm_pctgs[i+7],
 					norm_pctgs[i+8], norm_pctgs[i+9], norm_pctgs[i+10], norm_pctgs[i+11], norm_pctgs[i+12], norm_pctgs[i+13], norm_pctgs[i+14], norm_pctgs[i+15] );
