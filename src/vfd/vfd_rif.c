@@ -107,7 +107,7 @@ void gen_port_qshares( sriov_port_t *port ) {
 	double	v;								// computed value
 	int 	minv;							// min value observed
 	int		min_idx = 0;					// index where min value lives
-	int		vfid;							// the vf number we are looking at
+	int		vfid;							// the vf number we are looking at (vf # might not coorespond to index in table)
 	double	factor;							// normalisation factor
 
 	norm_pctgs = (uint8_t *) malloc( sizeof( *norm_pctgs ) * MAX_QUEUES );
@@ -121,25 +121,30 @@ void gen_port_qshares( sriov_port_t *port ) {
 	for( i = 0; i < ntcs; i++ ) {			// for each tc, compute the overall sum based on configured 
 		sums[i] = 0;
 
+bleat_printf( 1, ">>> num vfs=%d", port->num_vfs );
 		for( j = 0; j < port->num_vfs; j++ ) {
 			if( port->vfs[j].num >= 0 ) {					// only for active VFs
+bleat_printf( 1, ">>> add to sum tc=%d vf=%d sum=%d share=%d", i, port->vfs[j].num, sums[i], port->vfs[j].qshares[i] );
 				sums[i] += port->vfs[j].qshares[i];
 			}
 		}
+bleat_printf( 1, ">>> final sum tc=%d sum=%d ", i, sums[i] );
 	}
 
 	for( i = 0; i < ntcs; i++ ) {
-		if( sums[i] != 100 ) {					// over/under subscribed; must normalise
-			factor = (double) sums[i] / 100.0;
+		if( sums[i] != 100 ) {									// over/under subscribed; must normalise
+			factor = 100.0 / (double) sums[i];
+bleat_printf( 1, ">>> tc=%d factor=%.2f sum=%d", i, factor, sums[i] );
 			sums[i] = 0;
 			minv = 100;
 
-			for( j = i; j < port->num_vfs; j++ ) {
+			for( j = 0; j < port->num_vfs; j++ ) {
 				if( (vfid = port->vfs[j].num) >= 0 ) {			// only deal with active VFs
 					v = port->vfs[j].qshares[i] * factor;		// adjust the configured value
 					norm_pctgs[(vfid * ntcs)+i] = (uint8_t) v;	// stash it, dropping fractional part
 
 					sums[i] += (int) v;
+bleat_printf( 1, ">>> active vf=%d shares=%d sum=%d val=%.2f", j,  port->vfs[j].qshares[i],  sums[i], v );
 					if( (int) v < minv ) {					// new min -- capture it's details
 						minv = (int) v;
 						min_idx = vfid;						// track where the min value was
@@ -148,9 +153,15 @@ void gen_port_qshares( sriov_port_t *port ) {
 			}	
 
 			if( sums[i] < 100 ) {									// rounding will likely leave us short and DPDK demands an exact 100% total
-				norm_pctgs[(min_idx * ntcs)+i] += 100 - sums[i];		// give the fudge factor to the little guy
+bleat_printf( 1, ">>> adjust min sum=%d minidx=%d offset=%d",  sums[i], min_idx, (min_idx * ntcs)+i );
+				for( j = 0; j < port->num_vfs && sums[i] < 100; j++ ) {
+					if( (vfid = port->vfs[j].num) >= 0 ) {
+						norm_pctgs[(vfid * ntcs)+i]++;		// fudge up each until we top off at 100; not fair, but did we promise to be?
+					}
+				}
 			}
 		} else {
+bleat_printf( 1, ">>> tc=%d sum=%d", i,  sums[i] );
 			for( j = i; j < port->num_vfs; j++ ) {
 				if( (vfid = port->vfs[j].num) >= 0 ){								// active VF
 					norm_pctgs[(vfid * ntcs)+i] =  port->vfs[j].qshares[i];			// sum is 100, stash unchanged
