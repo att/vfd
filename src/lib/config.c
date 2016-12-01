@@ -12,6 +12,7 @@
 					checking in jwrapper to be used.
 				16 Jun 2016 : Add option to allow loop-back.
 				18 Oct 2016 : Add chenges to support new QoS entries.
+				29 Nov 2016 : Added changes to support queue share in vf config.
 */
 
 #include <fcntl.h>
@@ -26,7 +27,8 @@
 #include "vfdlib.h"
 
 // -------------------------------------------------------------------------------------
-#define SFREE(p) if((p)){free(p);}			// safe free (free shouldn't balk on nil, but don't chance it)
+// safe free (free shouldn't balk on nil, but don't chance it)
+#define SFREE(p) if((p)){free(p);}			
 
 // Ensure low <= v <= high and return v == low if below or v == high if v is over.
 #define IBOUND(v,low,high) ((v) < (low) ? (low) : ((v) > (high) ? (high) : (v)))
@@ -156,6 +158,12 @@ extern parms_t* read_parms( char* fname ) {
 		parms->init_log_level = !jw_is_value( jblob, "init_log_level" ) ? 1 : (int) jw_value( jblob, "init_log_level" );
 		parms->log_keep = !jw_is_value( jblob, "log_keep" ) ? 30 : (int) jw_value( jblob, "log_keep" );
 		parms->delete_keep = !jw_is_bool( jblob, "delete_keep" ) ? 0 : (int) jw_value( jblob, "delete_keep" );
+		
+		if( jw_is_bool( jblob, "enable_qos" ) ) {
+			if( jw_value( jblob, "enable_qos" ) ) {
+				parms->rflags |= RF_ENABLE_QOS;
+			}
+		}
 
 		if( jw_missing( jblob, "default_mtu" ) ) {			// could be an old install using deprecated mtu, so look for that and default if neither is there
 			def_mtu = jw_missing( jblob, "mtu" ) ? 9000 : (int) jw_value( jblob, "mtu" );
@@ -358,6 +366,8 @@ extern vf_config_t*	read_config( char* fname ) {
 	int			val;
 	int			i;
 	uid_t		uid;
+	int			jnqueues;		// number of queue definitions in the json
+	void*		qobj;			// pointer to the queue object in the json
 
 	if( (buf = file_into_buf( fname, &uid )) == NULL ) {
 		return NULL;
@@ -452,6 +462,29 @@ extern vf_config_t*	read_config( char* fname ) {
 		} else {
 			vfc->nmacs = 0;		// if not set len() might return -1
 			vfc->macs = NULL;	// take no chances
+		}
+
+		// ---- pick up the qos parameters --------------------------
+		for( i = 0; i < MAX_TCS; i++ ) {
+			vfc->qshare[i] = 3;														// small default allowing 32 vfs to share evenly
+		}
+		if( (jnqueues = jw_array_len( jblob, "queues" )) > 0 ) {					// number of tcs supplied in the json
+			int pri;			// values converted from json block
+			int share;
+			char*	val;
+
+			for( i = 0; i < jnqueues; i++ ) {
+				if( (qobj = jw_obj_ele( jblob, "queues", i )) != NULL ) {			// pull out the next element as an object
+					pri = jw_missing( qobj, "priority" ) ? -1 : (int) jw_value( qobj, "priority" );
+					val = jw_string( qobj, "share" );
+					if( val ) {
+						share = atoi( val );
+						if( pri >= 0 && pri < 8 && share > 0 ) {
+							vfc->qshare[pri] = share;
+						}
+					}
+				}
+			}
 		}
 		
 		// TODO -- add code which picks up mirror stuff (jwrapper must be enhanced first)

@@ -37,6 +37,7 @@ void pprint( parms_t* parms ) {
 	fprintf( stderr, "\tcpu_mask: %s\n", parms->cpu_mask );
 	fprintf( stderr, "\tdpdk_log_level: %d\n", parms->dpdk_log_level );
 	fprintf( stderr, "\tdpdk_init_log_level: %d\n", parms->dpdk_init_log_level );
+	fprintf( stderr, "\trflags: 0x%02x\n", parms->rflags );
 
 	fprintf( stderr, "\tnpciids: %d\n", parms->npciids );
 	for( i = 0; i < parms->npciids; i++ ) {
