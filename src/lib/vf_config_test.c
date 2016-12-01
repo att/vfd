@@ -4,6 +4,8 @@
 				Tests obvious things, may miss edge cases.
 	Date:		04 February 2016
 	Author:		E. Scott Daniels
+
+	Mods:		29 Nov 2016 - Added qshare verification.
 */
 
 #include <unistd.h>
@@ -56,6 +58,12 @@ int main( int argc, char** argv ) {
 		for( i = 0; i < vfc->nmacs; i++ ) {
 			fprintf( stderr, "\t\tmac[%d] = %s\n", i, vfc->macs[i] );
 		}
+
+		fprintf( stderr, "\tqshares: " );
+		for( i = 0; i < 8; i++ ) {
+			fprintf( stderr, "%3d ", vfc->qshare[i] );
+		}
+		fprintf( stderr, "\n" );
 
 		free_config( vfc );
 	}

@@ -20,6 +20,10 @@
 #define PFF_LOOP_BACK	0x01		// loop back enabled flag
 #define PFF_VF_OVERSUB  0x02        // vf_oversubscription enabled flag
 
+									// flags set in parm struct related to running state
+#define RF_ENABLE_QOS	0x01		// enable qos
+#define RF_INITIALISED	0x02		// init has finished
+
 #define MAX_TCS			8			// max number of traffic classes supported (0 - 7)
 #define NUM_BWGS		8			// number of bandwidth groups
 
@@ -79,41 +83,40 @@ typedef struct {
 									// these are NOT populated from the file, but are added so the struct can be the one stop shopping place for info
 	void*	rfifo;					// the read fifo 'handle' where we 'listen' for requests
 	int		forreal;				// if not set we don't execute any dpdk calls
-	int		initialised;			// all things have been initialised
+	//int		initialised;			// all things have been initialised
+	int		rflags;					// running flags (RF_ constants)
 } parms_t;
 
 /*
-	vf config file data
+	Manages configuration information read from a specific vf config file.
 */
 typedef struct {
-	uid_t	owner;			// user id that owns the file (used for pre/post command execution)
-	char*	name;			// nova supplied name or id; mostly ignored by us, but possibly useful
-	char*	pciid;			// physical interface id (0000:07:00.1)
-	int		vfid;			// the vf on the pf 1-32
-	int		strip_stag;		// bool
-	int		allow_bcast;	// bool
-	int		allow_mcast;	// bool
-	int		allow_un_ucast;	// bool
-	int		antispoof_mac;	//	bool -- forced to true but here for future
-	int		antispoof_vlan;	//	bool -- forced to true but here for future
-	int		allow_untagged;	//	bool -- forced to true but here for future
-	char*	link_status;	// on, off, auto
-	char*	start_cb;		// external command/script to execute on the owner's behalf after we start up
-	char*	stop_cb;		// external command/script to execute on the owner's behalf just before we shutdown
-	char*	vm_mac;			// the mac to force onto the VF (optional)
-	int*	vlans;			// array of vlan IDs
-	int		nvlans;			// number of vlans allocated
-	char**	macs;			// array of mac addresses (filter)
-	int		nmacs;			// number of mac addresses
-	float	rate;			// percentage of the total link speed this to be confined to (rate limiting)
+	uid_t	owner;					// user id that owns the file (used for pre/post command execution)
+	char*	name;					// nova supplied name or id; mostly ignored by us, but possibly useful
+	char*	pciid;					// physical interface id (0000:07:00.1)
+	int		vfid;					// the vf on the pf 1-32
+	int		strip_stag;				// bool
+	int		allow_bcast;			// bool
+	int		allow_mcast;			// bool
+	int		allow_un_ucast;			// bool
+	int		antispoof_mac;			//	bool -- forced to true but here for future
+	int		antispoof_vlan;			//	bool -- forced to true but here for future
+	int		allow_untagged;			//	bool -- forced to true but here for future
+	char*	link_status;			// on, off, auto
+	char*	start_cb;				// external command/script to execute on the owner's behalf after we start up
+	char*	stop_cb;				// external command/script to execute on the owner's behalf just before we shutdown
+	char*	vm_mac;					// the mac to force onto the VF (optional)
+	int*	vlans;					// array of vlan IDs
+	int		nvlans;					// number of vlans allocated
+	char**	macs;					// array of mac addresses (filter)
+	int		nmacs;					// number of mac addresses
+	float	rate;					// percentage of the total link speed this to be confined to (rate limiting)
+	uint8_t	qshare[MAX_TCS];		// share (percentage) of each traffic class
 	// ignoring mirrors right now
 	/*
     "mirror":           [ { "vlan": 100; "vfid": 3 },
                           { "vlan": 430; "vfid": 6 } ]
 	*/
-	// ---- remove these when dj's code is published ------------
-	uint8_t tc_pctgs[MAX_TCS];
-	// ------------------------------------------------
 } vf_config_t;
 
 /*
