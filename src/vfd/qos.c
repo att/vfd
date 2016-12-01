@@ -3,6 +3,16 @@
 	Mnemonic:	qos.c
 	Abstract:	Functions to support management of qos related controls
 				on the NIC. 
+
+				CAUTION:  These are 'hard coded' direct NIC tweaking funcitons used
+					as an initial proof of concept for QoS validation.  Some of the
+					functionality implemented here exists in the 16.11 version of 
+					the ixgbe driver/dcb code within DPDK, some does not.  What 
+					does will be deprecated such that those functions are used 
+					directly, and what does not will be merged into the DPDK 
+					library with the intent of upstreaming them into a future 
+					release.
+
 	Author:		E. Scott Daniels
 	Date:		06 June 2016
 */
@@ -151,6 +161,10 @@ static void qos_set_tdplane( portid_t pf ) {
 	For now we set equally.
 
 	See qos_set_tdplane flower box for values.
+
+	Corresponding ixgbe function:
+		s32 ixgbe_dcb_config_tx_data_arbiter_82599(struct ixgbe_hw *hw, u16 *refill, u16 *max, u8 *bwg_id, u8 *tsa, u8 *map)
+
 */
 static void qos_set_txpplane( portid_t pf ) {
 	int i;
