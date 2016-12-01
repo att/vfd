@@ -170,8 +170,7 @@ static void qos_set_tdplane( portid_t pf ) {
 	Corresponding ixgbe function:
 		s32 ixgbe_dcb_config_tx_data_arbiter_82599(struct ixgbe_hw *hw, u16 *refill, u16 *max, u8 *bwg_id, u8 *tsa, u8 *map)
 
-
-	This should be covere by the current DPDK DCB mode setup.
+	This should be covered by the current DPDK DCB mode setup.
 */
 static void qos_set_txpplane( portid_t pf ) {
 	int i;
