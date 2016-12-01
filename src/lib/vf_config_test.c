@@ -39,8 +39,16 @@ int main( int argc, char** argv ) {
 		fprintf( stderr, "\tname: %s\n", vfc->name );
 		fprintf( stderr, "\tvfid: %d\n", vfc->vfid );
 		fprintf( stderr, "\tpciid: %s\n", vfc->pciid );
-		fprintf( stderr, "\tstart_cb: %s\n", vfc->start_cb );
-		fprintf( stderr, "\tstop_cb: %s\n", vfc->stop_cb );
+		if( vfc->start_cb != NULL ) {
+			fprintf( stderr, "\tstart_cb: %s\n", vfc->start_cb );
+		} else {
+			fprintf( stderr, "\tstart_cb: not supplied\n" );
+		}
+		if( vfc->stop_cb != NULL ) {
+			fprintf( stderr, "\tstop_cb: %s\n", vfc->stop_cb );
+		} else {
+			fprintf( stderr, "\tstop_cb: not supplied\n" );
+		}
 		fprintf( stderr, "\tstrip_stag: %d\n", vfc->strip_stag );
 		fprintf( stderr, "\tallow_bcast: %d\n", vfc->allow_bcast );
 		fprintf( stderr, "\tallow_mcast: %d\n", vfc->allow_mcast );

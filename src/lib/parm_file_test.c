@@ -28,8 +28,8 @@ void pprint( parms_t* parms ) {
 	}
 
 	fprintf( stderr, "  parms read:\n" );
-	fprintf( stderr, "\tlog dir: %s\n", parms->log_dir );
-	fprintf( stderr, "\tconfig_dir: %s\n", parms->config_dir );
+	fprintf( stderr, "\tlog dir: (%s)\n", parms->log_dir );				// in parens to verify trim function
+	fprintf( stderr, "\tconfig_dir: (%s)\n", parms->config_dir );
 	fprintf( stderr, "\tlog_level: %d\n", parms->log_level );
 	fprintf( stderr, "\tlog_keep: %d\n", parms->log_keep );
 	fprintf( stderr, "\tdelete_keep: %d\n", parms->delete_keep );
