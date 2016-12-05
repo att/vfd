@@ -32,11 +32,11 @@ APP = vfd
 # but dpdk make process shifts things away to the point that invoking a 
 # script here seemed even more dodgy.
 #
-VFD_VERSION = $(shell junk=$$( git log -n 1 | awk '/^[Cc]ommit / { cid=$$NF; next; } /Date:/ {$$1=""; d=$$0} END { printf( "%s|%s\n", cid, d ) }' );\
+VFD_VERSION = $(shell junk=$$( (git log -n 1 2>/dev/null || echo Commit non-git-build ) | awk '/^[Cc]ommit / { cid=$$NF; exit(0); } /Date:/ {$$1=""; d=$$0} END { printf( "%s|%s\n", cid, d ) }' );\
 	 cid="$${junk%%\|*}";\
 	 date="$${junk\#\#*\|}";\
 	 tag=$$( git tag -l --contains $$cid 2>/dev/null | head -1 );\
-	 mod=$$( git status | awk '/modified:/ { m="+++" } END { print m }' );\
+	 mod=$$( git status 2>/dev/null | awk '/modified:/ { m="+++" } END { print m }' );\
 	 printf "%s%s%s\n" "$$mod" "$$cid($$tag)" "$$date"; )
 
 # all source are stored in SRCS-y	(again, for the dpdk mk file)
