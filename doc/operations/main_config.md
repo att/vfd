@@ -13,7 +13,7 @@ is expected to contain a single json object with the following format.
     "init_log_level":      2,
     "config_dir":          "/var/lib/vfd/config",
     "fifo":                "/var/lib/vfd/request",
-    "cpu_mask":            "0x00",
+    "cpu_mask":            "0x01",
     "dpdk_log_level":      2,
     "dpdk_init_log_level": 8,
     "default_mtu":         9000,
@@ -32,26 +32,28 @@ is expected to contain a single json object with the following format.
 ```
 
 ## Main json fields
+Fields which are optional have the default value listed in parenthesis following the description.
 
-    `log_dir` 			is the directory where log files are to be placed
 
-    `log_keep`			is the number of days that VFd log files are to be kept
+    `log_dir` 			is the directory where log files are to be placed. (/var/log/vfd)
 
-    `log_level`			is the verbosity level for log messages after initialisation is complete
+    `log_keep`			is the number of days that VFd log files are to be kept. (30)
 
-    `init_log_level`	is the verbosity level for log messages during initialisation
+    `log_level`			is the verbosity level for log messages after initialisation is complete. (0)
 
-    `config_dir`		is the directory where configuration files are expected to be placed
+    `init_log_level`	is the verbosity level for log messages during initialisation. (1)
 
-    `fifo`				is the path of the fifo that VFd will create for iplex to use to make requests
+    `config_dir`		is the directory where configuration files are expected to be placed. (/var/lib/vfd/config)
 
-    `cpu_mask`			is the default cpu mask which is used when doing EAL initialisation
+    `fifo`				is the path of the fifo that VFd will create for iplex to use to make requests. (/var/lib/vfd/request)
 
-    `dpdk_log_level`	is the verbose level requested of the DPDK library after initialisation
+    `cpu_mask`			is the default cpu mask which is used when doing EAL initialisation. Must be nonzero.
 
-    `dpdk_init_log_level`	is the verbose level requested of the DPDK library during initialisation
+    `dpdk_log_level`	is the verbose level requested of the DPDK library after initialisation. (0)
 
-    `default_mtu`			is the MTU value used for any pci defined with out a value
+    `dpdk_init_log_level`	is the verbose level requested of the DPDK library during initialisation. (0)
+
+    `default_mtu`			is the MTU value used for any pci defined with out a value. (9000)
 
     `pciids` 			is an array of pci information 'objects'
 
@@ -60,8 +62,8 @@ is expected to contain a single json object with the following format.
 
 	`id`				is the address of the pci device
 
-	`mtu`				is the specific MTU which should be used (overrides default in main fields)
+	`mtu`				is the specific MTU which should be used. (default_mtu coded in main section)
 
-	`enable_loopback`	if true causes the bridging value to be set for the PF allowing VM to VM packet flow across the NIC
+	`enable_loopback`	if true causes the bridging value to be set for the PF allowing VM to VM packet flow across the NIC. (false)
 
 
