@@ -44,6 +44,8 @@
 							items from the list.
 				14 Oct 2016 - Changes to work with dpdk-1611 differences.
 				26 Oct 2016 - Removed invalid option listed in usage message. Added long version string support.
+                03 Jan 2017 - Add new string compare function to ignore case-sensitive strings,
+                            fix to link_status vfconfig param
 
 */
 
@@ -98,11 +100,40 @@ typedef struct request {
 static int vfd_update_nic( parms_t* parms, struct sriov_conf_c* conf );
 static char* gen_stats( struct sriov_conf_c* conf, int pf_only );
 
+static int stricmp(const char *s1, const char *s2);
+
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
 static const char* version = VFD_VERSION "   build: " __DATE__ " " __TIME__;
 static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
 
 // --- misc support ----------------------------------------------------------------------------------------------
+
+/*
+   Ignore case while comparing strings
+*/
+
+static int stricmp(const char *s1, const char *s2)
+{
+    char c1, c2;
+
+    if ( s1==s2 )
+        return 0;
+
+    if ( s1==0 )
+        return -1;
+
+    if ( s2==0 )
+        return 1;
+
+    do {
+        c1 = tolower(*s1);
+        c2 = tolower(*s2);
+        s1++;
+        s2++;
+    } while ( (c1 != 0) && (c1 == c2) );
+
+    return (int)(c1 - c2);
+}
 
 /*
 	Validate the string passed in contains a plausable MAC address of the form:
@@ -795,26 +826,17 @@ static int vfd_add_vf( struct sriov_conf_c* conf, char* fname, char** reason ) {
 	}
 
 	vf->link = 0;							// default if parm missing or mis-set (not fatal)
-	switch( *vfc->link_status ) {			// down, up or auto are allowed in config file
-		case 'a':
-		case 'A':
-			vf->link = 0;					// auto is really: use what is configured in the PF	
-			break;
-		case 'd':
-		case 'D':
-			vf->link = -1;
-			break;
-		case 'u':
-		case 'U':
-			vf->link = 1;
-			break;
-
-		
-		default:
-			bleat_printf( 1, "link_status not recognised in config: %s; defaulting to auto", vfc->link_status );
-			vf->link = 0;
-			break;
-	}
+    /* down, up or auto are allowed in config file */
+    if (!stricmp(vfc->link_status, "on")) {
+        vf->link = 1;
+    } else if (!stricmp(vfc->link_status, "off")) {
+        vf->link = -1;
+    } else if (!stricmp(vfc->link_status, "auto")) {
+        vf->link = 0;
+    } else {
+        bleat_printf( 1, "link_status not recognised in config: %s; defaulting to auto", vfc->link_status );
+        vf->link = 0;
+    }
 	
 	for( i = 0; i < vfc->nvlans; i++ ) {
 		vf->vlans[i] = vfc->vlans[i];
