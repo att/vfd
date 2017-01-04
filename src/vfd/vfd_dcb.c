@@ -24,7 +24,7 @@
 	Default dcb settings.
 static const struct rte_eth_conf eth_dcb_default = {
 	.rxmode = {
-		.mq_mode        = ETH_MQ_RX_VMDQ_DCB,
+		.mq_mode        = ETH_MQ_RX_VMDQ_DCB,		// this sets vt_mode to true along with dcb
 		.split_hdr_size = 0,
 		.header_split   = 0, 
 		.hw_ip_checksum = 0, 
@@ -58,7 +58,7 @@ static const struct rte_eth_conf eth_dcb_default = {
 	.tx_adv_conf = {
 		.vmdq_dcb_tx_conf = {
 			.nb_queue_pools = ETH_32_POOLS,
-		 	.dcb_tc = {0},
+		 	.dcb_tc = {0},						// controls which pool each TC maps to
 		},
 	},
 };
@@ -97,8 +97,8 @@ extern int vfd_dcb_config( uint8_t port ) {
 	Return 0 if there were no errors, 1 otherwise.  The calling programme should
 	not continue if this function returns anything but 0.
 
-	This funciton is a complete replacement for port_init() which is used when
-	not running in dcb (qos) mode.
+	This funciton is a complete replacement for port_init() and this should be invoked
+	when running in dcb (qos) mode instead of port_init().
 */
 extern int dcb_port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_pool)
 {
@@ -107,25 +107,6 @@ extern int dcb_port_init(uint8_t port, __attribute__((__unused__)) struct rte_me
 	const uint16_t tx_rings = 4;
 	int retval;
 	uint16_t q;
-
-/*
-	TODO: pull in tc count and set pool value
-	switch( tc_count ) {
-		case 4:
-			port_conf.rx_adv_conf.vmdq_dcb_conf.nb_queue_pools = ETH_32_POOLS;
-			port_conf.rx_adv_conf.vmdq_rx_conf.nb_queue_pools = ETH_32_POOLS;
-			port_conf.tx_adv_conf.vmdq_dcb_tx_conf.nb_queue_pools = ETH_32_POOLS;
-			break;
-
-		case 8:
-			port_conf.rx_adv_conf.vmdq_dcb_conf.nb_queue_pools = ETH_16_POOLS;
-			port_conf.rx_adv_conf.vmdq_rx_conf.nb_queue_pools = ETH_16_POOLS;
-			port_conf.tx_adv_conf.vmdq_dcb_tx_conf.nb_queue_pools = ETH_16_POOLS;
-			break;
-
-	}
-*/
-
 
 	if (port >= rte_eth_dev_count()) {
 		bleat_printf( 0, "CRI: abort: dcb_port_init: port >= rte_eth_dev_count" );
@@ -186,3 +167,12 @@ extern int dcb_port_init(uint8_t port, __attribute__((__unused__)) struct rte_me
 
 	return 0;
 }
+
+/*
+extern int dcb_set_tc_shares( uint8_t port ) {
+	struct rte_eth_dev_info dev_info;
+
+	rte_eth_dev_info_get( port, &dev_info );				// need device level info for direct ixgbe dpdk calls
+}
+*/
+

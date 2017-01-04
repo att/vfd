@@ -403,9 +403,11 @@ char*  gen_stats( sriov_conf_t* conf, int pf_only );
 void gen_port_qshares( sriov_port_t *port );
 int check_qs_oversub( struct sriov_port_s* port, uint8_t *qshares );
 
-//------- these are hacks and we  must find a good way to rid ourselves of them ------
+//------- these are hacks in the dpdk library and we  must find a good way to rid ourselves of them ------
 struct rth_eth_dev;
 extern void ixgbe_configure_dcb(struct rte_eth_dev *dev);
+extern void scott_ixgbe_configure_dcb_pctgs( struct rte_eth_dev *dev );
+
 
 
 #endif /* _SRIOV_H_ */
