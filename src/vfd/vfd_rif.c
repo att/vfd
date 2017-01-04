@@ -107,7 +107,7 @@ void gen_port_qshares( sriov_port_t *port ) {
 	double	v;								// computed value
 	int 	minv;							// min value observed
 	int		min_idx = 0;					// index where min value lives
-	int		vfid;							// the vf number we are looking at (vf # might not coorespond to index in table)
+	int		vfid;							// the vf number we are looking at (vf # might not correspond to index in table)
 	double	factor;							// normalisation factor
 
 	norm_pctgs = (uint8_t *) malloc( sizeof( *norm_pctgs ) * MAX_QUEUES );
