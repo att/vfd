@@ -402,6 +402,9 @@ int vfd_init_fifo( parms_t* parms );
 int is_valid_mac_str( char* mac );
 char*  gen_stats( sriov_conf_t* conf, int pf_only );
 
+// --- tools --------------------------------------------
+extern int stricmp(const char *s1, const char *s2);
+
 
 // ---- new qos, merge up after initial testing ----
 void gen_port_qshares( sriov_port_t *port );

@@ -73,23 +73,20 @@
 
 #define DEBUG
 
-static int stricmp(const char *s1, const char *s2);
-
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-static const char* version = VFD_VERSION "   build: " __DATE__ " " __TIME__;
 static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
 
 
 // -- global initialisation ----
-const char *version = VFD_LONG_VER "    build: " __DATE__ " " __TIME__;
+const char *version = VFD_VERSION "    build: " __DATE__ " " __TIME__;
 
 // --- misc support ----------------------------------------------------------------------------------------------
 
 /*
-   Ignore case while comparing strings
+	stricmp will compair two strins in strcmp() fashion, but will
+	ignore the character case.
 */
-
-static int stricmp(const char *s1, const char *s2)
+extern int stricmp(const char *s1, const char *s2)
 {
     char c1, c2;
 
