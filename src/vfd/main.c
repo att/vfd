@@ -45,6 +45,8 @@
 				14 Oct 2016 - Changes to work with dpdk-1611 differences.
 				26 Oct 2016 - Removed invalid option listed in usage message. Added long version string support.
 				01 Nov 2016 - renamed var to port2config_map to avoid looking like dpdk var/function (lead rte)
+                03 Jan 2017 - Add new string compare function to ignore case-sensitive strings,
+                            fix to link_status vfconfig param
 
 */
 
@@ -71,6 +73,8 @@
 
 #define DEBUG
 
+static int stricmp(const char *s1, const char *s2);
+
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
 static const char* version = VFD_VERSION "   build: " __DATE__ " " __TIME__;
 static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
@@ -80,6 +84,33 @@ static parms_t *g_parms = NULL;						// most functions should accept a pointer, 
 const char *version = VFD_LONG_VER "    build: " __DATE__ " " __TIME__;
 
 // --- misc support ----------------------------------------------------------------------------------------------
+
+/*
+   Ignore case while comparing strings
+*/
+
+static int stricmp(const char *s1, const char *s2)
+{
+    char c1, c2;
+
+    if ( s1==s2 )
+        return 0;
+
+    if ( s1==0 )
+        return -1;
+
+    if ( s2==0 )
+        return 1;
+
+    do {
+        c1 = tolower(*s1);
+        c2 = tolower(*s2);
+        s1++;
+        s2++;
+    } while ( (c1 != 0) && (c1 == c2) );
+
+    return (int)(c1 - c2);
+}
 
 /*
 	Validate the string passed in contains a plausable MAC address of the form:
