@@ -24,26 +24,30 @@
 				21 Apr 2016 - Insert tag option now mirrors the setting for strip tag.
 				24 Apr 2016 - Redid signal handling to trap anything that has a default action
 							that isn't ignore; we must stop gracefully at all costs.
-				29 Apr 2016 - Removed redundant code in restore_vf_setings(); now calls 
+				29 Apr 2016 - Removed redundant code in restore_vf_setings(); now calls
 							update_nic() function.
 				06 May 2016 - Added some messages to dump output. Now forces the drop packet if
 							no descriptor available on both port (all queues) and VFs.
 				13 May 2016 - Deletes config files unless keep option in the master parm file is on.
 				26 May 2016 - Added validation for vlan ids in range and valid mac strings.
-							Added support to drive virsh attach/detach commands at start to 
+							Added support to drive virsh attach/detach commands at start to
 							force a VM to reset their driver.
 				02 Jun 2016 - Added log purging set up in bleat.
 				13 Jun 2016 - Version bump to indicate inclusion of better type checking used in lib.
 							Change VLAN ID range bounds to <= 0. Correct error message when rejecting
 							because of excessive number of mac addresses.
-				19 Jul 2016 - Correct problem which was causing huge status responses to be 
+				19 Jul 2016 - Correct problem which was causing huge status responses to be
 							chopped.
 				20 Jul 2016 - Correct use of config struct after free.
 				09 Aug 2016 - Block VF0 from being used.
-				07 Sep 2016 - Drop use of TAILQ as odd things were happening realted to removing 
+				07 Sep 2016 - Drop use of TAILQ as odd things were happening realted to removing
 							items from the list.
 				14 Oct 2016 - Changes to work with dpdk-1611 differences.
+				26 Oct 2016 - Removed invalid option listed in usage message. Added long version string support.
 				01 Nov 2016 - renamed var to port2config_map to avoid looking like dpdk var/function (lead rte)
+                03 Jan 2017 - Add new string compare function to ignore case-sensitive strings,
+                            fix to link_status vfconfig param
+
 */
 
 
@@ -74,9 +78,36 @@ static parms_t *g_parms = NULL;						// most functions should accept a pointer, 
 
 
 // -- global initialisation ----
-const char *version = VFD_LONG_VER "    build: " __DATE__ " " __TIME__;
+const char *version = VFD_VERSION "    build: " __DATE__ " " __TIME__;
 
 // --- misc support ----------------------------------------------------------------------------------------------
+
+/*
+	stricmp will compair two strins in strcmp() fashion, but will
+	ignore the character case.
+*/
+extern int stricmp(const char *s1, const char *s2)
+{
+    char c1, c2;
+
+    if ( s1==s2 )
+        return 0;
+
+    if ( s1==0 )
+        return -1;
+
+    if ( s2==0 )
+        return 1;
+
+    do {
+        c1 = tolower(*s1);
+        c2 = tolower(*s2);
+        s1++;
+        s2++;
+    } while ( (c1 != 0) && (c1 == c2) );
+
+    return (int)(c1 - c2);
+}
 
 /*
 	Validate the string passed in contains a plausable MAC address of the form:
@@ -131,16 +162,16 @@ int is_valid_mac_str( char* mac ) {
 	either the start_cb or stop_cb tags in the VF's config file. The
 	commands are run under the user id which owns the config file
 	when it was presented to VFd for addition. The commands are generally
-	to allow the 'user' to hot-plug, or similar, a device on the VM when 
-	VFd is cycled.  This might be necessary as some drivers do not seem 
-	to reset completely when VFd reinitialises on start up. 
+	to allow the 'user' to hot-plug, or similar, a device on the VM when
+	VFd is cycled.  This might be necessary as some drivers do not seem
+	to reset completely when VFd reinitialises on start up.
 
 	State of the command is _not_ captured; it seems that the dpdk lib
 	fiddles with underlying system() calls and the status returns -1 regardless
-	of what the command returns. 
+	of what the command returns.
 
 	Output from these user defined commands goes to standard output or
-	standard error and won't be capture in our log files. 
+	standard error and won't be capture in our log files.
 */
 static void run_start_cbs( sriov_conf_t* conf ) {
 	int i;
@@ -320,7 +351,7 @@ static int dummy_rte_eal_init( int argc, char** argv ) {
 	about.
 
 	We strdup all of the argument strings that are eventually passed to dpdk as the man page indicates that
-	they might be altered, and that we should not fiddle with them after calling the init function. Thus we 
+	they might be altered, and that we should not fiddle with them after calling the init function. Thus we
 	give them their own copy, and suffer a small leak.
 	
 	This function causes a process abort if any of the following are true:
@@ -478,7 +509,7 @@ char*  gen_stats( sriov_conf_t* conf, int pf_only ) {
 		rbidx += l;
 		
 		if( ! pf_only ) {
-			// pack PCI ARI into 32bit to be used to get VF's ARI later 
+			// pack PCI ARI into 32bit to be used to get VF's ARI later
 			uint32_t pf_ari = dev_info.pci_dev->addr.bus << 8 | dev_info.pci_dev->addr.devid << 3 | dev_info.pci_dev->addr.function;
 			
 			//iterate over active (configured) VF's only
@@ -512,7 +543,7 @@ char*  gen_stats( sriov_conf_t* conf, int pf_only ) {
 	return rbuf;
 }
 
-int 
+int
 cmp_vfs (const void * a, const void * b)
 {
    return ( *(const int*)a - *(const int*)b );
@@ -520,9 +551,9 @@ cmp_vfs (const void * a, const void * b)
 
 /*
 	Set up the insert and strip charastics on the NIC. The interface should ensure that
-	the right parameter combinations are set and reject an add request if not, but 
+	the right parameter combinations are set and reject an add request if not, but
 	we are a bit parinoid and will help to enforce things here too.  If one VLAN is in
-	the list, then we allow strip_stag to control what we do. If multiple VLANs are in 
+	the list, then we allow strip_stag to control what we do. If multiple VLANs are in
 	the list, then we don't strip nor insert.
 
 	Returns 0 on failure; 1 on success.
@@ -768,7 +799,7 @@ static inline uint64_t RDTSC(void)
 	Called for any signal that has a default terminate action so that we
 	force a cleanup before stopping. We'll call abort() for a few so that we
 	might get a usable core dump when needed. If we call abort(), rather than
-	just setting the terminated flag, we _must_ close the PFs gracefully or 
+	just setting the terminated flag, we _must_ close the PFs gracefully or
 	risk a machine crash.
 */
 static void sig_int( int sig ) {
@@ -804,13 +835,13 @@ sig_ign( int sig ) {
 /*	
 	Setup all of the signal handling. Because a VFd exit without gracefully closing ports
 	seems to crash (all? most?) physical hosts, we must catch everything that has a default
-	action which is not ignore.  While mentioned on the man page, SIGEMT and SIGLOST seem 
-	unsupported in linux. 
+	action which is not ignore.  While mentioned on the man page, SIGEMT and SIGLOST seem
+	unsupported in linux.
 */
 static void set_signals( void ) {
 	struct sigaction sa;
 	int	sig_list[] = { SIGQUIT, SIGILL, SIGABRT, SIGFPE, SIGSEGV, SIGPIPE,				// list of signals we trap
-       				SIGALRM, SIGTERM, SIGUSR1 , SIGUSR2, SIGBUS, SIGPROF, SIGSYS, 
+       				SIGALRM, SIGTERM, SIGUSR1 , SIGUSR2, SIGBUS, SIGPROF, SIGSYS,
 					SIGTRAP, SIGURG, SIGVTALRM, SIGXCPU, SIGXFSZ, SIGIO, SIGWINCH };
 
 	int i;
@@ -1096,7 +1127,7 @@ int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 		//int port;
 		int ret;					// returned value from some call
 		u_int16_t portid;
-		uint32_t pci_control_r;  
+		uint32_t pci_control_r; 
 
 		bleat_printf( 1, "starting rte initialisation" );
 		rte_set_log_type(RTE_LOGTYPE_PMD && RTE_LOGTYPE_PORT, 0);
@@ -1171,7 +1202,6 @@ int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 				} else {
 					bleat_printf( 2, "port initialisation successful for port %d", portid );
 				}
-				
 			
 				rte_eth_macaddr_get(portid, &addr);
 				bleat_printf( 1,  "mapping port: %u, MAC: %02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ", ",
@@ -1190,13 +1220,13 @@ int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 	  	}
 		bleat_printf( 2, "port initialisation complete" );
 
-		// read PCI config to get VM offset and stride 
+		// read PCI config to get VM offset and stride
 		struct rte_eth_dev *pf_dev = &rte_eth_devices[0];
 		rte_eal_pci_read_config(pf_dev->pci_dev, &pci_control_r, 32, 0x174);
 		vf_offfset = pci_control_r & 0x0ffff;
 		vf_stride = pci_control_r >> 16;
 	
-		set_signals();												// register signal handlers 
+		set_signals();												// register signal handlers
 
 		gettimeofday(&st.startTime, NULL);
 

@@ -8,6 +8,7 @@
 	Date:		11 October 2016 (broken out of main.c)
 
 	Mods:		29 Nov 2016 : Add queue share support from vf config.
+				06 Jan 2017 : Incorporate DJ's fix for link mode.
 */
 
 
@@ -27,7 +28,7 @@ extern int vfd_init_fifo( parms_t* parms ) {
 	}
 
 	umask( 0 );
-	parms->rfifo = rfifo_create( parms->fifo_path, 0666 );		//TODO -- set mode more sainly, but this runs as root, so regular users need to write to this thus open wide for now
+	parms->rfifo = rfifo_create( parms->fifo_path, 0666 );		//TODO -- set mode more sanely, but this runs as root, so regular users need to write to this thus open wide for now
 	if( parms->rfifo == NULL ) {
 		bleat_printf( 0, "ERR: unable to create request fifo (%s): %s", parms->fifo_path, strerror( errno ) );
 		return -1;
@@ -569,26 +570,16 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	}
 
 	vf->link = 0;							// default if parm missing or mis-set (not fatal)
-	switch( *vfc->link_status ) {			// down, up or auto are allowed in config file
-		case 'a':
-		case 'A':
-			vf->link = 0;					// auto is really: use what is configured in the PF	
-			break;
-		case 'd':
-		case 'D':
-			vf->link = -1;
-			break;
-		case 'u':
-		case 'U':
-			vf->link = 1;
-			break;
-
-		
-		default:
-			bleat_printf( 1, "link_status not recognised in config: %s; defaulting to auto", vfc->link_status );
-			vf->link = 0;
-			break;
-	}
+											// on, off or auto are allowed in config file, default to auto if unrecognised
+    if (!stricmp(vfc->link_status, "on")) {
+        vf->link = 1;
+    } else if (!stricmp(vfc->link_status, "off")) {
+        vf->link = -1;
+    } else if (!stricmp(vfc->link_status, "auto")) {
+        vf->link = 0;
+    } else {
+        bleat_printf( 1, "link_status not recognised in config: %s; defaulting to auto", vfc->link_status );
+    }
 	
 	for( i = 0; i < vfc->nvlans; i++ ) {
 		vf->vlans[i] = vfc->vlans[i];

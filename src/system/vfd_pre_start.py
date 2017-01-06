@@ -10,6 +10,7 @@
                     2016 8 Apr - fix to index out of bound error
                     2016 22 Apr - remove unloading ixgbevf driver
                     2016 30 May - wait for vf's to create
+                    2016 8 Dec - fix to detrmine which iommu group pciid belong to and get the other pciid's in that iommu group.
 """
 
 import subprocess
@@ -117,7 +118,7 @@ def get_pciids_group(dev_id):
     cmd = "find /sys/kernel/iommu_groups -type l|grep %s | awk -F/ '{print $(NF-2)}'" % dev_id
     group_num = subprocess.check_output(cmd, shell=True)
     if group_num != None:
-        cmd = "find /sys/kernel/iommu_groups -type l|grep groups.%s" % group_num
+        cmd = "find /sys/kernel/iommu_groups -type l|grep groups.%s/" % group_num
         list_pciids = subprocess.check_output(cmd, shell=True)
         for pciid in list_pciids.splitlines():
             group_pciids.append(pciid.split('/')[-1])

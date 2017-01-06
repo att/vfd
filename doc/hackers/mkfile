@@ -2,15 +2,20 @@
 
 <master.mk
 
-fig_src = vfd_ds_overview vfd_process
+fig_src = vfd_process
 
-all:V: vfd_hackers.pdf vfd_design.pdf
+all:V: vfd_hackers.pdf 
 
 figures:V: ${fig_src:%=figures/%.eps}
 
-vfd_design.ps:: vfd_design.xfm figures
-	pfm vfd_design.xfm vfd_design.ps
+vfd_users.ps::	vfd_hackers.ps
+	cp vfd_hackers.ps vfd_users.ps
 
 vfd_hackers.ps:: vfd_hackers.xfm 
 	pfm vfd_hackers.xfm vfd_hackers.ps
+
+vfd_hackers.md:: vfd_hackers.xfm
+	MARKDOWN=1 tfm vfd_hackers.xfm vfd_hackers.o
+	sed 's/^ //' vfd_hackers.o >vfd_hackers.md
+	rm vfd_hackers.o
 
