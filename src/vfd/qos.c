@@ -240,10 +240,9 @@ static void qos_set_rxpplane( portid_t pf ) {
 			q2 receives (20/10) * 141 = 282 credits
 			q3 receives (57/10) * 141 = 804 credits
 
-	MTU cannot be less than 1806 bytes (1.5 * 1024) and thus the minmum number of credits
-	is 24.
+	MTU cannot be less than 1536 bytes (1.5 * 1024) and thus the minmum number of credits is 24.
 */
-static void qos_set_credits( portid_t pf, int mtu, int* rates, int tc8_mode ) {
+extern void qos_set_credits( portid_t pf, int mtu, int* rates, int tc8_mode ) {
 	uint32_t	sel_offset = 0x04904;				// offset of the selector register
 	uint32_t	reg_offset = 0x04908;				// register offset
 	double		cred_factor[MAX_TCS];				// multiplier which converts a percentage into credit value
@@ -261,6 +260,10 @@ static void qos_set_credits( portid_t pf, int mtu, int* rates, int tc8_mode ) {
 		num_tcs = 8;
 	}
 
+	if( mtu < 1536 ) {			// see flowerbox
+		mtu = 1536;
+	}
+
 	for( i = 0; i < num_tcs; i++ ) {				// find base for each TC
 		cred_factor[i] = 100;						// start with a max pct value
 
@@ -271,6 +274,7 @@ static void qos_set_credits( portid_t pf, int mtu, int* rates, int tc8_mode ) {
 		}
 
 		cred_factor[i] = ((mtu/64.0) / cred_factor[i]);				// cred_factor is now a multiplier to convert pct into creds for the TC
+		bleat_printf( 1, ">>>> qos_set_credits: pf=%d tc=%d factor=%.2f", (int) pf, i, cred_factor[i] );
 	}
 	
 	mask = 0xffffc000;								// we set bits 0:13; we'll mask those off the current value first to preserve what might be set
@@ -282,7 +286,9 @@ static void qos_set_credits( portid_t pf, int mtu, int* rates, int tc8_mode ) {
 		port_pci_reg_write( pf, sel_offset, q );						// select the queue to work on
 		cval = port_pci_reg_read( pf, reg_offset );						// read to preserve reserved bits
 		port_pci_reg_write( pf, reg_offset, (cval & mask) | amt );		// set the credits
-		fprintf( stderr, "qos set rate: q=%d rate=%d%% credits=%d (%08x)\n", q, rates[q], amt, (cval & mask) | amt );
+		if( amt > 0 ) {
+			bleat_printf( 1, "qos set rate: q=%d rate=%d%% credits=%d (%08x)", q, rates[q], amt, (cval & mask) | amt );
+		}
 	}
 }
 

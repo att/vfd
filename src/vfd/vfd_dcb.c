@@ -18,7 +18,6 @@
 #include <vfdlib.h>		// if vfdlib.h needs an include it must be included there, can't be include prior
 #include "sriov.h"
 #include "vfd_dcb.h"
-#include "vfdlib.h"
 
 /* 
 	Default dcb settings.

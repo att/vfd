@@ -652,12 +652,16 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 			int v;
 			int m;
 			char *mac;
+			int	change2port;							// set true if one or more VFs changed; need to redo qos allotment if so
 			struct vf_s *vf = &port->vfs[y];   			// at the VF to work on
 
 			vf_mask = VFN2MASK(vf->num);
 
+			change2port = 0;
 			if( vf->last_updated != UNCHANGED ) {					// this vf was changed (add/del/reset), reconfigure it
 				const char* reason;
+
+				change2port = 1;
 
 				switch( vf->last_updated ) {
 					case ADDED:		reason = "add"; break;
@@ -749,6 +753,15 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 				}
 
 				vf->last_updated = UNCHANGED;				// mark processed
+			}
+
+			if( change2port && (g_parms->rflags & RF_ENABLE_QOS) ) {		// changes, we must recompute queue shares and push to nic
+				//uint8_t* pp;
+				gen_port_qshares( port );									// compute and save in the port struct
+//pp = port->vftc_qshares;
+				qos_set_credits( port->rte_port_number, port->mtu, port->vftc_qshares, TC_4PERQ_MODE );	// push out to nic
+				//qos_set_credits( port->rte_port_number, port->mtu, pp, TC_4PERQ_MODE );	// push out to nic
+/// push into nic
 			}
 
 			if( vf->num >= 0 ) {
@@ -1084,7 +1097,7 @@ int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 		exit( 1 );
 	}
 
-	if( enable_qos ) {							// set any running parms/flags that can be set based on command line
+	if( enable_qos ) {							// command line flag overrides the config to force qos on
 		g_parms->rflags |= RF_ENABLE_QOS;
 	}
 	g_parms->forreal = forreal;
@@ -1241,20 +1254,12 @@ int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 
 
 	vfd_add_all_vfs( g_parms, running_config );							// read all existing config files and add the VFs to the config
-	if( vfd_update_nic( g_parms, running_config ) != 0 ) {				// now that dpdk is initialised run the list and 'activate' everything
-		bleat_printf( 0, "CRI: abort: unable to initialise nic with base config:" );
-		if( forreal ) {
-			rte_exit( EXIT_FAILURE, "initialisation failure, see log(s) in: %s\n", g_parms->log_dir );
-		} else {
-			exit( 1 );
-		}
-	}
 
 	if( g_parms->forreal && (g_parms->rflags & RF_ENABLE_QOS) ) {
 		for( p = 0; p < running_config->num_ports; p++ ) {
 			bleat_printf( 1, "enabling qos for p %d qos_option=%d", p, qos_option );
-			gen_port_qshares( &running_config->ports[p] );					// build the set of TC percentages for each configured VF and store in port struct
 /*
+			gen_port_qshares( &running_config->ports[p] );					// build the set of TC percentages for each configured VF and store in port struct
 			enable_dcb_qos( &running_config->ports[p], pctgs, 0, qos_option );
 */
 
@@ -1262,6 +1267,15 @@ int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 		}
 	}  else {
 		bleat_printf( 1, "qos is disabled or forreal mode is off" );
+	}
+
+	if( vfd_update_nic( g_parms, running_config ) != 0 ) {				// now that dpdk is initialised run the list and 'activate' everything
+		bleat_printf( 0, "CRI: abort: unable to initialise nic with base config:" );
+		if( forreal ) {
+			rte_exit( EXIT_FAILURE, "initialisation failure, see log(s) in: %s\n", g_parms->log_dir );
+		} else {
+			exit( 1 );
+		}
 	}
 
 	

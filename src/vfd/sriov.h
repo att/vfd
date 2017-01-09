@@ -86,6 +86,9 @@
 #define MAX_TCS		8			// max number of TCs possible
 #define RESTORE_DELAY 2
 
+#define TC_4PERQ_MODE	0		// bool flag passed to qos funcitons indicating 4 or 8 mode
+#define TC_8PERQ_MODE	1
+
 #define RTE_PORT_ALL            (~(portid_t)0x0)
 #define IXGBE_RXDCTL_VME        0x40000000 /* VLAN mode enable */
 
@@ -217,7 +220,7 @@ typedef struct sriov_port_s
 	struct  	mirror_s mirror[MAX_VFS];
 	struct  	vf_s vfs[MAX_VFS];
 	tc_class_t*	tc_config[MAX_TCS];		// configuration information (max/min lsp/gsp) for the TC	(set from config)
-	uint8_t*	qshares;				// queue percentages arranged by vf/tc (computed with each add/del of a vf)
+	int*		vftc_qshares;			// queue percentages arranged by vf/tc (computed with each add/del of a vf)
 	uint8_t		tc2bwg[MAX_TCS];		// maps each TC to a bandwidth group (set from config info)
 } sriov_port_t;
 
@@ -409,6 +412,8 @@ extern int stricmp(const char *s1, const char *s2);
 // ---- new qos, merge up after initial testing ----
 void gen_port_qshares( sriov_port_t *port );
 int check_qs_oversub( struct sriov_port_s* port, uint8_t *qshares );
+
+void qos_set_credits( portid_t pf, int mtu, int* rates, int tc8_mode );		// this should move into dpdk lib
 
 //------- these are hacks in the dpdk library and we  must find a good way to rid ourselves of them ------
 struct rth_eth_dev;

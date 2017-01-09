@@ -100,7 +100,7 @@ extern int check_qs_oversub( struct sriov_port_s* port, uint8_t *qshares ) {
 	This should be called after every VF add/delete to recompute the queue shares across all.
 */
 void gen_port_qshares( sriov_port_t *port ) {
-	uint8_t* norm_pctgs;				// normalised percentages (to be returned)
+	int* 	norm_pctgs;				// normalised percentages (to be returned)
 	int 	i;
 	int		j;
 	int		sums[MAX_TCS];					// TC percentage sums
@@ -111,7 +111,7 @@ void gen_port_qshares( sriov_port_t *port ) {
 	int		vfid;							// the vf number we are looking at (vf # might not correspond to index in table)
 	double	factor;							// normalisation factor
 
-	norm_pctgs = (uint8_t *) malloc( sizeof( *norm_pctgs ) * MAX_QUEUES );
+	norm_pctgs = (int *) malloc( sizeof( *norm_pctgs ) * MAX_QUEUES );
 	if( norm_pctgs == NULL ) {
 		bleat_printf( 0, "error: unable to allocate %d bytes for max-pctg array", sizeof( *norm_pctgs ) * MAX_QUEUES  );
 		return;
@@ -122,20 +122,21 @@ void gen_port_qshares( sriov_port_t *port ) {
 	for( i = 0; i < ntcs; i++ ) {			// for each tc, compute the overall sum based on configured 
 		sums[i] = 0;
 
-bleat_printf( 1, ">>> num vfs=%d", port->num_vfs );
+		bleat_printf( 1, ">>> num vfs=%d", port->num_vfs );
 		for( j = 0; j < port->num_vfs; j++ ) {
 			if( port->vfs[j].num >= 0 ) {					// only for active VFs
-bleat_printf( 1, ">>> add to sum tc=%d vf=%d sum=%d share=%d", i, port->vfs[j].num, sums[i], port->vfs[j].qshares[i] );
+				//bleat_printf( 1, ">>> add to sum tc=%d vf=%d sum=%d share=%d", i, port->vfs[j].num, sums[i], port->vfs[j].qshares[i] );
 				sums[i] += port->vfs[j].qshares[i];
 			}
 		}
-bleat_printf( 1, ">>> final sum tc=%d sum=%d ", i, sums[i] );
+
+		//bleat_printf( 1, ">>> final sum tc=%d sum=%d ", i, sums[i] );
 	}
 
 	for( i = 0; i < ntcs; i++ ) {
 		if( sums[i] != 100 ) {									// over/under subscribed; must normalise
 			factor = 100.0 / (double) sums[i];
-bleat_printf( 1, ">>> tc=%d factor=%.2f sum=%d", i, factor, sums[i] );
+			bleat_printf( 1, ">>> adjust: tc=%d factor=%.2f sum=%d", i, factor, sums[i] );
 			sums[i] = 0;
 			minv = 100;
 
@@ -145,7 +146,7 @@ bleat_printf( 1, ">>> tc=%d factor=%.2f sum=%d", i, factor, sums[i] );
 					norm_pctgs[(vfid * ntcs)+i] = (uint8_t) v;	// stash it, dropping fractional part
 
 					sums[i] += (int) v;
-bleat_printf( 1, ">>> active vf=%d shares=%d sum=%d val=%.2f", j,  port->vfs[j].qshares[i],  sums[i], v );
+					//bleat_printf( 1, ">>> active vf=%d shares=%d sum=%d val=%.2f", j,  port->vfs[j].qshares[i],  sums[i], v );
 					if( (int) v < minv ) {					// new min -- capture it's details
 						minv = (int) v;
 						min_idx = vfid;						// track where the min value was
@@ -154,7 +155,7 @@ bleat_printf( 1, ">>> active vf=%d shares=%d sum=%d val=%.2f", j,  port->vfs[j].
 			}	
 
 			if( sums[i] < 100 ) {									// rounding will likely leave us short and DPDK demands an exact 100% total
-bleat_printf( 1, ">>> adjust min sum=%d minidx=%d offset=%d",  sums[i], min_idx, (min_idx * ntcs)+i );
+				bleat_printf( 1, ">>> adjust min sum=%d minidx=%d offset=%d",  sums[i], min_idx, (min_idx * ntcs)+i );
 				for( j = 0; j < port->num_vfs && sums[i] < 100; j++ ) {
 					if( (vfid = port->vfs[j].num) >= 0 ) {
 						norm_pctgs[(vfid * ntcs)+i]++;		// fudge up each until we top off at 100; not fair, but did we promise to be?
@@ -162,7 +163,7 @@ bleat_printf( 1, ">>> adjust min sum=%d minidx=%d offset=%d",  sums[i], min_idx,
 				}
 			}
 		} else {
-bleat_printf( 1, ">>> tc=%d sum=%d", i,  sums[i] );
+			bleat_printf( 1, ">>> no adjustment needed: tc=%d sum=%d", i,  sums[i] );
 			for( j = i; j < port->num_vfs; j++ ) {
 				if( (vfid = port->vfs[j].num) >= 0 ){								// active VF
 					norm_pctgs[(vfid * ntcs)+i] =  port->vfs[j].qshares[i];			// sum is 100, stash unchanged
@@ -180,11 +181,11 @@ bleat_printf( 1, ">>> tc=%d sum=%d", i,  sums[i] );
 		}
 	}
 
-	if( port->qshares != NULL ) {
-		free( port->qshares );
+	if( port->vftc_qshares != NULL ) {
+		free( port->vftc_qshares );
 	}
 
-	port->qshares = norm_pctgs;
+	port->vftc_qshares = norm_pctgs;
 }
 
 //  --------------------- global config management ------------------------------------------------------------
@@ -559,7 +560,6 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	vf->vlan_anti_spoof = 1;
 	vf->mac_anti_spoof = 1;
 
-	vf->rate = 0.0;							// best effort :)
 	vf->rate = vfc->rate;
 	
 	if( vfc->start_cb != NULL ) {
