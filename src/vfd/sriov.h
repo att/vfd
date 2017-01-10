@@ -412,9 +412,12 @@ extern int stricmp(const char *s1, const char *s2);
 // ---- new qos, merge up after initial testing ----
 void gen_port_qshares( sriov_port_t *port );
 int check_qs_oversub( struct sriov_port_s* port, uint8_t *qshares );
+int check_qs_spread( struct sriov_port_s* port, uint8_t* qshares );
 
-void qos_set_credits( portid_t pf, int mtu, int* rates, int tc8_mode );		// these qos functions should move into dpdk lib
+// --- qos hard coded nic funcitons that need to move to dpdk
+void qos_set_credits( portid_t pf, int mtu, int* rates, int tc8_mode );
 extern void qos_enable_arb( portid_t pf );
+
 
 //------- these are hacks in the dpdk library and we  must find a good way to rid ourselves of them ------
 struct rth_eth_dev;
