@@ -1,6 +1,7 @@
 Virtual Function Daemon - VFD with QoS Extensions
 
 DANGER: this branch is somewhat unstable when QoS is enabled.  Currently it may be built with 
+<<<<<<< HEAD
    DPDK 16.11, however this is soon to change.  This version supports the original function
    set, and adding either a -q on the command line, or the qos option in the config file 
    will cause the new QoS code to be driven.  QoS mode has only been lightly tested and 
@@ -12,6 +13,19 @@ Current State:
    via DPDK API calls.  This is a stepping stone; the next step is to mangle and wedge the
    two functions in the qos.c module into the DPDK ixgbe environment. At that point there 
    will be the need to link against an augmented DPDK.
+=======
+	DPDK 16.11, however this is soon to change.  This version supports the original function
+	set, and adding either a -q on the command line, or the qos option in the config file 
+	will cause the new QoS code to be driven.  QoS mode has only been lightly tested and 
+	is still a work in progress.
+
+Current State:
+	The src/vfd/qos.c module contains our initial prototype (direct NIC fiddling) code. Only
+	two of the functions remain in use as the rest of the QoS support can be configured 
+	via DPDK API calls.  This is a stepping stone; the next step is to mangle and wedge the
+	two functions in the qos.c module into the DPDK ixgbe environment. At that point there 
+	will be the need to link against an augmented DPDK.
+>>>>>>> 6fe48d0046c6570e38d01b9ebe5bb8596f8713dc
 
 
 The following is a brief set of infomration about configuring both VFd proper, and a guest
@@ -92,7 +106,6 @@ accordingly when the credits are allocated on the NIC.
 To ensble QoS mode in the config file, rather than using the -q option on the command line, 
 set the following field in the main section:
    "enable_qos": true
-
 
 
 ----------------------------------------------------------------------------------------------------
