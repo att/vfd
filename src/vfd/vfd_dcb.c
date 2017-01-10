@@ -19,16 +19,16 @@
 #include "sriov.h"
 #include "vfd_dcb.h"
 
-/* 
+/*
 	Default dcb settings.
 static const struct rte_eth_conf eth_dcb_default = {
 	.rxmode = {
 		.mq_mode        = ETH_MQ_RX_VMDQ_DCB,		// this sets vt_mode to true along with dcb
 		.split_hdr_size = 0,
-		.header_split   = 0, 
-		.hw_ip_checksum = 0, 
-		.hw_vlan_filter = 0, 
-		.jumbo_frame    = 0, 
+		.header_split   = 0,
+		.hw_ip_checksum = 0,
+		.hw_vlan_filter = 0,
+		.jumbo_frame    = 0,
 	},
 	.txmode = {
 		.mq_mode = ETH_MQ_TX_DCB,
@@ -73,12 +73,14 @@ struct rte_eth_conf *vfd_dcb_init( uint8_t port ) {
 */
 
 /*
-	Configure the given port for DCB.
+	Configure the given port for DCB. Port is the real device port number, not
+	the index in our configuration.
 */
 extern int vfd_dcb_config( uint8_t port ) {
 	struct rte_eth_dev *pf_dev = &rte_eth_devices[port];		// this seems to be an array exported by dpdk
 
-	ixgbe_configure_dcb( pf_dev );			// see what happens
+	ixgbe_configure_dcb( pf_dev );		// set up dcb
+	qos_enable_arb( port );				// finally turn arbitors on
 
 	return 0;			// for now constant; but in future it will report an error if needed
 }
@@ -90,7 +92,7 @@ extern int vfd_dcb_config( uint8_t port ) {
     hw = IXGBE_DEV_PRIVATE_TO_HW(dev->data->dev_private);
 
 */
-    
+   
 /*
 	Initialise a device (port) in dcb mode.
 	Return 0 if there were no errors, 1 otherwise.  The calling programme should
@@ -102,7 +104,7 @@ extern int vfd_dcb_config( uint8_t port ) {
 extern int dcb_port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_pool)
 {
 	struct rte_eth_conf port_conf = eth_dcb_default;
-	const uint16_t rx_rings = 4; 
+	const uint16_t rx_rings = 4;
 	const uint16_t tx_rings = 4;
 	int retval;
 	uint16_t q;
@@ -161,8 +163,12 @@ extern int dcb_port_init(uint8_t port, __attribute__((__unused__)) struct rte_me
 			addr.addr_bytes[2], addr.addr_bytes[3],
 			addr.addr_bytes[4], addr.addr_bytes[5]);
 
-	// Enable RX in promiscuous mode for the Ethernet device.
-	rte_eth_promiscuous_enable(port);
+	rte_eth_promiscuous_enable(port);						// Enable RX in promiscuous mode for the Ethernet device.
+
+	if( vfd_dcb_config( port ) != 0 ) {							// finally set the dcb config, enable arbitors, etc.
+		bleat_printf( 0, "CRI: abort: dcb_port_init: dcb initialisation failed" );
+		return 1;
+	}
 
 	return 0;
 }

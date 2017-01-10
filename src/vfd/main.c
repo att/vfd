@@ -728,7 +728,7 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 
 				if( vf->num >= 0 ) {
 					if( parms->forreal ) {
-						// deprecated, now handeled by set queue drop function 
+						// deprecated, now handeled by set queue drop function
 						//set_split_erop( i, y, 1 );				// allow drop of packets when there is no matching descriptor
 
 						bleat_printf( 2, "%s vf: %d set anti-spoof %d", port->name, vf->num, vf->vlan_anti_spoof );
@@ -1020,8 +1020,6 @@ main(int argc, char **argv)
 	int		fd = -1;
 	int		enable_qos = 0;				// off by default enable_qos in config should be used to set on
 	int		state;
-int p;
-int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 
 
   const char * main_help =
@@ -1046,7 +1044,7 @@ int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 	log_file = (char *) malloc( sizeof( char ) * BUF_1K );
 
   // Parse command line options
-  while ( (opt = getopt(argc, argv, "?oqfhnqv:p:s:")) != -1)
+  while ( (opt = getopt(argc, argv, "?qfhnqv:p:s:")) != -1)
   {
     switch (opt)
     {
@@ -1056,10 +1054,6 @@ int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 		
 		case 'n':
 			forreal = 0;						// do NOT actually make calls to change the nic
-			break;
-
-		case 'o':
-			qos_option = 0;
 			break;
 
 		case 'p':
@@ -1140,7 +1134,7 @@ int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 		//int port;
 		int ret;					// returned value from some call
 		u_int16_t portid;
-		uint32_t pci_control_r; 
+		uint32_t pci_control_r;
 
 		bleat_printf( 1, "starting rte initialisation" );
 		rte_set_log_type(RTE_LOGTYPE_PMD && RTE_LOGTYPE_PORT, 0);
@@ -1249,25 +1243,11 @@ int qos_option = 1;					// arbitor bit selection option TESTING turn off with -o
 	}
 
 	if( g_parms->forreal ) {
-		g_parms->rflags |= RF_INITIALISED;							// safe to update nic now (modulo forreal mode setting of course)
+		g_parms->rflags |= RF_INITIALISED;								// safe to update nic now (modulo forreal mode setting of course)
 	}
 
 
 	vfd_add_all_vfs( g_parms, running_config );							// read all existing config files and add the VFs to the config
-
-	if( g_parms->forreal && (g_parms->rflags & RF_ENABLE_QOS) ) {
-		for( p = 0; p < running_config->num_ports; p++ ) {
-			bleat_printf( 1, "enabling qos for p %d qos_option=%d", p, qos_option );
-/*
-			gen_port_qshares( &running_config->ports[p] );					// build the set of TC percentages for each configured VF and store in port struct
-			enable_dcb_qos( &running_config->ports[p], pctgs, 0, qos_option );
-*/
-
-			vfd_dcb_config( p );
-		}
-	}  else {
-		bleat_printf( 1, "qos is disabled or forreal mode is off" );
-	}
 
 	if( vfd_update_nic( g_parms, running_config ) != 0 ) {				// now that dpdk is initialised run the list and 'activate' everything
 		bleat_printf( 0, "CRI: abort: unable to initialise nic with base config:" );

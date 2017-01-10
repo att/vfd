@@ -1,8 +1,24 @@
 
 /*
 	Mnemonic:	qos.c
-	Abstract:	Functions to support management of qos related controls
-				on the NIC.
+	Abstract:	Functions which allow the overall configuration of QoS via DCB with
+				traffic class queue shares for Tx. The functions are as described in
+				the 82599 datasheet and are very specific to that NIC. The enable_dcb_qos
+				function implements the whole setup as described in the data sheet and
+				was used for initial testing and proof of concept before DPDK version 16.11
+				which implemented the ability to enable both DCB and SR-IOV concurrently.
+
+				Of the initial functions which enable_dcb_qos() invokes, only two are
+				necessary for VFd to support 'dynamic' QoS (configurable qshares (credits
+				ultimately) which can be reconfigured on the fly). These are: qos_enable_arb()
+				and qos_set_credits().  The next 'step' is to move them into DPDK; at that
+				point this whole module will be deprecated.
+
+				Currently, the vfd_dcb module does the port initialisation and then invokes
+				the two mentioned functions to complete the setup.  The main function will
+				invoke the qos_set_credits() function any time a configuration change is
+				made and the queue shares are recomputed.
+
 
 				CAUTION:  These are 'hard coded' direct NIC tweaking funcitons used
 					as an initial proof of concept for QoS validation.  Some of the
@@ -87,7 +103,7 @@ static void qos_set_minifg( portid_t pf ) {
 	way to selectively disable/enable the arbitration while leaving all other
 	bits set.
 */
-static void qos_enable_arb( portid_t pf ) {
+extern void qos_enable_arb( portid_t pf ) {
 	uint32_t	offset;
 	uint32_t	val;
 	uint32_t	cval;		// value currently set (preserve reserved)
@@ -102,20 +118,20 @@ static void qos_enable_arb( portid_t pf ) {
 	}
 	cval = port_pci_reg_read( pf, offset );						// snag current
 	port_pci_reg_write( pf, offset, (cval & mask) | val );		
-	bleat_printf( 1, ">>>> qos: set_enable_rttdcs (%08x & %08x) | %08x = %08x", cval, mask, val, (cval & mask) | val );
+	bleat_printf( 3, ">>>> qos: set_enable_rttdcs (%08x & %08x) | %08x = %08x", cval, mask, val, (cval & mask) | val );
 
 	offset = 0x0cd00;			// RTTPCS
 	mask = 0x003ffedf;
 	val = 0x01000120;
 	cval = port_pci_reg_read( pf, offset );						// snag current
 	port_pci_reg_write( pf, offset, (cval & mask) | val );		// add our bits or clear what we don't want
-	bleat_printf( 1, ">>>> qos: set_enable_rttpcsarb (%08x & %08x) | %08x = %08x", cval, mask, val, (cval & mask) | val );
+	bleat_printf( 3, ">>>> qos: set_enable_rttpcsarb (%08x & %08x) | %08x = %08x", cval, mask, val, (cval & mask) | val );
 
 	offset = 0x02430;			// RTRPCS
 	val = 0x00000006;
 	cval = port_pci_reg_read( pf, offset );						// snag current
 	port_pci_reg_write( pf, offset, cval | val );				// flip on our bits (no mask needed since we aren't clearing bits)
-	bleat_printf( 0, ">>> rtrpcs: %08x/nomask %08x = %08x", cval, val, (cval) | val );
+	bleat_printf( 3, ">>> qos: rtrpcs: %08x/nomask %08x = %08x", cval, val, (cval) | val );
 }
 
 /*
@@ -273,8 +289,9 @@ extern void qos_set_credits( portid_t pf, int mtu, int* rates, int tc8_mode ) {
 			}
 		}
 
+		bleat_printf( 3, "qos_set_credits: pf=%d tc=%d lowrate=%.2f", (int) pf, i, cred_factor[i] );
 		cred_factor[i] = ((mtu/64.0) / cred_factor[i]);				// cred_factor is now a multiplier to convert pct into creds for the TC
-		bleat_printf( 1, ">>>> qos_set_credits: pf=%d tc=%d factor=%.2f", (int) pf, i, cred_factor[i] );
+		bleat_printf( 3, "qos_set_credits: pf=%d tc=%d factor=%.2f", (int) pf, i, cred_factor[i] );
 	}
 	
 	mask = 0xffffc000;								// we set bits 0:13; we'll mask those off the current value first to preserve what might be set
@@ -287,7 +304,7 @@ extern void qos_set_credits( portid_t pf, int mtu, int* rates, int tc8_mode ) {
 		cval = port_pci_reg_read( pf, reg_offset );						// read to preserve reserved bits
 		port_pci_reg_write( pf, reg_offset, (cval & mask) | amt );		// set the credits
 		if( amt > 0 ) {
-			bleat_printf( 1, "qos set rate: q=%d rate=%d%% credits=%d (%08x)", q, rates[q], amt, (cval & mask) | amt );
+			bleat_printf( 2, "qos set rate: q=%d mtu=%d rate=%d%% credits=%d cval&mask|amt=%08x", q, mtu, rates[q], amt, (cval & mask) | amt );
 		}
 	}
 }
@@ -602,8 +619,6 @@ extern int enable_dcb_qos( sriov_port_t *port, int* pctgs, int tc8_mode, int opt
 
 	qos_enable_arb( pf );				// part 4 from the list
 
-//fprintf( stderr, ">>>---------- 8 \n\n" );
-//return 1;
 	qos_set_minifg( pf );						// part 5 from the list
 
 	return 1;
