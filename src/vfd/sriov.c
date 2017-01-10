@@ -376,7 +376,6 @@ void set_queue_drop( portid_t port_id, int state ) {
 	/*
 	 disable default pool to avoid DMAR errors when we get packets not destined to any VF
 	*/
-
 	disable_default_pool(port_id);
 }
 

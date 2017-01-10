@@ -1,0 +1,132 @@
+Openstack integration with VFD.
+
+Compute Node
+
+OS Configs
+1. Ensure that SR-IOV and Intel VT-d are enabled in BIOS.
+
+2. Intel IOMMU needs to be enabled in kernel parameters. Modify grub config:
+
+/etc/default/grub
+-GRUB_CMDLINE_LINUX_DEFAULT="nomdmonddf nomdmonisw"
++GRUB_CMDLINE_LINUX_DEFAULT="nomdmonddf nomdmonisw intel_iommu=on hugepagesz=1G hugepages=240 default_hugepagesz=1G"
+
+3. Then update grub and reboot system:
+$ update-grub
+$ reboot
+
+4. Configure VFs and drivers.
+a. Identify the Nic that will used for SRIOV, get the PCI ID for the nic using 'lspci' and lshw commands.
+
+b. Update nic settings in /etc/rc.local for the number of VFs. 
+    echo 32 > /sys/bus/pci/devices/0000:86:00.1/sriov_numvfs
+
+c. Unload ixgbevf kernel module.
+    modprobe -r ixgbevf
+
+d. Load vfio-pci kernel module. 
+    modprobe vfio-pci
+
+5. Add vf-agent specific options to /etc/nova/nova.conf
+
+   [vf_agent]
+    use_vf_agent=True
+
+6. Add Configure PCI passthrough whitelist in /etc/nova/nova.conf. Whitelist entry has the following format on the Compute host. These configs should be done via Fuel at time of deployment:
+/etc/nova/nova.conf
+ 
+pci_passthrough_whitelist = [{"address":"0000:86:10.0", "physical_network":"physnet1"}, {"address":"0000:86:10.1", "physical_network":"physnet2"}, {"address":"0000:86:10.2", "physical_network":"physnet1"}, {"address":"0000:86:10.3", "physical_network":"physnet2"},{"address":"0000:86:10.4", "physical_network":"physnet1"},{"address":"0000:86:10.5", "physical_network":"physnet2"},{"address":"0000:86:10.6", "physical_network":"physnet1"},{"address":"0000:86:10.7", "physical_network":"physnet2"},{"address":"0000:86:11.0", "physical_network":"physnet1"},{"address":"0000:86:11.1", "physical_network":"physnet2"},{"address":"0000:86:11.2", "physical_network":"physnet1"},{"address":"0000:86:11.3", "physical_network":"physnet2"},{"address":"0000:86:11.4", "physical_network":"physnet1"},{"address":"0000:86:11.5", "physical_network":"physnet2"},{"address":"0000:86:11.6", "physical_network":"physnet1"},{"address":"0000:86:11.7", "physical_network":"physnet2"},{"address":"0000:86:12.0", "physical_network":"physnet1"},{"address":"0000:86:12.1", "physical_network":"physnet2"},{"address":"0000:86:12.2", "physical_network":"physnet1"},{"address":"0000:86:12.3", "physical_network":"physnet2"},{"address":"0000:86:12.4", "physical_network":"physnet1"}]
+
+7. Restart Nova-compute
+    service nova-compute restart 
+
+
+8. Make sure VFD is installed, configured and running.
+  /etc/vfd/vfd.cfg
+{
+     "comments": [
+            "sample conf file, fill the pciids",
+            "cp vfd.cfg.sample vfd.cfg",
+            "initctl start vfd",
+            "default_mtu is used if mtu is omitted from a pciid object."
+         ],
+  
+         "fifo": "/var/lib/vfd/request",
+         "log_dir": "/var/log/vfd",
+         "log_keep": 60,
+         "init_log_level": 2,
+         "log_level": 2,
+         "config_dir": "/var/lib/vfd/config",
+         "cpu_mask": "0x01",
+         "dpdk_log_level": 2,
+         "dpdk_init_log_level": 8,
+         "default_mtu": 1500,
+  
+         "pciids": [
+             { "id": "0000:86:00.0", "mtu": 9000 },
+             { "id": "0000:86:00.1", "mtu": 9000 }
+         ]
+}
+
+9 a. Start VFD and check status before spinning vms.
+	$ service vfd start
+	$ service vfd status
+ 	 vfd start/running, process 30929
+
+  b. Make sure iplex interface is working as nova will interact with it.
+
+	$ iplex show all
+{ "state": "OK", "msg": "
+PF/VF  ID    PCIID           Link      Speed     Duplex    RX pkts   RX bytes  RX errors RX dropped    TX pkts   TX bytes  TX errors    Spoofed
+pf      0    0000:86:00.0    UP            0          0          0          0          0          0          0          0          0          0
+pf      1    0000:86:00.1    UP            0          0          0          0          0          0          0          0          0          0
+" }
+
+
+
+On Openstack Controller.
+
+10 a. Enable PCIDeviceScheduler in nova-scheduler (edit /etc/nova/nova.conf):
+/etc/nova/nova.conf
++scheduler_default_filters=RetryFilter,AvailabilityZoneFilter,RamFilter,CoreFilter,DiskFilter,ComputeFilter,ComputeCapabilitiesFilter,ImagePropertiesFilter,ServerGroupAntiAffinityFilter,ServerGroupAffinityFilter,PciPassthroughFilter
+  
+  b. Restart nova-scheduler
+
+
+11. Create a provider network using the physical_network/s configured in Step 6 above.(the segmentation_id is not used, the vlan filter passed to port definition is used by port)
+
+neutron net-create sriovNet1 --provider:physical_network physnet1 --provider:network_type vlan --provider:segmentation_id 101
+neutron subnet-create sriovNet1  10.20.5.0/24 --enable_dhcp=False 
+
+12. Create Ports 
+
+neutron port-create --name demo_sriov1 NET-UUID --binding:vnic_type direct --binding:profile type=utils.json2dict '{"ATT_VF_VLAN_FILTER": [207], "ATT_INSERT_STAG": false, "ATT_VF_BROADCAST_ALLOW": true ,"ATT_VF_UNKNOWN_MULTICAST_ALLOW": true, "ATT_VF_UNKNOWN_UNICAST_ALLOW": true, "ATT_LINK_STATUS": true ,"ATT_VF_VLAN_STRIP": true}' --fixed-ip ip_address=10.20.5.3
+
+13. Create VMs using SRIOV port.
+
+nova boot --flavor FLAVORID --image IMAGED  --nic port-id=PORTUUID1  --nic port-id= PORTUUID2  testdualpSR-iovVM1
+
+14. Once VM is created the Neutron Ports binding will show the PCI bus
+
+| binding:profile     | {"ATT_VF_VLAN_FILTER": [207], "ATT_VF_UNKNOWN_MULTICAST_ALLOW": true, "ATT_VF_BROADCAST_ALLOW": true, "ATT_VF_VLAN_STRIP": false, "ATT_VF_UNKNOWN_UNICAST_ALLOW": true, "physical_network": "physnet1", "pci_slot": "0000:86:15.7", "ATT_INSERT_STAG": false, "ATT_LINK_STATUS": true, "pci_vendor_info": "8086:10ed"}
+
+15. The Same PCI is also seen by VFD using iplex interface
+# iplex show all
+Logged from file iplex, line 179
+{ "state": "OK", "msg": "
+PF/VF  ID    PCIID           Link      Speed     Duplex    RX pkts   RX bytes  RX errors RX dropped    TX pkts   TX bytes  TX errors    Spoofed
+pf      0    0000:86:00.0    UP            0          0          0          0          0          0          0          0          0          0
+pf      1    0000:86:00.1    UP            0          0          0          0          0          0          0          0          0          0
+vf     23    0000:86:15.7    DOWN                                0          0                                0          0
+vf     31    0000:86:17.7    DOWN                                0          0                                0          0
+" }
+
+Also VFD logs should show confirmation.
+
+1480635432 2016/12/01 23:37:12Z [2] parsing /var/lib/vfd/config/d96b85db-6529-4410-8653-8b29b8f6859f.json
+1480635432 2016/12/01 23:37:12Z [2] add: config data: name: testdualpSR-iovVM1/d96b85db-6529-4410-8653-8b29b8f6859f
+1480635432 2016/12/01 23:37:12Z [2] add: config data: pciid: 0000:86:00.1
+1480635432 2016/12/01 23:37:12Z [2] add: config data: vfid: 23
+1480635432 2016/12/01 23:37:12Z [2] VF was added: testdualpSR-iovVM1/d96b85db-6529-4410-8653-8b29b8f6859f 0000:86:00.1 id=23
+
+

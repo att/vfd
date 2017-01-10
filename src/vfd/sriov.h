@@ -1,7 +1,7 @@
 // vi: sw=4 ts=4 noet:
 /*
-	Mnemonic:	sriov.h 
-	Abstract: 	Main VFd header file.
+	Mnemonic:	sriov.h
+	Abstract: 	Main header file for vfd.
 				Original name was sriov daemon, so some references to that remain.
 
 	Date:		February 2016
@@ -86,6 +86,9 @@
 #define MAX_TCS		8			// max number of TCs possible
 #define RESTORE_DELAY 2
 
+#define TC_4PERQ_MODE	0		// bool flag passed to qos funcitons indicating 4 or 8 mode
+#define TC_8PERQ_MODE	1
+
 #define RTE_PORT_ALL            (~(portid_t)0x0)
 #define IXGBE_RXDCTL_VME        0x40000000 /* VLAN mode enable */
 
@@ -98,9 +101,10 @@
 #define barrier()                       __sync_synchronize()
 
 typedef unsigned char __u8;
-typedef unsigned int uint128_t __attribute__((mode(TI)));  
+typedef unsigned int uint128_t __attribute__((mode(TI))); 
 
-#define __UINT128__ 
+
+#define __UINT128__
 
 
 #define MAX_VF_VLANS 64
@@ -129,9 +133,9 @@ typedef uint16_t streamid_t;
 	Provides a static port configuration struct with defaults.
 */
 static const struct rte_eth_conf port_conf_default = {
-	.rxmode = { 
+	.rxmode = {
 		.max_rx_pkt_len = 9000,
-		.jumbo_frame 		= 0, 
+		.jumbo_frame 		= 0,
 		.header_split   = 0, /**< Header Split disabled */
 		.hw_ip_checksum = 1, /**< IP checksum offload disabled */
 		.hw_vlan_filter = 0, /**< VLAN filtering disabled */
@@ -144,7 +148,10 @@ static const struct rte_eth_conf port_conf_default = {
 	},
 };
 
-struct itvl_stats 
+
+unsigned int itvl_idx;
+
+struct itvl_stats
 {
   //struct port_s port_stats[2];
   struct timeval tv;
@@ -159,15 +166,15 @@ struct itvl_stats
 struct vf_s
 {
   int     num;
-  int     last_updated;         
+  int     last_updated;        
   /**
     *     no app m->ol_flags | PKT_TX_VLAN_PKT   |  app does m->ol_flags | PKT_TX_VLAN_PKT
     *     strip_stag  = 0 Y, 1 strip, 1 Y                                             | 0 NO, 1 Y, 1 Y
     *     insert_stag = 0 Y (q & qinq), xxx same as vlan filter (Y single tag only)   | 0 NO, 0 Y (q & qinq), xxx same as vlan filter (Y single tag only)
     *
    **/
-  int     strip_stag;           
-  int     insert_stag;          
+  int     strip_stag;          
+  int     insert_stag;         
   int     vlan_anti_spoof;      // if use VLAN filter then set VLAN anti spoofing
   int     mac_anti_spoof;       // set MAC anti spoofing when MAC filter is in use
   int     allow_bcast;
@@ -184,7 +191,7 @@ struct vf_s
 	uid_t	owner;					// user id which 'owns' the VF (owner of the config file from stat())
 	char*	start_cb;				// user commands driven just after initialisation and just before termination
 	char*	stop_cb;
-	uint8_t	tc_pctgs[MAX_TCS];		// percentage of the TC that the VF has been allocated (configured)
+	uint8_t	qshares[MAX_TCS];		// percentage of each queue (TC) that has been set in the config for the vf
 };
 
 
@@ -200,21 +207,21 @@ struct mirror_s
 */
 typedef struct sriov_port_s
 {
-	int		flags;					// PF_ constants
-	int     rte_port_number;		// the real device number
-	char    name[64];
-	char    pciid[64];
-	int     last_updated;
-	int     mtu;
-	int     num_mirrors;
-	int		nvfs_config;			// actual number of configured vfs; could be less than max
-	int		ntcs;					// number traffic clases (must be 4 or 8)
-	//int		enable_loopback;		// allow VM-VM traffic looping back through the NIC
-	int     num_vfs;
-	struct  mirror_s mirror[MAX_VFS];
-	struct  vf_s vfs[MAX_VFS];
-	uint8_t	tc_pctgs[MAX_TCS];		// percentage of total bandwidth for each traffic class
-	uint8_t	tc2bwg[MAX_TCS];		// maps TCs to bandwidth groups
+	int			flags;					// PF_ constants (enable loopback etc.)
+	int     	rte_port_number;		// the real device number (as known by rte functions)
+	char    	name[64];				// human readable name (probalby unused)
+	char    	pciid[64];				// the ID of the device
+	int     	last_updated;			// flags a change
+	int     	mtu;
+	int     	num_mirrors;
+	int			nvfs_config;			// actual number of configured vfs; could be less than max
+	int			ntcs;					// number traffic clases (must be 4 or 8)
+	int     	num_vfs;
+	struct  	mirror_s mirror[MAX_VFS];
+	struct  	vf_s vfs[MAX_VFS];
+	tc_class_t*	tc_config[MAX_TCS];		// configuration information (max/min lsp/gsp) for the TC	(set from config)
+	int*		vftc_qshares;			// queue percentages arranged by vf/tc (computed with each add/del of a vf)
+	uint8_t		tc2bwg[MAX_TCS];		// maps each TC to a bandwidth group (set from config info)
 } sriov_port_t;
 
 /*
@@ -266,10 +273,10 @@ struct rq_entry
 static inline uint32_t
 port_pci_reg_read(portid_t port, uint32_t reg_off)
 {
-  
+ 
   struct rte_eth_dev_info dev_info;
   rte_eth_dev_info_get(port, &dev_info);
- 
+
 	void *reg_addr;
 	uint32_t reg_v;
 
@@ -287,7 +294,7 @@ port_pci_reg_write(portid_t port, uint32_t reg_off, uint32_t reg_v)
 {
   struct rte_eth_dev_info dev_info;
   rte_eth_dev_info_get(port, &dev_info);
-  
+ 
 	void *reg_addr;
 
 	reg_addr = (void *)
@@ -365,7 +372,7 @@ void tx_set_loopback(portid_t port_id, u_int8_t on);
 
 void ether_aton_r(const char *asc, struct ether_addr * addr);
 int xdigit(char c);
- 
+
 void print_port_errors(struct rte_eth_stats et_stats, int col);
 
 double timeDelta (struct timeval * now, struct timeval * before);
@@ -385,7 +392,7 @@ void lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *par
 void vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
 void restore_vf_setings(uint8_t port_id, int vf);
 
-// callback validation support 
+// callback validation support
 int valid_mtu( int port, int mtu );
 int valid_vlan( int port, int vfid, int vlan );
 
@@ -398,11 +405,25 @@ int vfd_init_fifo( parms_t* parms );
 int is_valid_mac_str( char* mac );
 char*  gen_stats( sriov_conf_t* conf, int pf_only );
 
+// --- tools --------------------------------------------
+extern int stricmp(const char *s1, const char *s2);
 
 
-//------- these are hacks and we  must find a good way to rid ourselves of them ------
+// ---- new qos, merge up after initial testing ----
+void gen_port_qshares( sriov_port_t *port );
+int check_qs_oversub( struct sriov_port_s* port, uint8_t *qshares );
+int check_qs_spread( struct sriov_port_s* port, uint8_t* qshares );
+
+// --- qos hard coded nic funcitons that need to move to dpdk
+void qos_set_credits( portid_t pf, int mtu, int* rates, int tc8_mode );
+extern void qos_enable_arb( portid_t pf );
+
+
+//------- these are hacks in the dpdk library and we  must find a good way to rid ourselves of them ------
 struct rth_eth_dev;
 extern void ixgbe_configure_dcb(struct rte_eth_dev *dev);
+extern void scott_ixgbe_configure_dcb_pctgs( struct rte_eth_dev *dev );
+
 
 
 #endif /* _SRIOV_H_ */

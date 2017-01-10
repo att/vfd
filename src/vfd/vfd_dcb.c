@@ -18,18 +18,17 @@
 #include <vfdlib.h>		// if vfdlib.h needs an include it must be included there, can't be include prior
 #include "sriov.h"
 #include "vfd_dcb.h"
-#include "vfdlib.h"
 
-/* 
+/*
 	Default dcb settings.
 static const struct rte_eth_conf eth_dcb_default = {
 	.rxmode = {
-		.mq_mode        = ETH_MQ_RX_VMDQ_DCB,
+		.mq_mode        = ETH_MQ_RX_VMDQ_DCB,		// this sets vt_mode to true along with dcb
 		.split_hdr_size = 0,
-		.header_split   = 0, 
-		.hw_ip_checksum = 0, 
-		.hw_vlan_filter = 0, 
-		.jumbo_frame    = 0, 
+		.header_split   = 0,
+		.hw_ip_checksum = 0,
+		.hw_vlan_filter = 0,
+		.jumbo_frame    = 0,
 	},
 	.txmode = {
 		.mq_mode = ETH_MQ_TX_DCB,
@@ -58,7 +57,7 @@ static const struct rte_eth_conf eth_dcb_default = {
 	.tx_adv_conf = {
 		.vmdq_dcb_tx_conf = {
 			.nb_queue_pools = ETH_32_POOLS,
-		 	.dcb_tc = {0},
+		 	.dcb_tc = {0},						// controls which pool each TC maps to
 		},
 	},
 };
@@ -74,12 +73,14 @@ struct rte_eth_conf *vfd_dcb_init( uint8_t port ) {
 */
 
 /*
-	Configure the given port for DCB.
+	Configure the given port for DCB. Port is the real device port number, not
+	the index in our configuration.
 */
 extern int vfd_dcb_config( uint8_t port ) {
 	struct rte_eth_dev *pf_dev = &rte_eth_devices[port];		// this seems to be an array exported by dpdk
 
-	ixgbe_configure_dcb( pf_dev );			// see what happens
+	ixgbe_configure_dcb( pf_dev );		// set up dcb
+	qos_enable_arb( port );				// finally turn arbitors on
 
 	return 0;			// for now constant; but in future it will report an error if needed
 }
@@ -91,41 +92,22 @@ extern int vfd_dcb_config( uint8_t port ) {
     hw = IXGBE_DEV_PRIVATE_TO_HW(dev->data->dev_private);
 
 */
-    
+   
 /*
 	Initialise a device (port) in dcb mode.
 	Return 0 if there were no errors, 1 otherwise.  The calling programme should
 	not continue if this function returns anything but 0.
 
-	This funciton is a complete replacement for port_init() which is used when
-	not running in dcb (qos) mode.
+	This funciton is a complete replacement for port_init() and this should be invoked
+	when running in dcb (qos) mode instead of port_init().
 */
 extern int dcb_port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_pool)
 {
 	struct rte_eth_conf port_conf = eth_dcb_default;
-	const uint16_t rx_rings = 4; 
+	const uint16_t rx_rings = 4;
 	const uint16_t tx_rings = 4;
 	int retval;
 	uint16_t q;
-
-/*
-	TODO: pull in tc count and set pool value
-	switch( tc_count ) {
-		case 4:
-			port_conf.rx_adv_conf.vmdq_dcb_conf.nb_queue_pools = ETH_32_POOLS;
-			port_conf.rx_adv_conf.vmdq_rx_conf.nb_queue_pools = ETH_32_POOLS;
-			port_conf.tx_adv_conf.vmdq_dcb_tx_conf.nb_queue_pools = ETH_32_POOLS;
-			break;
-
-		case 8:
-			port_conf.rx_adv_conf.vmdq_dcb_conf.nb_queue_pools = ETH_16_POOLS;
-			port_conf.rx_adv_conf.vmdq_rx_conf.nb_queue_pools = ETH_16_POOLS;
-			port_conf.tx_adv_conf.vmdq_dcb_tx_conf.nb_queue_pools = ETH_16_POOLS;
-			break;
-
-	}
-*/
-
 
 	if (port >= rte_eth_dev_count()) {
 		bleat_printf( 0, "CRI: abort: dcb_port_init: port >= rte_eth_dev_count" );
@@ -181,8 +163,21 @@ extern int dcb_port_init(uint8_t port, __attribute__((__unused__)) struct rte_me
 			addr.addr_bytes[2], addr.addr_bytes[3],
 			addr.addr_bytes[4], addr.addr_bytes[5]);
 
-	// Enable RX in promiscuous mode for the Ethernet device.
-	rte_eth_promiscuous_enable(port);
+	rte_eth_promiscuous_enable(port);						// Enable RX in promiscuous mode for the Ethernet device.
+
+	if( vfd_dcb_config( port ) != 0 ) {							// finally set the dcb config, enable arbitors, etc.
+		bleat_printf( 0, "CRI: abort: dcb_port_init: dcb initialisation failed" );
+		return 1;
+	}
 
 	return 0;
 }
+
+/*
+extern int dcb_set_tc_shares( uint8_t port ) {
+	struct rte_eth_dev_info dev_info;
+
+	rte_eth_dev_info_get( port, &dev_info );				// need device level info for direct ixgbe dpdk calls
+}
+*/
+

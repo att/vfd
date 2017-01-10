@@ -7,11 +7,15 @@
 #include "sriov.h"
 
 /* 
-	Default dcb settings.
+	Default dcb settings.  While pools here are set to 32, the actual number of queues per pool
+	is 'forced' by the DPDK functions and is strictly based on the number of VFs which exist
+	for a PF.  In fact, if the Number of VFs is >= 32, then the queues per pool value is set to 2,
+	and if the number of VFs is < 16, then queues per pool are forced to 8 (like it or not). We may
+	have to jump through some hoops should we ever wish to allow fewer than 31 VFs to be configured.
 */
 static const struct rte_eth_conf eth_dcb_default = {
 	.rxmode = {
-		.mq_mode        = ETH_MQ_RX_VMDQ_DCB,
+		.mq_mode        = ETH_MQ_RX_VMDQ_DCB,	// both sr-iov and dcb support
 		.split_hdr_size = 0,
 		.header_split   = 0, 
 		.hw_ip_checksum = 0, 
@@ -23,7 +27,7 @@ static const struct rte_eth_conf eth_dcb_default = {
 	},
 	.rx_adv_conf = {
 		.vmdq_dcb_conf = {
-			.nb_queue_pools = ETH_32_POOLS,
+			.nb_queue_pools = ETH_32_POOLS,		// it seems that this will be overridden based on number of vfs which exist
 			.enable_default_pool = 0,
 			.default_pool = 0,
 			.nb_pool_maps = 0,					// up to 64

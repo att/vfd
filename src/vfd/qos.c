@@ -1,8 +1,34 @@
 
 /*
 	Mnemonic:	qos.c
-	Abstract:	Functions to support management of qos related controls
-				on the NIC. 
+	Abstract:	Functions which allow the overall configuration of QoS via DCB with
+				traffic class queue shares for Tx. The functions are as described in
+				the 82599 datasheet and are very specific to that NIC. The enable_dcb_qos
+				function implements the whole setup as described in the data sheet and
+				was used for initial testing and proof of concept before DPDK version 16.11
+				which implemented the ability to enable both DCB and SR-IOV concurrently.
+
+				Of the initial functions which enable_dcb_qos() invokes, only two are
+				necessary for VFd to support 'dynamic' QoS (configurable qshares (credits
+				ultimately) which can be reconfigured on the fly). These are: qos_enable_arb()
+				and qos_set_credits().  The next 'step' is to move them into DPDK; at that
+				point this whole module will be deprecated.
+
+				Currently, the vfd_dcb module does the port initialisation and then invokes
+				the two mentioned functions to complete the setup.  The main function will
+				invoke the qos_set_credits() function any time a configuration change is
+				made and the queue shares are recomputed.
+
+
+				CAUTION:  These are 'hard coded' direct NIC tweaking funcitons used
+					as an initial proof of concept for QoS validation.  Some of the
+					functionality implemented here exists in the 16.11 version of
+					the ixgbe driver/dcb code within DPDK, some does not.  What
+					does will be deprecated such that those functions are used
+					directly, and what does not will be merged into the DPDK
+					library with the intent of upstreaming them into a future
+					release.
+
 	Author:		E. Scott Daniels
 	Date:		06 June 2016
 */
@@ -23,7 +49,7 @@ static void qos_set_minifg( portid_t pf ) {
 
 	offset = 0x08810;									//  SECTXMINIFG
 	val = 0x1f00;										// pfc is enabled; set 0x1f per data sheet (all bits in field, so no need to clear)
-	cval = port_pci_reg_read( pf, offset );						// snag current 
+	cval = port_pci_reg_read( pf, offset );						// snag current
 	bleat_printf( 1, ">>> minifg: %08x %08x = %08x", cval, val, cval | val );
 	port_pci_reg_write( pf, offset, cval | val );				// flip our bits on and write
 }
@@ -52,7 +78,7 @@ static void qos_set_minifg( portid_t pf ) {
 	val     00          40          00          13
 
 
-    - Tx Packet Plane Control and Status (RTTPCS): 
+    - Tx Packet Plane Control and Status (RTTPCS):
 		TPPAC=1b, TPRM=1b, ARBD=0x004
 
                   | -- per data sheet set to 0x004 for DCB mode
@@ -64,7 +90,7 @@ static void qos_set_minifg( portid_t pf ) {
 	val     01          00          01          20
 
 
-    - Rx Packet Plane Control and Status (RTRPCS): 
+    - Rx Packet Plane Control and Status (RTRPCS):
 		RAC=1b, RRM=1b
                                                       |-- 0==RR 1=WSB
                                                       ||- must be 1 for DCB
@@ -73,8 +99,11 @@ static void qos_set_minifg( portid_t pf ) {
 	mask:   ff          ff          ff          f9				(unused since we don't clear anything)
 	val     00          00          00          06
 	
+	This should be covered by existing DPDK when DCB is set.   Though we may need a
+	way to selectively disable/enable the arbitration while leaving all other
+	bits set.
 */
-static void qos_enable_arb( portid_t pf ) {
+extern void qos_enable_arb( portid_t pf ) {
 	uint32_t	offset;
 	uint32_t	val;
 	uint32_t	cval;		// value currently set (preserve reserved)
@@ -87,28 +116,28 @@ static void qos_enable_arb( portid_t pf ) {
 	} else {
 		val = 0x00400010;
 	}
-	cval = port_pci_reg_read( pf, offset );						// snag current 
+	cval = port_pci_reg_read( pf, offset );						// snag current
 	port_pci_reg_write( pf, offset, (cval & mask) | val );		
-	bleat_printf( 1, ">>>> qos: set_enable_rttdcs (%08x & %08x) | %08x = %08x", cval, mask, val, (cval & mask) | val );
+	bleat_printf( 3, ">>>> qos: set_enable_rttdcs (%08x & %08x) | %08x = %08x", cval, mask, val, (cval & mask) | val );
 
 	offset = 0x0cd00;			// RTTPCS
 	mask = 0x003ffedf;
 	val = 0x01000120;
-	cval = port_pci_reg_read( pf, offset );						// snag current 
+	cval = port_pci_reg_read( pf, offset );						// snag current
 	port_pci_reg_write( pf, offset, (cval & mask) | val );		// add our bits or clear what we don't want
-	bleat_printf( 1, ">>>> qos: set_enable_rttpcsarb (%08x & %08x) | %08x = %08x", cval, mask, val, (cval & mask) | val );
+	bleat_printf( 3, ">>>> qos: set_enable_rttpcsarb (%08x & %08x) | %08x = %08x", cval, mask, val, (cval & mask) | val );
 
 	offset = 0x02430;			// RTRPCS
 	val = 0x00000006;
-	cval = port_pci_reg_read( pf, offset );						// snag current 
+	cval = port_pci_reg_read( pf, offset );						// snag current
 	port_pci_reg_write( pf, offset, cval | val );				// flip on our bits (no mask needed since we aren't clearing bits)
-	bleat_printf( 0, ">>> rtrpcs: %08x/nomask %08x = %08x", cval, val, (cval) | val );
+	bleat_printf( 3, ">>> qos: rtrpcs: %08x/nomask %08x = %08x", cval, val, (cval) | val );
 }
 
 /*
-	NOTE: these are three separate functions as some day we might be 
-	setting different values in each. Else they could be the same 
-	function that accept the offset.
+	NOTE: these are three separate functions as some day we might be
+	setting different values in each. Else they could be the same
+	function that accepts the offset.
 */
 
 /*
@@ -126,6 +155,8 @@ static void qos_enable_arb( portid_t pf ) {
        0    0     1    f     f  ?       f    f
     0011 1111  0000 0000  0000 0001  0000 0000 mask
        3    f     0    0    0     0     0    0
+
+	This should be covered by the current DPDK DCB mode setup.
 */
 static void qos_set_tdplane( portid_t pf ) {
 	int i;
@@ -151,6 +182,11 @@ static void qos_set_tdplane( portid_t pf ) {
 	For now we set equally.
 
 	See qos_set_tdplane flower box for values.
+
+	Corresponding ixgbe function:
+		s32 ixgbe_dcb_config_tx_data_arbiter_82599(struct ixgbe_hw *hw, u16 *refill, u16 *max, u8 *bwg_id, u8 *tsa, u8 *map)
+
+	This should be covered by the current DPDK DCB mode setup.
 */
 static void qos_set_txpplane( portid_t pf ) {
 	int i;
@@ -176,6 +212,8 @@ static void qos_set_txpplane( portid_t pf ) {
 	For now we set equallay.
 
 	See qos_set_tdplane flowerbox for details
+
+	This should be covere by the current DPDK DCB mode setup.
 */
 static void qos_set_rxpplane( portid_t pf ) {
 	int i;
@@ -197,13 +235,17 @@ static void qos_set_rxpplane( portid_t pf ) {
 }
 
 /*
-	Accepts an array of percentages, where each element defines a percentage of the related
+	Accepts an array of percentages (rates), where each element defines a percentage of the related
 	TC that the queue is to be given.  These percentages are converted into refil credits
-	which are then written to the NIC for the corresponding queue.
-	Credits are based on the upper limit of the MTU for the PF such that the 
-	MTU/64 is used as the base credit value for the smallest queue in each traffic
-	class. The credit values assigned to the other queues in the traffic class are 
-	determined using the ratio of the queue's percentage and the minimal percentage as a 
+	which are then written to the NIC for the corresponding queue. The assumption is that the queues
+	are assigned to each VF in order such at if there are 4 traffic classes, queues 0 through 3 are
+	assigned to VF0, TCs  through 3; queues 4 through 7 are assigned to VF1 TCs 0 through 3 etc. Thus
+	the rates array is laid out in this maner.
+
+	Credits are based on the upper limit of the MTU for the PF such that the
+	MTU/64 is used as the base credit value for the queue assigned the smallest percentage
+	in each traffic class. The credit values assigned to the other queues in the traffic class
+	are determined using the ratio of the queue's percentage and the minimal percentage as a
 	multiplier.
 	As an example:
 			MTU = 9000
@@ -214,10 +256,9 @@ static void qos_set_rxpplane( portid_t pf ) {
 			q2 receives (20/10) * 141 = 282 credits
 			q3 receives (57/10) * 141 = 804 credits
 
-	MTU cannot be less than 1806 bytes (1.5 * 1024) and thus the minmum number of credits
-	is 24.
+	MTU cannot be less than 1536 bytes (1.5 * 1024) and thus the minmum number of credits is 24.
 */
-static void qos_set_credits( portid_t pf, int mtu, int* rates, int tc8_mode ) {
+extern void qos_set_credits( portid_t pf, int mtu, int* rates, int tc8_mode ) {
 	uint32_t	sel_offset = 0x04904;				// offset of the selector register
 	uint32_t	reg_offset = 0x04908;				// register offset
 	double		cred_factor[MAX_TCS];				// multiplier which converts a percentage into credit value
@@ -235,6 +276,10 @@ static void qos_set_credits( portid_t pf, int mtu, int* rates, int tc8_mode ) {
 		num_tcs = 8;
 	}
 
+	if( mtu < 1536 ) {			// see flowerbox
+		mtu = 1536;
+	}
+
 	for( i = 0; i < num_tcs; i++ ) {				// find base for each TC
 		cred_factor[i] = 100;						// start with a max pct value
 
@@ -244,7 +289,9 @@ static void qos_set_credits( portid_t pf, int mtu, int* rates, int tc8_mode ) {
 			}
 		}
 
+		bleat_printf( 3, "qos_set_credits: pf=%d tc=%d lowrate=%.2f", (int) pf, i, cred_factor[i] );
 		cred_factor[i] = ((mtu/64.0) / cred_factor[i]);				// cred_factor is now a multiplier to convert pct into creds for the TC
+		bleat_printf( 3, "qos_set_credits: pf=%d tc=%d factor=%.2f", (int) pf, i, cred_factor[i] );
 	}
 	
 	mask = 0xffffc000;								// we set bits 0:13; we'll mask those off the current value first to preserve what might be set
@@ -255,14 +302,18 @@ static void qos_set_credits( portid_t pf, int mtu, int* rates, int tc8_mode ) {
 		// --- this seems dodgy if another process/thread can select before we make our second write ----
 		port_pci_reg_write( pf, sel_offset, q );						// select the queue to work on
 		cval = port_pci_reg_read( pf, reg_offset );						// read to preserve reserved bits
-		port_pci_reg_write( pf, reg_offset, (cval & mask) | amt );		// set the credits 
-		fprintf( stderr, "qos set rate: q=%d rate=%d%% credits=%d (%08x)\n", q, rates[q], amt, (cval & mask) | amt );
+		port_pci_reg_write( pf, reg_offset, (cval & mask) | amt );		// set the credits
+		if( amt > 0 ) {
+			bleat_printf( 2, "qos set rate: q=%d mtu=%d rate=%d%% credits=%d cval&mask|amt=%08x", q, mtu, rates[q], amt, (cval & mask) | amt );
+		}
 	}
 }
 
 
 /*
 	Set the flow control config for QoS.
+
+	This should be set up in DPDK dcb stuff.
 */
 static void qos_set_fcc( portid_t pf ) {
 	uint32_t val;
@@ -279,7 +330,7 @@ static void qos_set_fcc( portid_t pf ) {
 
 	offset = 0x04294;    	// MFLCN.RPFCE=1b RFCE=0b
 	val = 0x1 << 2;
-	mask =0xfffffff0; 
+	mask =0xfffffff0;
 	cval = port_pci_reg_read( pf, offset );
 	port_pci_reg_write( pf, offset, (cval & mask) | val );		// flip on our bits, and set
 	bleat_printf( 1, ">>>> qos: rpfce %08x & %08x | %08x = %08x", cval, mask, val, (cval & mask) | val );
@@ -340,7 +391,7 @@ static void qos_set_rup2tc( portid_t pf, int tc8_mode ) {
 }
 
 /*
-	Set transmit 802.1p priority to TC mapping. See rup2tc funciton 
+	Set transmit 802.1p priority to TC mapping. See rup2tc funciton
 	header for more details
 */
 static void qos_set_tup2tc( portid_t pf, int tc8_mode ) {
@@ -379,8 +430,8 @@ static void qos_set_vtctl( portid_t pf ) {
 
 /*
 	Set the multiple transmit queues command reg based on 4 or 8 TCs.
-	The doc has the wrong section identified for this. The values 
-	coded here are based on section 8.2.3.9.15. 
+	The doc has the wrong section identified for this. The values
+	coded here are based on section 8.2.3.9.15.
 */
 static void qos_set_mtqc( portid_t pf, int tc8_mode ) {
 	uint32_t	val = 0x0b;			// default to dcb-ena, vt-ena, TC0-3 & 32 VMs (1011)
@@ -411,7 +462,7 @@ static void qos_set_mtqc( portid_t pf, int tc8_mode ) {
 	1101b == virt & dcb 32 pools (4TCs) == 0x0d
 
 	hashing bits:		not using rss, should be off
-	.... .... .... .... 
+	.... .... .... ....
     rrrr rrrr 1111 rr11
 	ff0c mask
     00f3 set
@@ -437,8 +488,8 @@ static void qos_set_mrqc( portid_t pf, int tc8_mode ) {
 }
 
 /*
-	Set the tx and rx buffer sizes for 4 or 8 TC mode. In 4 TC mode, Values 
-	0-3 are set and 4-7 are cleared.  The tx threshold value is related, so 
+	Set the tx and rx buffer sizes for 4 or 8 TC mode. In 4 TC mode, Values
+	0-3 are set and 4-7 are cleared.  The tx threshold value is related, so
 	it is also set in this function.
 */
 static void qos_set_sizes( portid_t pf, int tc8_mode ) {
@@ -477,7 +528,7 @@ static void qos_set_sizes( portid_t pf, int tc8_mode ) {
 	}
 
 	val = rx_low << 10;										// values are inserted at bytes 10-19
-	offset = 0x3c00; 
+	offset = 0x3c00;
 	for( i = 0; i < 4; i++ ) {								// set RX 0-3
 		cval = port_pci_reg_read( pf, offset );
 		port_pci_reg_write( pf, offset, (cval & mask ) | val );
@@ -514,11 +565,12 @@ static void qos_set_sizes( portid_t pf, int tc8_mode ) {
 
 /*
 	Enable qos on the PF passed in, using the percentages given.
-	Percentags is assumed to be an array of 32 integers with values
-	in the range of -1 through 100 inclusive. A value <0 indicates that
-	we should NOT configure the queues associated with the VF. 
+	Percentags is assumed to be an array of MAX_QUEUE integers with values
+	in the range of 0 through 100 inclusive. These are grouped by VF with
+	each VF consisting of ether 4 or 8 consecutive values; one vaue for
+	each possible TC.
 
-	Returns 0 if error (percentags total != 100% etc), 1 
+	Returns 0 if error (percentags total != 100% etc), 1
 	otherwise.
 */
 extern int enable_dcb_qos( sriov_port_t *port, int* pctgs, int tc8_mode, int option ) {
@@ -567,8 +619,6 @@ extern int enable_dcb_qos( sriov_port_t *port, int* pctgs, int tc8_mode, int opt
 
 	qos_enable_arb( pf );				// part 4 from the list
 
-//fprintf( stderr, ">>>---------- 8 \n\n" );
-//return 1;
 	qos_set_minifg( pf );						// part 5 from the list
 
 	return 1;
@@ -578,14 +628,14 @@ extern int enable_dcb_qos( sriov_port_t *port, int* pctgs, int tc8_mode, int opt
 
 TXPBSIZE[i] = 0x0CC00 + ((i) * 4))		31:20(reserved) 19:10(size) 9:0(reserved)
 RXPBSIZE[i] = 0x03C00 + ((i) * 4))		31:20(reserved) 19:10(size) 9:0(reserved)
-MRQC 0x0ec80	31:16(hash field selection) 15(res) 14:4(res) 3:0(mrq enable bits)  
+MRQC 0x0ec80	31:16(hash field selection) 15(res) 14:4(res) 3:0(mrq enable bits)
 				1100b == virt & dcb 16 pools 8TCs
 				1101b == virt & dcb 32 pools 4TCs
 
 RTTDT1C	0x04908
 RTTST1S 0x0490c
 
-Setting up for qos: 
+Setting up for qos:
  the list --  from datasheet (approximately) on page 181
 
 1. Configure packet buffers, queues, and traffic mapping:

@@ -6,70 +6,129 @@
 .st 10
 
 .dh 1 m=.5i  e=no s=21 i=0 p=16 f=Helvetica-bold
-.dh 2  m=.5i s=11 i=0      p=14 f=Helvetica-bold 
+.dh 2  m=.5i s=21 i=0      p=14 f=Helvetica-bold 
 .dh 3  m=.5i s=10 i=0      p=12 f=Helvetica-bold
 
 .cd 1 7i
 .ju on
 .hn off
 
+.** ------ macros which hold across most desired output ---------------------
 .dv fontsize 10p
 .dv textfont Helvetica
 .dv textsize 10p
 .dv extextsize 8p
 .dv ditext Helvetica-bold
+.dv cwfont Courier
 
-.dv indent .ll -1i .in +.5i
-.dv uindent .in -.5i .ll +1i
+.dv indent .ll -.75i .in +.5i
+.dv uindent .in -.5i .ll +.75i
 .dv smindent .ll -1i .in +.25i
 .dv smuindent .in -.25i .ll +1i
 
 .dv ex_start .ll -.25i .in +.25i .sf Courier .st &extextsize .fo off
 .** ex_end macro _must_ be placed in col 0 to cause an exit from no-format mode.
-.dv ex_end .fo on .sf Helvetica .st ^&textsize .in -.25i .ll +.25i
+.dv ex_end .fo on .sf Helvetica .st ^&textsize .in -.25i .ll +.25i .sp .1
 
 .** insert $2 if there is more than $1 inches remaining on the page; else insert at top of new page
 .** a .gv remain command must be executed before each use of this macro
 .dv ifroom .if ^&_iremain $1 > ^:  .im $2  .ei .oe page .im $2 .fi
 
+.dv note_num 1
+.dv ss_num 1
+.dv super .sm .tf superscript 2/3 ^&note_num ^: .dv note_num ^[ ^&note_num 1 + ] ^:
+.dv super .dv ss_num ^[ ^&ss_num 1 + ] ^: .sm .tf superscript 2/3 ^&ss_num  ^:
+.dv start_note .cn start atbot Times-roman 8p .5i
+.dv end_note .cn end
+.** ------------------------------------------------------------------
+
+.dv def_list .bd $1 
+.dv end_dlist .ed
+
+.**  ---- specialised macros; might override above ------------------------------------
 .if pfm
 	.dv cw .tf Courier 8p  $1 ^:
 	.dv bold .tf Helvetica-bold  ^&fontsize $1  ^:
-	.dv ital .tf Helvetica-oblique  ^&fontsize $1  ^:
+	.dv ital .tf Helvetica-Oblique  ^&fontsize $1  ^:
 	.dv lic1 l
 	.dv lic2 m
 	.ll 5.75i
 	.pn on 0 center f=-%d- noline
+
+	.** allow markdown, must redefine header directive
+	.dv h1 .h1 $1
+	.dv h2 .h2 $1
+	.dv h3 .h3 $1
+	.dv di .di $1 ^: 
 .ei
+	.** .dv super ^[^&note_num] .dv note_num ^[ ^&note_num 1 + ] ^:
+	.dv super .dv ss_num ^[ ^&ss_num 1 + ] ^: .sm ^[ .sm ^&{ss_num}]
+	.sv super
+
+	.dv start_note .cn start atend Times-roman 8p .5i
 	.dv bold $1
 	.dv cw $1
 	.dv ital $1
 	.dv lic1 *
 	.dv lic2 +
+
+	.dv line .ln
+
+	.** if the env var is set, redefine macros to generate the limited markdown things
+	.gv e MARKDOWN markdown
+	.if markdown
+		.ju off
+
+		.** no concept of a definition list in markdown; no start/end and just make the text bold to emulate
+		.dv def_list  .sp 1
+		.dv end_dlist .sp 1
+		.dv di **$1:** 
+
+		.dv line ***
+		.** markdown doesn't have any indention as indention is significant
+		.in 0
+		.dv indent 
+		.dv uindent .sp 2
+		.dv smindent
+		.dv smuindent .sp 2
+		.dv bold **$1**
+		.dv ital _ .sm $1 .sm _
+		.dv h1 .sp 2 # $1 .br
+		.dv h2 .sp 2 ## $1 .br
+		.dv h3 .sp 2 ### $1 .br
+
+		.dv ex_start .ll -4 .in .5i .sp 2 .fo off 
+		.dv ex_end .fo on .in 0i .ll +4 .sp 2
+		.dv ifroom .im $2
+	.fi
 .fi
 
-.dv note_num 1
-.dv ss_num 1
-.dv super .sm .tf superscript 2/3 ^&note_num ^: .dv note_num ^[ ^&note_num 1 + ] ^:
-.dv super .dv ss_num ^[ ^&ss_num 1 + ] ^: .sm .tf superscript 2/3 ^&ss_num  ^:
-.** ------------------------------------------------------------------
 
 .st 18p
 .sf Helvetica
 .gv date
-.bc start
-Virtual Function  Daemon
-.br
-.st 14
-Hacker's Guide
-.bc end
-.st &fontsize
 
-.h1 Overview
-.cn start atbot Times-roman 8p .5i
+.if pfm
+	.bc start
+	Virtual Function Daemon -- VFd
+	.br
+	.st 14
+	User's Guide
+	.bc end
+	.st &fontsize
+.ei
+	.im caution.im 
+
+	&bold(Virtual Function Daemon -- VFd)
+	.sp
+	&bold(User's Guide)
+.fi
+
+&h1( Overview )
+&start_note
 A basic primer on SR-IOV can be found at .br
 http://www.intel.com/content/dam/doc/application-note/pci-sig-sr-iov-primer-sr-iov-technology-paper.pdf
-.cn end
+&end_note
 VFd is a daemon which manages the configuration of virtual and physical functions (VFs and PFs) which 
 are exposed by an SR-IOV &super capable network interface card (NIC).  
 Configuration and management is accomplished via DPDK and allows for the following attributes to be
@@ -83,7 +142,7 @@ controlled:
 .sp .3
 .li Addition of VLAN ID (single) to outbound traffic
 .sp .3
-.li Enabling/disableing broadcast, multicast, unicast 
+.li Enabling/disabling broadcast, multicast, unicast 
 .el
 &uindent
 .sp
@@ -125,15 +184,16 @@ This guide provides a way to hack together such a system and describes what is r
 &uindent
 .sp
 
-.h1 Physical and Virtual Functions
+&h1( Physical and Virtual Functions )
 Before VFd can be started, the PF which will provide VFs must be identified and the VFs must be 
 created. 
 The &cw( lspci ) command, generally using &cw( grep ) to limit the output to ethernet devices, can 
 be used to identify the NICs on the system, and from that list the PFs which need to be set up 
-with VFs can be determined and the VFs added.  
+with VFs can be determined and the VFs added (see the &ital(Limitations and Requirements) section later in 
+this document for information regarding the number of VFs which must be created for each PF).  
 
 
-.h2 Adding VFs to a PF
+&h2( Adding VFs to a PF )
 Assuming the PF is &cw( 0000:01:00.1, ) the following can be used to add VFs under it.
 
 .sp
@@ -143,9 +203,11 @@ Assuming the PF is &cw( 0000:01:00.1, ) the following can be used to add VFs und
 .bd .2i a=1 f=%d) &ditext
 .di : Cd to the device directory. (e.g. &cw( /sys/devices/pci0000:00/0000:00:01.0/0000:01:00.1) .sm ).
 .sp
-.di : Disable all current VFs ( .sm &cw( echo 0 >sriov_numfs ) .sm )
+.di : Bind the PF to the &cw(igb_uio) driver (if not already bound)
 .sp
-.di : Enable the number of VFs desired ( .sm &cw( echo 13 >sriov_numfs ) .sm )
+.di : Disable all current VFs ( .sm &cw( echo 0 >max_vfs ) .sm )
+.sp
+.di : Enable the number of VFs desired ( .sm &cw( echo 32 >max_vfs ) .sm )
 .sp
 .di : Verify that the VFs were added (ls -al in the directory and expect to find symbolic links like &cw( virtfn3->../0000:01:10.7 ) .sm )
 .ed
@@ -153,56 +215,60 @@ Assuming the PF is &cw( 0000:01:00.1, ) the following can be used to add VFs und
 &uindent
 .sp
 
-The above example shows the creation of 13 VFs; up to 32 VFs may be added to a single PF. 
-As a final step, the &cw(ixgbe) driver should be unbound from the PF and VFs, and the &cw( vfio-pci ) driver
-bound to each. 
+The above example shows the creation of 32 VFs; up to 32 VFs may be added to a single PF. 
+As a final step, the VFs should be bound to the  &cw( vfio-pci ) driver if they were not automatically bound
+when created (in our lab they are automatically bound, so this step may not be needed).
 .gv figure
 The &cw( dpdk_nic_bind ) utility (installed with VFd)  can be used to do this as illustrated in figure &_fig.
 .sp .5
 &ex_start
-  dpdk_nic_bind -u 0000:01:00.1
   dpdk_nic_bind -b vfio-pci 0000:01:10.7
 &ex_end
-.fg Commands used to unbind and bind drivers from PFs and VFs.
+.fg Command used to bind the vfio-pci driver to a VF.
 .sp
-Note that only the PCI address is needed for these commands.
+Note that only the PCI address is needed for these commands, and if another driver is bound to the VF
+it will automatically be unbound first.
 
 .gv figure
 .dv stat_fig &_fig
 .dv script_fig [ &_fig 1 + ]
-.h2 PF/VF Verification 
+&h2( PF/VF Verification  )
 The &cw( dpdk_nic_bind ) utility can also be used to verify the state of the various network interfaces on the 
 system.  
 Executing with the &cw( --status ) option will cause it to list all network interfaces. 
 If the VFs were added, and bound to the correct driver, the output from the command should list
 them all under a heading which indicates that they are bound to a DPDK capable driver.
-Figure &stat_fig illustrates the status output from this command and shows that VFs have been added to 
-the PF, but are not yet bound to vfio-pci driver (they do not show under the DPDK header).
+Figure &stat_fig illustrates the expected output which lists the PFs bound to the uio driver
+and the VFs bound to the vfio-pci driver.
 
 .ca start status.ca
 &ex_start
 
+root@agave207:/var/log# dpdk_nic_bind --status
+
 Network devices using DPDK-compatible driver
 ============================================
-<none>
+0000:08:00.0 'Ethernet 10G 2P X520 Adapter' drv=igb_uio unused=vfio-pci
+0000:08:00.1 'Ethernet 10G 2P X520 Adapter' drv=igb_uio unused=vfio-pci
+0000:08:10.0 '82599 Ethernet Controller Virtual Function' drv=vfio-pci unused=igb_uio
+0000:08:10.1 '82599 Ethernet Controller Virtual Function' drv=vfio-pci unused=igb_uio
+0000:08:10.2 '82599 Ethernet Controller Virtual Function' drv=vfio-pci unused=igb_uio
+0000:08:10.7 '82599 Ethernet Controller Virtual Function' drv=vfio-pci unused=igb_uio
+:
+:
+0000:08:17.5 '82599 Ethernet Controller Virtual Function' drv=vfio-pci unused=igb_uio
 
 Network devices using kernel driver
 ===================================
-0000:02:00.0 'NetXtreme BCM5720 Gigabit Ethernet PCIe' if=eth0 drv=tg3 unused=vfio-pci *Active*
-0000:02:00.1 'NetXtreme BCM5720 Gigabit Ethernet PCIe' if=eth1 drv=tg3 unused=vfio-pci 
+0000:02:00.0 'NetXtreme BCM5720 Gigabit Ethernet PCIe' if=em1 drv=tg3 unused=igb_uio,vfio-pci *Active*
+0000:02:00.1 'NetXtreme BCM5720 Gigabit Ethernet PCIe' if=em2 drv=tg3 unused=igb_uio,vfio-pci 
 
 Other network devices
 =====================
-0000:08:00.0 'Ethernet 10G 2P X520 Adapter' unused=vfio-pci
-0000:08:00.1 'Ethernet 10G 2P X520 Adapter' unused=vfio-pci
-0000:08:10.0 '82599 Ethernet Controller Virtual Function' unused=vfio-pci
-0000:08:10.1 '82599 Ethernet Controller Virtual Function' unused=vfio-pci
-0000:08:10.2 '82599 Ethernet Controller Virtual Function' unused=vfio-pci
-0000:08:10.3 '82599 Ethernet Controller Virtual Function' unused=vfio-pci
-0000:08:10.4 '82599 Ethernet Controller Virtual Function' unused=vfio-pci
-0000:08:10.5 '82599 Ethernet Controller Virtual Function' unused=vfio-pci
+<none>
+
 &ex_end 
-.fg Partial output generated by the dpdk_nic_bind utility with the --status option.  VFs had been created but not bound to the driver.
+.fg Partial output generated by the dpdk_nic_bind utility with the --status option.
 .sp
 .ca end
 .gv remain
@@ -215,7 +281,7 @@ Other network devices
 .fi
 .fi
 
-.h2 IOMMU Groups
+&h2( IOMMU Groups )
 If a NIC has two physical interfaces, these will be grouped together from an IOMMU perspective, and 
 in order for VFd to have access to the NICs, all of the devices in a group must be bound to a DPDK
 capable driver.  
@@ -223,9 +289,10 @@ If all devices belonging to a group are not bound to the DPDK capable driver, an
 generated as VFd attempts to initialise, and the DPDK library will abort. 
 .sp 1
 
-.cn start atbot Times-roman 8p 1i
-All code snipits provided in this document assume Kshell; your mileage may vary with bash or other shells.
-.cn end
+.** .cn start atbot Times-roman 8p 1i
+&start_note
+All code fragments provided in this document assume Kshell; your mileage may vary with bash or other shells.
+&end_note
 Given a known PF, it is simple to determine which other devices also belong to the same group. 
 .gv figure
 Figure &script_fig shows a simple set of commands &super which can be used to find the location of a known 
@@ -254,33 +321,36 @@ A subsequent list command can then be used to list all devices in that group.
 .fi
 
 
-.h1 Installation And Configuration
+&h1( Installation And Configuration )
 VFd is distributed in a &cw( .deb ) package and can be installed with a simple &cw( dpkg ) command. 
 The installation process creates the configuration directory in &cw(/etc) (adding a sample configuration file), 
 creates the necessary directories in the &cw(/var/lib) and &cw(/var/log) directories, and places the following
 programmes into &cw(/usr/bin:)   
 .sp .5
 &indent
-.bd 1i
-.di vfd : The daemon itself (64 bit Linux binary)
+&def_list( 1i )
+&di(vfd) The daemon itself (64 bit Linux binary)
 .sp .3
-.di iplex : The command line tool used to communicate with VFd (python 2.x)
+&di(iplex) The command line tool used to communicate with VFd (python 2.x)
 .sp .3
-.di vfd_pre_start : The script which manages the startup process (python)
+&di(vfd_pre_start) The script which manages the startup process (python)
 .sp .3
-.di dpdk_nic_bind : An opensource programme which facilitates the binding and unbinding of drivers to/from virtual and physical functions (python)
-.ed
+&di(dpdk_nic_bind) An opensource programme which facilitates the binding and unbinding of drivers to/from virtual and physical functions (python)
+&end_dlist
 &uindent
 .sp 
-The installation process also installs the necessary &ital(upstart) mechanism allowing the familar 
+The installation process also installs the necessary &ital(upstart) mechanism allowing the familiar 
 &ital(service) command to be used to start and stop VFd. 
 
-.h2 Configuration 
+&h2( Configuration  )
 The configuration file, &cw(vfd.conf,) must be created in &cw(/etc/vfd) before VFd can be started. 
 .gv fig
-The file contains a set of JSON encoded variables which are illustratted in figure &_fig.
+The file contains a set of JSON encoded variables which are illustrated in figure &_fig.
 
-.ca conf.ca start
+.ca start conf.ca 
+.pu
+.in .5i
+.ll 6i
 &ex_start
  {
    "comments": [
@@ -301,58 +371,71 @@ The file contains a set of JSON encoded variables which are illustratted in figu
    "default_mtu": 1500,
 
    "pciids": [ 
-      { "id": "0000:01:00.0", "mtu": 9000 }, 
-      { "id": "0000:01:00.1", "mtu": 9000 } 
+      { "id": "0000:01:00.0", "mtu": 9000, "enable_loopback": false }, 
+      { "id": "0000:01:00.1", "mtu": 9000, "enable_loopback": false } 
    ]
   }
 &ex_end
 .fg A sample vfd.cfg configuration file.
 .sp
+.po
 .ca end
 .gv remain
 &ifroom(3:conf.ca)
 
+.sp 1
 .cc 4i
 Items worth noting in the config file are:
 .sp .5
 &indent
-.bd 1i
-.di fifo : This is a named pipe which iplex uses to communicate requests to VFd
+&def_list( 1i )
+&di(fifo) This is a named pipe which iplex uses to communicate requests to VFd
 .sp .4
-.di log levels : The verbosity of running chatter emitted by VFd can be controlled by these 
+&di(log levels) The verbosity of running chatter emitted by VFd can be controlled by these 
 	settings. Four options are provided which control the chattiness during initialisation (usually
-	more information is desired) and a level which affects the dirvel after initialisation is 
+	more information is desired) and a level which affects the drivel after initialisation is 
 	complete.   Log levels are supplied for both VFd proper and for the DPDK library functions
 	as it is useful to control them separately.
 .sp .4
-.di config_dir : This is the directory where the individual VF configuration files are expected to 
+&di(config_dir) This is the directory where the individual VF configuration files are expected to 
 	be placed. The default is shown in the example.
 .sp .4
-.di cpu_mask : This is a single bit which indicates which CPU the DPDK library will associate with. 
+&di(cpu_mask) This is a single bit which indicates which CPU the DPDK library will associate with. 
 	VFd limits this value to a single bit, and odd results may occur if a multi-bit integer 
 	is given.
 .sp .4
-.di pciids : Explained in the following section
-.ed
+&di(pciids) Explained in the following section
+&end_dlist
 &uindent
 .sp
 
 
-.h3 Pciid Array
-The array of pciids supplied in the configuration file defines the &bold( PFs ) which VFd will 
+&h3( Pciid Array )
+The array of pciids supplied in the configuration file defines the PFs which VFd will 
 attempt to manage.  
-In addition to the PCI address, the mtu value for the device should be supplied; if omitted, 
-the default value supplied in the upper section of the file is used. 
+In addition to the PCI address, the following value should be supplied:
+.sp .5
 
-.h3 Comments And Other Elements
-Any field which Vfd doesn't expect is ignored, and thus the comments array allows the 
+&indent
+&def_list( 1i )
+&di(mtu) The mtu value for the device. If omitted the &ital(default_mtu) value described earlier is used.
+.sp .3
+&di(enable_loopback) When set to true allows the NIC to act as a bridge and permits traffic from one guest
+	to another, hosted on the same PF, to be looped directly back without going out on the physical wire. 
+	The default value is false.
+&end_dlist
+&uindent
+.sp
+
+&h3( Comments And Other Elements )
+Any field which VFd doesn't expect is ignored, and thus the comments array allows the 
 creator to document the configuration without interfering with VFd
 Order of the fields is unimportant, however the field names are case sensitive. 
 
-.h1 Running VFd
+&h1( Running VFd)
 The daemon can be started manually, or using the upstart start and stop commands as would be done 
 for any other system service. 
-When running manually the user must be &ital( root, ) and various command line options may be 
+When running manually the user must be &ital(root,) and various command line options may be 
 provided allowing for a diverse testing environment.  
 The VFd command line syntax is:
 .sp .5
@@ -364,35 +447,36 @@ Where:
 .sp .1
 .ju off
 &smindent
-.bd .35i &courier
-.di -f : Causes VFd to run without detaching from the tty (foreground)
-.di -n : Enables &ital( no-execution ) mode which prevents VFd from actually doing anything through DPDK
-.di -p : Provides the filename of the configuration file (default is &cw(/etc/vfd/vfd.cfg) .sm )
-.ed
+&def_list( .35i &cwfont )
+&di(-f) Causes VFd to run without detaching from the tty (foreground)
+.sp .3
+&di(-n) Enables &ital(no-execution) mode which prevents VFd from actually doing anything through DPDK
+.sp .3
+&di(-p) Provides the filename of the configuration file (default is &cw(/etc/vfd/vfd.cfg) .sm )
+&end_dlist
 &smuindent
 .sp 
 .ju on
 
 .gv fig
-.ca start process.ca
-.ep figures/vfd_process.eps x=.75i l=2.5i close proportional
-.fg VFd process overview
-.sp
-.ca end
-.gv remain
-&ifroom(2.5:process.ca)
-.if false
-.if &_iremain 2.5 <
-	.oe atend .im process.ca
-.fi
-	.im process.ca
-.fi
+.if pfm
+	.ca start process.ca
+	.ep figures/vfd_process.eps x=.75i l=2.5i close proportional
+	.fg VFd process overview
+	.sp
+	.ca end
+	.gv remain
+	&ifroom(2.5:process.ca)
+.ei
+	.sp 2
+	[ IMAGE ] 	
+	.sp 2
 .fi
 
 The illustration in figure &_fig shows the relationship of the daemon with the &cw(iplex) utility, 
 configuration files, and the assumed interaction with nova. 
 
-.h2 VF Configuration 
+&h2( VF Configuration  )
 In a normal operation environment nova, or some similar virtualisation manager, would create a configuration file
 for each VM and place that file into the configuration directory named in the main VFd config file. 
 When hacking the environment, the hacker is responsible for creating these files, adding them to the 
@@ -400,13 +484,13 @@ config directory, and using the &cw( iplex ) command line tool to cause VFd to p
 the NIC(s) based on the file contents.  
 The following sections describe this process and provide the details of the VF configuration files. 
 
-.h3 Internal configuration management
+&h3( Internal configuration management )
 VFd manages only the VFs which have been added to its view of the world; if a configuration file is not 
 provided for a PF/VF combination, VFd makes no attempt to manage that VF. 
 This allows for VFs to be managed and/or used by other elements on the system (contrail vRouter?).
 VFd will continue to manage (configure) a VF until it is removed from view.
 
-.h3 The VF configuration file
+&h3( The VF configuration file )
 The VF configuration file is a simple set of JSON encoded parameters similar to the main VFd configuration 
 in the &cw(/etc) directory.
 .gv fig
@@ -441,30 +525,29 @@ Figure &_fig provides a sample configuration which contains the following inform
 .sp
 .ca end
 &ifroom(3:vf.ca)
-.xx 0
 
 .cc 
 &indent
-.bd .5i Helvetica-bold
-.di name : Is any string provided by the user for identification of the configuration file. 
+&def_list( .5i Helvetica-bold )
+&di(name) Is any string provided by the user for identification of the configuration file. 
 .sp .3
-.di pciid : is the ID of the &bold( PF ) that the VF is allocated from.
+&di(pciid) is the ID of the &bold(PF) that the VF is allocated from.
 .sp .3
-.di vfid : Is the ID number (0-31) of the VF on the PF supplied by the pciid.
+&di(vfid) Is the ID number (0-31) of the VF on the PF supplied by the pciid.
 .sp .3
-.di vlans : Is an array of one or more VLAN IDs which VFd will configure on the VF.
+&di(vlans) Is an array of one or more VLAN IDs which VFd will configure on the VF.
 .sp .3
-.di macs : Is an array of one or more MAC addresses which VFd will configure on the VF.
+&di(macs) Is an array of one or more MAC addresses which VFd will configure on the VF. It is generally &bold(not) necessary to configure any MAC addresses.
 .sp .3
-.di start_cb : Is a command (script) which VFd will execute as the last step in the VFd start up process.
+&di(start_cb) Is a command (script) which VFd will execute as the last step in the VFd start up process.
 (See section on callback command hooks below.)
 .sp .3
-.di stop_cb : Is a command (script) which VFd will execute as the first step in the VFd shutdown process.
-.ed
+&di(stop_cb) Is a command (script) which VFd will execute as the first step in the VFd shutdown process.
+&end_dlist
 &uindent
 .sp
 
-.h3 Adding a configuration 
+&h3( Adding a configuration  )
 The VF configuration files are placed into the directory named in the main VFd configuration file, 
 generally in &cw(/lib/vfd) and are named with any prefix and a &cw(.json) suffix. 
 Once a configuration file is placed into the directory, the &cw(iplex) command line tool is used to add 
@@ -499,7 +582,7 @@ command, to add &cw(VM1.json,) is illustrated in figure &add_fig.
      --debug         show debugging output
      --loglevel=<value>  Default logvalue [default: 0]
 &ex_end
-.fg The overall usage for the iplex command line utility.
+.fg The usage output from the iplex command.
 .sp
 .ca end
 &ifroom(3i:iplex.ca)
@@ -507,14 +590,14 @@ command, to add &cw(VM1.json,) is illustrated in figure &add_fig.
 &ex_start
   iplex add VM1
 &ex_end
-.fg Using iplex to add a configuration to VFd's view of the world.
+.fg Sample iplex command to add a file named VM1.json to VFd's direct control.
 .sp
 If the &cw(loglevel) value is given on the command line the logging that VFd does during the 
 processing of the command will be increased to this level. 
 If the loglevel value is lower than the current setting in VFd, then the value is ignored.
 
 
-.h3 Deleting a configuration
+&h3( Deleting a configuration )
 A configuration added will remain in use by VFd until it is deleted.  
 The &cw(iplex delete) command is used to cause VFd to eliminate the configuration from its view
 and to delete JSON file from the configuration directory. 
@@ -522,19 +605,19 @@ When using VFd in a hacked environment, care must be taken to preserve the JSON 
 invoking the delete command as VFd will likely remove it from the directory.
 The delete command syntax is similar to the add syntax illustrated earlier and thus is omitted.
 
-.h3 Active configurations at VFd startup
-When VFd is started, it makes a pass through the configuration directory and will &ital( add ) all of the 
+&h3( Active configurations at VFd startup )
+When VFd is started, it makes a pass through the configuration directory and will &ital(add) all of the 
 JSON files which it finds in the directory.  
 This allows the existing configuration to be reloaded easily when VFd is restarted. 
-VFd will ignore any files in the directory which &bold( do not ) have a &cw( .json ) suffix; from 
-a hacking perspective this allows test configuration files to be kept in the directory (e.g. VM1.x) 
+VFd will ignore any files in the directory which &bold(do not) have a &cw( .json ) suffix; from 
+a manual testing perspective this allows test configuration files to be kept in the directory (e.g. VM1.x) 
 and copied into the desired JSON file when needed. 
 
-.h3 Callback Command Hooks
-The callback command hooks (start_cb and stop_cb) in the VF configuration allow the &ital( user ) to define 
+&h3( Callback Command Hooks )
+The callback command hooks (start_cb and stop_cb) in the VF configuration allow the &ital(user) to define 
 a command which is executed at the end of VFd startup initialisation (start_cb) and just prior to the 
 normal shut down processing when VFd is terminated (stop_cb).
-The commands are executed as the user which owns the configuration file, and the command may &bold( not )
+The commands are executed as the user which owns the configuration file, and the command may &bold(not)
 contain an embedded semicolon (;).  If multiple commands are needed, then a script should be used. 
 
 .sp
@@ -545,28 +628,68 @@ One way to force a complete reinitialisation of the VM's ethernet driver is to s
 by a device insertion which has shown to cause the driver to initialise to the point that the VM can again 
 communicate over the device after VFd has been stopped and started.
 
-.h1 Logs and Debugging
+&h1( Logs and Debugging )
 Log files are written to the directory named in the VFd config file (generally in &cw(/var/log) .sm ).
 VFd will create a dated log file (e.g. &cw( vfd.log.20160412 ) .sm ) and the log will be rolled to the next
 dated version with the first message written after 00:00Z.
 Log messages are dated with both a leading UNIX timestamp and  human readable date; all times are in 
 zulu (Z).   
-The bracketed number following the date stamp indicates the log level of the message (e.g. [2] indicates
+The bracketed number following the date stamp indicates the log level of the message (e.g. &ital(^[2^]) indicates
 that the message is generated when the loging level is set to 2 or greater).
 When a log level parameter is used on an &cw(iplex) command, the more verbose output from VFd can be found 
 in this log. 
 .sp
-.h2 DPDK Log Messages
+&h2( DPDK Log Messages )
 Any output from the DPDK library is written to standard output (grumble) and is captured in the 
 file &cw( vfd.std ) in the same directory.  
-This file is &bold( not ) rolled, and with dpdk_loglevel settings less than 8 there is very little, 
+This file is &bold(not) rolled, and with dpdk_loglevel settings less than 8 there is very little, 
 if any, output.  
-When things seem to behaving badly, set &bold( both ) of the dpdk log level settings to 8. 
+When things seem to behaving badly, set &bold(both) of the dpdk log level settings to 8. 
 
 .sp
-.h2 Service Start Messages
+&h2( Service Start Messages )
 The upstart script(s) will also add a log file which might provide useful information should it 
 appear that VFd is not starting properly. 
+
+&h1( Limitations And Requirements )
+There are several limitations and/or requirements which must be observed when configuring both 
+the PFs on a system, and with respect to the configuration of each VF within VFd. 
+The following must be observed, or unexpected behaviour will result.
+
+&h2( Number of VFs Per PF )
+While it is possible to configure a small number of VFs for each PF, VFd requires that &bold(all 32 VFs)
+be configured for each PF listed in the VFd configuration file. 
+If fewer than 32 Vfs are configured VFd is unable to properly see the queue ready (enabled) indicator
+and as a result the necessary NIC configuration which must wait until the guest enables the Tx queues
+is never performed.  
+Fewer than 32 VFs configured for a PF also interferes with VFd's ability to properly observe and report
+statistics about each VF (up/down state and counts).
+
+&h2( MAC Limits )
+The number of MAC addresses which may be defined across all VFs for a PF is limited by hardware to 128.
+When this limit is reached VFd will refuse to allow a VF configuration to be added (the result of the 
+&cw( iplex add ) command will be an error). 
+Hardware also limits the number of MAC addresses which may be supplied for a single VF to 64.
+
+&h2( VLAN ID Limits )
+In a similar fashion to the MAC limits, the hardware limits the number of VLAN IDs which are configured 
+across all VFs on a single PF to 64.  
+VFd will enforce this limit by rejecting the attempt to add a VF configuration if the number of VLAN IDs
+supplied in the configuration file causes the total number of VLAN IDs defined for the PF to exceed this 
+value.
+
+&h2( Kernel Version )
+A kernel version of  3.13.0-60 or later is required. 
+VFd will likely run on earlier kernels, but there have been some which presented very odd packet dropping
+behavour with earlier versions.
+
+
+.** -----------------------------------------------------------------------------------------------
+.if tfm
+	.sp 2
+	.cn showend
+	&line
+.fi
 
 .** -----------------------------------------------------------------------------------------------
 .gv remain
@@ -578,10 +701,14 @@ appear that VFd is not starting properly.
 .st 8p
 .gv version
 .gv Date
-.bd .75i &ditext
-.di Source: : vfd_hackers.xfm
-.di Original: : 12 April 2016
-.di Revised: : &_date
-.di Formatter: : &_ver
-.ed
+&def_list( .75i &ditext )
+&di(Source^:) vfd_hackers.xfm
+.sp 1
+&di(Original^:) 12 April 2016
+.sp 1
+&di(Revised^:) &_date
+.sp 1
+&di(Formatter^:) &_ver
+&end_dlist
+.im caution.im 
 
