@@ -56,8 +56,8 @@ static const struct rte_eth_conf eth_dcb_default = {
 
 // ------------- prototypes ----------------------------------------------
 
-extern int vfd_dcb_config( uint8_t port );
-extern int dcb_port_init( uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_pool );
+extern int vfd_dcb_config( sriov_port_t *pf );
+int dcb_port_init( sriov_port_t *pf, __attribute__((__unused__)) struct rte_mempool *mbuf_pool);
 
 
 #endif

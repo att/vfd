@@ -76,11 +76,24 @@ struct rte_eth_conf *vfd_dcb_init( uint8_t port ) {
 	Configure the given port for DCB. Port is the real device port number, not
 	the index in our configuration.
 */
-extern int vfd_dcb_config( uint8_t port ) {
-	struct rte_eth_dev *pf_dev = &rte_eth_devices[port];		// this seems to be an array exported by dpdk
+extern int vfd_dcb_config( sriov_port_t *pf ) {
+	uint8_t port;									// rte port number that underlying funcitons need
+	struct rte_eth_dev *pf_dev;						// real device info managed by dpdk
+	int	i;
+	uint8_t tc_pctgs[MAX_TCS];						// collection of percentages to give to underlying funcitons
 
-	ixgbe_configure_dcb( pf_dev );		// set up dcb
-	qos_enable_arb( port );				// finally turn arbitors on
+	port = pf->rte_port_number;						// vetted by caller, so assume good
+ 	pf_dev = &rte_eth_devices[port];				// device info from dpdk
+
+	memset( tc_pctgs, 0, sizeof( tc_pctgs ) );
+	for( i = 0; i < pf->ntcs; i++ ) {				// we only allow tc config at start, so no need to keep past this call
+		tc_pctgs[i] = pf->tc_config[i]->min_bw;		// snag min bandwidth percentage for the tc
+	}
+
+	ixgbe_configure_dcb( pf_dev );											// set up dcb
+	qos_set_tdplane( port, tc_pctgs, pf->tc2bwg, pf->ntcs, pf->mtu );		// configure tc plane with our percentages
+	qos_set_txpplane( port, tc_pctgs, pf->tc2bwg, pf->ntcs, pf->mtu );		// configure packet plane with our percentages
+	qos_enable_arb( port );													// finally turn arbitors on
 
 	return 0;			// for now constant; but in future it will report an error if needed
 }
@@ -100,20 +113,36 @@ extern int vfd_dcb_config( uint8_t port ) {
 
 	This funciton is a complete replacement for port_init() and this should be invoked
 	when running in dcb (qos) mode instead of port_init().
+
+-----
+	tc_class_t*	tc_config[MAX_TCS];		// configuration information (max/min lsp/gsp) for the TC	(set from config)
+	int*		vftc_qshares;			// queue percentages arranged by vf/tc (computed with each add/del of a vf)
+	uint8_t		tc2bwg[MAX_TCS];		// maps each TC to a bandwidth group (set from config info)
+} sriov_port_t;
+
+typedef struct {
+    char* hr_name;          // human readable name used for diagnostics
+    unsigned int flags;     // TCF_ flasg constants
+    int32_t max_bw;         // percentage of link bandwidth (value 0-100) (default == 100)
+    int32_t min_bw;        // percentage of link bandwidth (value 0-100)
+} tc_class_t;
+-----
+
 */
-extern int dcb_port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_pool)
+//extern int dcb_port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_pool)
+extern int dcb_port_init( sriov_port_t *pf, __attribute__((__unused__)) struct rte_mempool *mbuf_pool)
 {
+	uint8_t	port;					// real device number needed by underlying functions
 	struct rte_eth_conf port_conf = eth_dcb_default;
 	const uint16_t rx_rings = 4;
 	const uint16_t tx_rings = 4;
 	int retval;
 	uint16_t q;
-
-	if (port >= rte_eth_dev_count()) {
-		bleat_printf( 0, "CRI: abort: dcb_port_init: port >= rte_eth_dev_count" );
+	
+	if( pf == NULL || (port = pf->rte_port_number) >= rte_eth_dev_count()) {
+		bleat_printf( 0, "CRI: abort: dcb_port_init: nil pf pointer, or port >= rte_eth_dev_count" );
 		return 1;
 	}
-
 
 	// Configure the Ethernet device.
 	retval = rte_eth_dev_configure(port, rx_rings, tx_rings, &port_conf);
@@ -165,7 +194,7 @@ extern int dcb_port_init(uint8_t port, __attribute__((__unused__)) struct rte_me
 
 	rte_eth_promiscuous_enable(port);						// Enable RX in promiscuous mode for the Ethernet device.
 
-	if( vfd_dcb_config( port ) != 0 ) {							// finally set the dcb config, enable arbitors, etc.
+	if( vfd_dcb_config( pf ) != 0 ) {						// finally set the dcb config, enable arbitors, etc.
 		bleat_printf( 0, "CRI: abort: dcb_port_init: dcb initialisation failed" );
 		return 1;
 	}

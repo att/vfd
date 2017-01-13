@@ -1180,15 +1180,15 @@ main(int argc, char **argv)
 			int i;
 			char pciid[25];
 			struct rte_eth_dev_info dev_info;
-			int	found;
+			int	pfidx;							// port index in our array if we find it; -1 otherwise.
 
-			found = 0;																// default to PF not in our config list
+			pfidx = -1;																// default to PF not in our config list
 			rte_eth_dev_info_get(portid, &dev_info);
 			snprintf(pciid, sizeof( pciid ), "%04x:%02x:%02x.%01x", dev_info.pci_dev->addr.domain, dev_info.pci_dev->addr.bus, dev_info.pci_dev->addr.devid, dev_info.pci_dev->addr.function);
 			for(i = 0; i < running_config->num_ports; ++i) {						// must record the 'real' PF number as that likely won't match array order
 				if (strcmp(pciid, running_config->ports[i].pciid) == 0) {
 					bleat_printf( 2, "physical port %i maps to config %d (%s)", portid, i, pciid );
-					found = 1;
+					pfidx = i;
 					port2config_map[portid] = i;									// map real port to our array index
 					running_config->ports[i].rte_port_number = portid; 				// record the real pf number
 					running_config->ports[i].nvfs_config = dev_info.max_vfs;		// number of configured VFs (could be less than max)
@@ -1196,9 +1196,10 @@ main(int argc, char **argv)
 				}
 			}
 
-			if( found ) {															// initialise only if in our confilg file list (we may not manage everything)
+			if( pfidx >= 0 ) {														// initialise only if in our confilg file list (we may not manage everything)
 				if( g_parms->rflags & RF_ENABLE_QOS ) {
-					state = dcb_port_init(portid, mbuf_pool);
+					//state = dcb_port_init(portid, mbuf_pool);
+					state = dcb_port_init( &running_config->ports[pfidx], mbuf_pool );
 				} else {
 					state = port_init(portid, mbuf_pool);
 				}
@@ -1207,7 +1208,7 @@ main(int argc, char **argv)
 					bleat_printf( 0, "CRI: abort: port initialisation failed: %d", (int) portid );
 					rte_exit(EXIT_FAILURE, "Cannot init port %"PRIu8 "\n", portid);
 				} else {
-					bleat_printf( 2, "port initialisation successful for port %d", portid );
+					bleat_printf( 2, "port initialisation successful for port %d [%d]", portid, pfidx );
 				}
 			
 				rte_eth_macaddr_get(portid, &addr);

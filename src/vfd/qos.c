@@ -11,8 +11,15 @@
 				Of the initial functions which enable_dcb_qos() invokes, only two are
 				necessary for VFd to support 'dynamic' QoS (configurable qshares (credits
 				ultimately) which can be reconfigured on the fly). These are: qos_enable_arb()
-				and qos_set_credits().  The next 'step' is to move them into DPDK; at that
-				point this whole module will be deprecated.
+				and qos_set_credits(). 
+		
+				The packet and descriptor planes must also be configured with functions
+				included below.  The DPDK library has functions which do this work, but
+				currently they don't accept outside percentages (or I've yet to figure out
+				to supply this data).
+
+				The next 'step' is to move them into DPDK; at that point this whole module
+				will be deprecated.
 
 				Currently, the vfd_dcb module does the port initialisation and then invokes
 				the two mentioned functions to complete the setup.  The main function will
@@ -134,12 +141,33 @@ extern void qos_enable_arb( portid_t pf ) {
 	bleat_printf( 3, ">>> qos: rtrpcs: %08x/nomask %08x = %08x", cval, val, (cval) | val );
 }
 
-/*
-	NOTE: these are three separate functions as some day we might be
-	setting different values in each. Else they could be the same
-	function that accepts the offset.
-*/
 
+/*
+	Given an array of percentages for traffic classes, compute the percentage to
+	credit factor. The factor can then be multiplied against percentages in the
+	TC to convert to their credit value.
+*/
+static double compute_credit_factor( uint8_t *pctgs, int npctgs, int mtu ) {
+	double		base_cred;		// base credits derived from the mtu
+	int			i;
+	int			smallp = 100;	// smallest percentage	
+
+	base_cred = (double)mtu/64;
+
+	for( i = 0; i < npctgs; i++ ) {
+		if( pctgs[i] > 0  &&  pctgs[i] < smallp ) {
+			smallp = pctgs[i];
+		}
+	}
+
+	return base_cred / smallp;
+}
+
+/*
+	NOTE: the next two funcitons are separate functions as some day
+	we might be setting different values in each. Else they could be
+	the same function that accepts the offset.
+*/
 /*
 	Set dcb transmit descriptor plane t2 config [0-7].
 	For now we set equally.
@@ -156,22 +184,36 @@ extern void qos_enable_arb( portid_t pf ) {
     0011 1111  0000 0000  0000 0001  0000 0000 mask
        3    f     0    0    0     0     0    0
 
-	This should be covered by the current DPDK DCB mode setup.
-*/
-static void qos_set_tdplane( portid_t pf ) {
-	int i;
-	uint32_t cval;			// current value
-	uint32_t offset;
-	uint32_t val = 0x001ff0ff;	// max=1ff (23:12)  group=0 tc-credits=ff (8:0)
-	uint32_t mask = 0x3f000000;
-	uint32_t group = 0x00;		// we'll just use a sequential group and assign each tc to its own for now
+	This should be covered by the current DPDK DCB mode setup. (but it's not)
 
-	offset = 0x04910;		// RTTDT2C
-	for( i = 0; i < 8; i++ ) {
-		group = i << 9;
+	pctgs is an array of percentages for each TC 0..ntcs-1
+	bwgs is an array which indicates the bandwidth group the TC belongs to
+	In our environment, we do no support variable MTUs across traffic classes (all
+	TCs are expected to support the PF's MTU) and thus only one MTU value is needed.
+	We also do not support variable bursts defined in the config, and thus compute a
+	constant max value based on an assumed burst max of 5x.
+*/
+#define BURST_FACTOR	5
+extern void qos_set_tdplane( portid_t pf, uint8_t* pctgs, uint8_t *bwgs, int ntcs, int mtu ) {
+	int i;
+	uint32_t cval;				// current value
+	uint32_t offset;
+	uint32_t mask = 0x3f000000;	// mask which preserves reserved bits in current value
+	double	factor;				// factor necessary to convert percentage to credit value
+	uint32_t group;				// values which are banged together and written to the register
+	uint32_t credits;
+	uint32_t max;				// max credits for a tc
+
+	factor = compute_credit_factor( pctgs, ntcs, mtu );
+	offset = 0x04910;			// RTTDT2C
+	for( i = 0; i < ntcs; i++ ) {
+		group = bwgs[i] << 9;
+		credits = (int) (pctgs[i] * factor);
+		max = (credits * BURST_FACTOR) << 12;
 		cval = port_pci_reg_read( pf, offset );
-		port_pci_reg_write( pf, offset, (cval & mask) | val | group );		
-		bleat_printf( 1, ">>>> qos: rttdt2c  [%d] %08x & %08x | %08x = %08x g=0x%02x", i, cval, mask, val, (cval & mask) | val | group, group );
+		port_pci_reg_write( pf, offset, (cval & mask) | max | credits | group );		
+		bleat_printf( 1, "qos: set tdplane:  tc=%d cur=0x%08x max=%d creds=%d grp=%d write: [%04x] -> 0x%02x",
+			i, (int) cval, (int) credits * BURST_FACTOR, (int) credits, (int) bwgs[i], (int) offset, (int) (cval & mask) | max | credits | group );
 
 		offset += 4;
 	}
@@ -186,22 +228,29 @@ static void qos_set_tdplane( portid_t pf ) {
 	Corresponding ixgbe function:
 		s32 ixgbe_dcb_config_tx_data_arbiter_82599(struct ixgbe_hw *hw, u16 *refill, u16 *max, u8 *bwg_id, u8 *tsa, u8 *map)
 
-	This should be covered by the current DPDK DCB mode setup.
+	This should be covered by the current DPDK DCB mode setup. (alas it does not)
 */
-static void qos_set_txpplane( portid_t pf ) {
+extern void qos_set_txpplane( portid_t pf, uint8_t* pctgs, uint8_t *bwgs, int ntcs, int mtu ) {
 	int i;
 	uint32_t cval;				// current value
 	uint32_t offset;
-	uint32_t val = 0x001ff0ff;	// max=1ff group=0 credits=ff
 	uint32_t mask = 0x3f000000;
-	uint32_t group = 0x00;		// we'll just use a sequential group and assign each tc to its own for now
+	double	factor;
+	uint32_t group;				// values which are banged together and written to the register
+	uint32_t credits;
+	uint32_t max;				// max credits for a tc
+
+	factor = compute_credit_factor( pctgs, ntcs, mtu );
 
 	offset = 0x0cd20;			// RTTPT2C
-	for( i = 0; i < 8; i++ ) {
-		group = i << 9;
+	for( i = 0; i < ntcs; i++ ) {
+		group = bwgs[i] << 9;
+		credits = (int) (pctgs[i] * factor);
+		max = (credits * BURST_FACTOR) << 12;
 		cval = port_pci_reg_read( pf, offset );
-		port_pci_reg_write( pf, offset, (cval & mask) | val | group );		
-		bleat_printf( 1, ">>>> qos: rttpt2c  [%d] %08x & %08x | %08x = %08x", i, cval, mask, val, (cval & mask) | val | group );
+		port_pci_reg_write( pf, offset, (cval & mask) | max | credits | group );		
+		bleat_printf( 1, "qos: set txpplane:  tc=%d cur=0x%08x max=%d creds=%d grp=%d write: [%04x] -> 0x%02x",
+			i, (int) cval, (int) credits * BURST_FACTOR, (int) credits, (int) bwgs[i], (int) offset, (int) (cval & mask) | max | credits | group );
 
 		offset += 4;
 	}
@@ -564,15 +613,21 @@ static void qos_set_sizes( portid_t pf, int tc8_mode ) {
 }
 
 /*
+	This was the main prototyping configuration function and is now DEPRECATED!
+
 	Enable qos on the PF passed in, using the percentages given.
 	Percentags is assumed to be an array of MAX_QUEUE integers with values
 	in the range of 0 through 100 inclusive. These are grouped by VF with
 	each VF consisting of ether 4 or 8 consecutive values; one vaue for
 	each possible TC.
 
+	With the extension of the tx packet and descriptor plane functions in this
+	module, this function no longer sets up the TC percentages.
+
 	Returns 0 if error (percentags total != 100% etc), 1
 	otherwise.
 */
+
 extern int enable_dcb_qos( sriov_port_t *port, int* pctgs, int tc8_mode, int option ) {
 	portid_t pf;			// the port number for nic writes
 
@@ -580,20 +635,6 @@ extern int enable_dcb_qos( sriov_port_t *port, int* pctgs, int tc8_mode, int opt
 
 	pf = port-> rte_port_number;
 
-/*
-	for( i = 0; i < 32; i++ ) {
-		if( pctgs[i] > 0 ) {
-			sum += pctgs[i];
-		}	
-	}
-
-	if( sum > 100 || sum <= 0 ) {				// we allow total to be less than 100%
-		bleat_printf( 2, "qos enable: bad sum for pf %d: %d", pf, sum );
-		return -1;
-	}
-*/
-
-												// from the list on pg 181, step 1
 	qos_set_sizes( pf, tc8_mode );				// set packet buffer sizes and threshold
 	qos_set_mrqc( pf, tc8_mode );				// set mult rec/tx queue control
 	qos_set_mtqc( pf, tc8_mode );
@@ -613,8 +654,8 @@ extern int enable_dcb_qos( sriov_port_t *port, int* pctgs, int tc8_mode, int opt
 
 												// from the list step 3
 	qos_set_credits( pf, port->mtu, pctgs, tc8_mode );		// set quantums based on percentages
-	qos_set_tdplane( pf );				// tc plane
-	qos_set_txpplane( pf );			// tx and rx packet plane
+	//qos_set_tdplane( pf );				// tc plane
+	//qos_set_txpplane( pf );				// tx and rx packet plane
 	qos_set_rxpplane( pf );
 
 	qos_enable_arb( pf );				// part 4 from the list
