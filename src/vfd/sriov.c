@@ -684,6 +684,74 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 
 
 /*
+	prints extended PF statistics
+	rx_size_64_packets: 0
+	rx_size_65_to_127_packets: 0
+	rx_size_128_to_255_packets: 0
+	rx_size_256_to_511_packets: 0
+	rx_size_512_to_1023_packets: 0
+	rx_size_1024_to_max_packets: 0
+	tx_size_64_packets: 0
+	tx_size_65_to_127_packets: 0
+	tx_size_128_to_255_packets: 0
+	tx_size_256_to_511_packets: 0
+	tx_size_512_to_1023_packets: 0
+	tx_size_1024_to_max_packets: 0
+
+	Returns number of characters placed into buff.  
+*/
+int
+port_xstats_display(uint8_t port_id, char * buff, int bsize)
+{
+	struct rte_eth_xstat *xstats;
+	int cnt_xstats, idx_xstat;
+	struct rte_eth_xstat_name *xstats_names;
+
+	cnt_xstats = rte_eth_xstats_get_names(port_id, NULL, 0);
+	if (cnt_xstats  < 0) {
+		bleat_printf( 0, "fail: unable to get count of xstats for port: %d", port_id);
+		return 0;
+	}
+
+	xstats_names = malloc(sizeof(struct rte_eth_xstat_name) * cnt_xstats);
+	if (xstats_names == NULL) {
+		bleat_printf( 0, "fail: unable to allocate memory for xstat names for port: %d", port_id);
+		return 0;
+	}
+	
+	if (cnt_xstats != rte_eth_xstats_get_names(port_id, xstats_names, cnt_xstats)) {
+		bleat_printf( 0, "fail: unable to get xstat names for port: %d", port_id);
+		free(xstats_names);
+		return 0;
+	}
+
+	xstats = malloc(sizeof(struct rte_eth_xstat) * cnt_xstats);
+	if (xstats == NULL) {
+		bleat_printf( 0, "fail: unable to allocate memory for xstat for port: %d", port_id);
+		free(xstats_names);
+		return 0;
+	}
+	
+	if (cnt_xstats != rte_eth_xstats_get(port_id, xstats, cnt_xstats)) {
+		bleat_printf( 0, "fail: unable to get xstat for port: %d", port_id);
+		free(xstats_names);
+		free(xstats);
+		return 0;
+	}
+
+  int lw = 0;
+	for (idx_xstat = 0; idx_xstat < cnt_xstats; idx_xstat++)
+		if (strncmp(xstats_names[idx_xstat].name, "rx_size_", 8) == 0 || strncmp(xstats_names[idx_xstat].name, "tx_size_", 8) == 0)
+			lw += snprintf(buff + lw, bsize - lw, "%s: %"PRIu64"\n", xstats_names[idx_xstat].name, xstats[idx_xstat].value);		
+
+	free(xstats_names);
+	free(xstats);
+	
+	return lw;
+}
+
+
+/*
   dumps all LAN ID's configured
   to be used for debugging
   or to check if number of vlans doesn't exceed MAX (64)
