@@ -417,6 +417,8 @@ int check_qs_spread( struct sriov_port_s* port, uint8_t* qshares );
 // --- qos hard coded nic funcitons that need to move to dpdk
 void qos_set_credits( portid_t pf, int mtu, int* rates, int tc8_mode );
 extern void qos_enable_arb( portid_t pf );
+extern void qos_set_tdplane( portid_t pf, uint8_t* pctgs, uint8_t *bwgs, int ntcs, int mtu );
+extern void qos_set_txpplane( portid_t pf, uint8_t* pctgs, uint8_t *bwgs, int ntcs, int mtu );
 
 
 //------- these are hacks in the dpdk library and we  must find a good way to rid ourselves of them ------
