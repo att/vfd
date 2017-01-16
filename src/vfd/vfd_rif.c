@@ -798,7 +798,12 @@ extern int vfd_write( int fd, const char* buf, int len ) {
 	int	nsent;					// number of bytes actually sent
 	int n2send;					// number of bytes left to send
 
-	n2send = len;
+
+	if( (n2send = len) <= 0 ) {
+		bleat_printf( 0, "WARN: response send length invalid: %d", len );
+		return 0;
+	}
+
 	while( n2send > 0 && tries > 0 ) {
 		nsent = write( fd, buf, n2send );			// hard error; quit immediately
 		if( nsent < 0 ) {
@@ -843,19 +848,21 @@ extern void vfd_response( char* rpipe, int state, const char* msg ) {
 		return;
 	}
 
-	if( bleat_will_it( 2 ) ) {
-		bleat_printf( 2, "sending response: %s(%d) [%d] %d bytes", rpipe, fd, state, strlen( msg ) );
+	if( bleat_will_it( 4 ) ) {
+		bleat_printf( 4, "sending response: %s(%d) [%d] %s", rpipe, fd, state, msg );
 	} else {
-		bleat_printf( 3, "sending response: %s(%d) [%d] %s", rpipe, fd, state, msg );
+		bleat_printf( 2, "sending response: %s(%d) [%d] %d bytes", rpipe, fd, state, strlen( msg ) );
 	}
 
 	snprintf( buf, sizeof( buf ), "{ \"state\": \"%s\", \"msg\": \"", state ? "ERROR" : "OK" );
 	if ( vfd_write( fd, buf, strlen( buf ) ) > 0 ) {
-		if ( msg == NULL || vfd_write( fd, msg, strlen( msg ) ) > 0 ) {
-			snprintf( buf, sizeof( buf ), "\" }\n" );				// terminate the json
-			vfd_write( fd, buf, strlen( buf ) );
-			bleat_printf( 2, "response written to pipe" );			// only if all of message written
+		if ( msg != NULL ) {
+			vfd_write( fd, msg, strlen( msg ) );				// ignore state; we need to close the json regardless
 		}
+
+		snprintf( buf, sizeof( buf ), "\" }\n" );				// terminate the json
+		vfd_write( fd, buf, strlen( buf ) );
+		bleat_printf( 2, "response written to pipe" );			// only if all of message written
 	}
 
 	bleat_pop_lvl();			// we assume it was pushed when the request received; we pop it once we respond
@@ -973,6 +980,47 @@ extern req_t* vfd_read_request( parms_t* parms ) {
 }
 
 /*
+	Fill a buffer with the extended stats for all ports. Caller must free the buffer.
+	If memory becomes an issue, this returns NULL to indicate error.
+*/
+static char* gen_exstats( sriov_conf_t* conf ) {
+	char*	xbuf = NULL;							// extended stats from one port
+	char*	rbuf = NULL;							// response buffer with all output
+	int		rbsize = sizeof( char ) * 1024 * 10;	// amount allocated in rbuf
+	int		rbused = 0;								// amount used in the response buffer
+	int		xbsize = sizeof( char ) * 1024 * 5;
+	int		i;
+	int		len;
+
+	if( (rbuf = (char *) malloc( rbsize )) != NULL ) {
+		*rbuf = 0;
+		if( (xbuf = (char *) malloc( xbsize )) != NULL ) {
+			for( i = 0; i < conf->num_ports; i++ ) {
+				len = sprintf( xbuf, "\nport %d:\n", i );
+				len += port_xstats_display( conf->ports[i].rte_port_number, xbuf + len, xbsize - len );
+				if( len + rbused > rbsize ) {
+					while( rbused + len < rbsize ) {
+						rbsize += rbsize/2;
+					}
+					if( (rbuf = (char *) realloc( rbuf, rbsize )) == NULL ) {
+						bleat_printf( 0, "WARN: unable to get enough memory to display extended stats" );
+						return NULL;
+					}
+				}
+
+				strcat( rbuf, xbuf );
+				rbused += len;
+			}
+
+			free( xbuf );
+		}
+	}
+
+	return rbuf;
+}
+
+												
+/*
 	Request interface. Checks the request pipe and handles a reqest. If
 	forever is set then this is a black hole (never returns).
 	Returns true if it handled a request, false otherwise.
@@ -1059,31 +1107,73 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 					dump_dev_info( conf->num_ports);			// general info about each port
   					dump_sriov_config( conf );					// pf/vf specific info
 					vfd_response( req->resp_fifo, 0, "dump captured in the log" );
+
+					char*	stats_buf;
+					if( (stats_buf = (char *) malloc( sizeof( char ) * 10 * 1024 )) != NULL ) {
+						if( port_xstats_display( 0, stats_buf, sizeof( char ) * 1024 * 10 ) > 0 ) {
+							bleat_printf( 0, "%s", stats_buf );
+						}
+					}
 					break;
 
 				case RT_SHOW:
 					if( parms->forreal ) {
-						if( req->resource != NULL && strcmp( req->resource, "pfs" ) == 0 ) {				// dump just the VF information
-							if( (buf = gen_stats( conf, 1 )) != NULL )  {		// todo need to replace 1 with actual number of ports
-								vfd_response( req->resp_fifo, 0, buf );
-								free( buf );
-							} else {
-								vfd_response( req->resp_fifo, 1, "unable to generate pf stats" );
-							}
+						if( req->resource == NULL ) {
+							vfd_response( req->resp_fifo, 1, "unable to generate stats: internal mishap: null resource" );
 						} else {
-							if( req->resource != NULL  &&  isdigit( *req->resource ) ) {						// dump just for the indicated pf (future)
-								vfd_response( req->resp_fifo, 1, "show of specific PF is not supported in this release; use 'all' or 'pfs'." );
-							} else {												// assume we dump for all
-								if( (buf = gen_stats( conf, 0 )) != NULL )  {		// todo need to replace 1 with actual number of ports
-									vfd_response( req->resp_fifo, 0, buf );
-									free( buf );
-								} else {
-									vfd_response( req->resp_fifo, 1, "unable to generate stats" );
-								}
+							switch( *req->resource ) {
+								case 'a':
+									if( strcmp( req->resource, "all" ) == 0 ) {				// dump just the VF information
+										if( (buf = gen_stats( conf, !PFS_ONLY, ALL_PFS )) != NULL )  {
+											vfd_response( req->resp_fifo, 0, buf );
+											free( buf );
+										} else {
+											vfd_response( req->resp_fifo, 1, "unable to generate stats" );
+										}
+									}
+									break;
+
+								case 'e':
+									if( strncmp( req->resource, "ex", 2 ) == 0 ) {							// show extended stats
+										buf = gen_exstats( conf );						// create a buffer with stats for all ports
+										if( buf != NULL ) {
+											vfd_response( req->resp_fifo, 0, buf );
+											free( buf );
+										} else {
+											vfd_response( req->resp_fifo, 1, "unable to generate extended stats" );
+										}
+									}
+									break;
+
+								case 'p':
+									if( strcmp( req->resource, "pfs" ) == 0 ) {								// dump just the PF information (skip vf)
+										if( (buf = gen_stats( conf, PFS_ONLY, ALL_PFS )) != NULL )  {
+											vfd_response( req->resp_fifo, 0, buf );
+											free( buf );
+										} else {
+											vfd_response( req->resp_fifo, 1, "unable to generate pf stats" );
+										}
+									}
+										break;
+								
+								default:
+									if( isdigit( *req->resource ) ) {						// dump just for the indicated pf
+										if( (buf = gen_stats( conf, !PFS_ONLY, atoi( req->resource ) )) != NULL )  {
+											vfd_response( req->resp_fifo, 0, buf );
+											free( buf );
+										} else {
+											vfd_response( req->resp_fifo, 1, "unable to generate pf stats" );
+										}
+									} else {												// assume we dump for all
+										if( req->resource ) {
+											bleat_printf( 2, "show: unknown target supplied: %s", req->resource );
+										}
+										vfd_response( req->resp_fifo, 1, "unable to generate stats: unnown target supplied (not one of all, pfs, extended or pf-number)" );
+									}
 							}
 						}
 					} else {
-							vfd_response( req->resp_fifo, 1, "VFD running in 'no harm' (-n) mode; no stats available." );
+						vfd_response( req->resp_fifo, 1, "VFD running in 'no harm' (-n) mode; no stats available." );
 					}
 					break;
 

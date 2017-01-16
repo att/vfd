@@ -106,6 +106,8 @@ typedef unsigned int uint128_t __attribute__((mode(TI)));
 
 #define __UINT128__
 
+#define PFS_ONLY	1		// display only the PF stats (!PFS_ONLY displays VF stats too)
+#define ALL_PFS		-1		// display stats for all PFs
 
 #define MAX_VF_VLANS 64
 #define MAX_VF_MACS  64
@@ -404,7 +406,7 @@ int is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter );
 int vfd_update_nic( parms_t* parms, sriov_conf_t* conf );
 int vfd_init_fifo( parms_t* parms );
 int is_valid_mac_str( char* mac );
-char*  gen_stats( sriov_conf_t* conf, int pf_only );
+char*  gen_stats( sriov_conf_t* conf, int pf_only, int pf );
 
 // --- tools --------------------------------------------
 extern int stricmp(const char *s1, const char *s2);

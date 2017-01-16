@@ -454,9 +454,10 @@ static int vfd_eal_init( parms_t* parms ) {
 
 /*
 	Generate a set of stats to a single buffer. Return buffer to caller (caller must free).
-	If pf_only is true, then the VF stats are skipped.
+	If pf_only is true, then the VF stats are skipped. If pf >= 0, then only that pf, and 
+	its VFs are printed.
 */
-char*  gen_stats( sriov_conf_t* conf, int pf_only ) {
+char*  gen_stats( sriov_conf_t* conf, int pf_only, int pf ) {
 	char*	rbuf;			// buffer to return
 	int		rblen = 0;		// lenght
 	int		rbidx = 0;
@@ -475,6 +476,10 @@ char*  gen_stats( sriov_conf_t* conf, int pf_only ) {
 			"\nPF/VF  ID    PCIID", "Link", "Speed", "Duplex", "RX pkts", "RX bytes", "RX errors", "RX dropped", "TX pkts", "TX bytes", "TX errors", "Spoofed");
 	
 	for( i = 0; i < conf->num_ports; ++i ) {
+		if( pf > 0 && i != pf ) {					// if specific pf requested, do only that one
+			continue;
+		}
+
 		rte_eth_dev_info_get( conf->ports[i].rte_port_number, &dev_info );				// must use port number that we mapped during initialisation
 
 		l = snprintf( buf, sizeof( buf ), "%s   %4d    %04X:%02X:%02X.%01X",
@@ -536,6 +541,11 @@ char*  gen_stats( sriov_conf_t* conf, int pf_only ) {
 				}
 			}		
 			free(vf_arr);
+		}
+
+		if( !pf_only ) {
+			strcat( rbuf+rbidx, "\n" );		// extra blank line for easy reading
+			rbidx++;
 		}
 	}
 
