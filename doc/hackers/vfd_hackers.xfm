@@ -26,7 +26,7 @@
 .dv smindent .ll -1i .in +.25i
 .dv smuindent .in -.25i .ll +1i
 
-.dv ex_start .ll -.25i .in +.25i .sf Courier .st &extextsize .fo off
+.dv ex_start .sp .5 .cc 4 .ll -.25i .in +.25i .sf Courier .st &extextsize .fo off
 .** ex_end macro _must_ be placed in col 0 to cause an exit from no-format mode.
 .dv ex_end .fo on .sf Helvetica .st ^&textsize .in -.25i .ll +.25i .sp .1
 
@@ -39,6 +39,7 @@
 .dv super .sm .tf superscript 2/3 ^&note_num ^: .dv note_num ^[ ^&note_num 1 + ] ^:
 .dv super .dv ss_num ^[ ^&ss_num 1 + ] ^: .sm .tf superscript 2/3 ^&ss_num  ^:
 .dv start_note .cn start atbot Times-roman 8p .5i
+.dv start_sized_note .cn start atbot Times-roman 8p $1
 .dv end_note .cn end
 .** ------------------------------------------------------------------
 
@@ -128,6 +129,7 @@
 &start_note
 A basic primer on SR-IOV can be found at .br
 http://www.intel.com/content/dam/doc/application-note/pci-sig-sr-iov-primer-sr-iov-technology-paper.pdf
+.sp .3
 &end_note
 VFd is a daemon which manages the configuration of virtual and physical functions (VFs and PFs) which 
 are exposed by an SR-IOV &super capable network interface card (NIC).  
@@ -163,9 +165,17 @@ individual VF configurations, placing them into the &cw(/var) directory, and usi
 add the configuration information as a VM is created. 
 
 .sp
+&start_sized_note( .75i )
+We use the terms hack, hacker, and hacking in the original sense of the term as it applies to the computer science world. 
+Hacking is something that a programmer does manually in order to get the system to work, or to behave differently
+in order to improve and/or test it.  From the perspective of VFd, the setup and configuration of the overall environment
+and the definition of VF configurations will likely be done by one or more automated processes, however to use and or 
+test VFd independently of that automation, you the reader become the hacker who must manually hack together 
+bits and pieces normally provided by the missing automation.
+&end_note
 At times it may be necessary to install and make use of VFd without the usual distribution and virtual 
 environment management components. 
-This guide provides a way to hack together such a system and describes what is required to
+This guide provides a way to hack &super together such a system and describes what is required to
 .sp .5
 &indent
 .bl &lic1
@@ -229,11 +239,19 @@ The &cw( dpdk_nic_bind ) utility (installed with VFd)  can be used to do this as
 Note that only the PCI address is needed for these commands, and if another driver is bound to the VF
 it will automatically be unbound first.
 
+&h3( Number of VFs to create)
+A logcial question at this point would be &ital( how many VFs should I create? )
+The answer depends on whether or not VFd will be running with quality of service (QoS) enabled. 
+When running in QoS mode, it is a requirement that 31 VFs be created for each PF. 
+When running in &ital( version 1 mode ) (QoS diabled), it is possible to allocate less than 
+32 VFs for a PF, but it is recommended to allocate 32. 
+
 .gv figure
 .dv stat_fig &_fig
 .dv script_fig [ &_fig 1 + ]
 &h2( PF/VF Verification  )
-The &cw( dpdk_nic_bind ) utility can also be used to verify the state of the various network interfaces on the 
+The &cw( dpdk_nic_bind ) utility, &cw( dpdk-devbind ) in releases after 16.11, 
+ can also be used to verify the state of the various network interfaces on the 
 system.  
 Executing with the &cw( --status ) option will cause it to list all network interfaces. 
 If the VFs were added, and bound to the correct driver, the output from the command should list
@@ -281,6 +299,7 @@ Other network devices
 .fi
 .fi
 
+
 &h2( IOMMU Groups )
 If a NIC has two physical interfaces, these will be grouped together from an IOMMU perspective, and 
 in order for VFd to have access to the NICs, all of the devices in a group must be bound to a DPDK
@@ -327,6 +346,7 @@ The installation process creates the configuration directory in &cw(/etc) (addin
 creates the necessary directories in the &cw(/var/lib) and &cw(/var/log) directories, and places the following
 programmes into &cw(/usr/bin:)   
 .sp .5
+.cc 7
 &indent
 &def_list( 1i )
 &di(vfd) The daemon itself (64 bit Linux binary)
@@ -432,6 +452,90 @@ Any field which VFd doesn't expect is ignored, and thus the comments array allow
 creator to document the configuration without interfering with VFd
 Order of the fields is unimportant, however the field names are case sensitive. 
 
+&h2( QoS Configuration ) 
+With version 2, VFd supports a QoS (quality of service) allowing the system manager to define the 
+traffic class and queue parameters which are then applied to the underlying NIC by VFd.
+These parameters exist as overall configuration information which is defined in the main VFd 
+configuration file, and information which is specific to each VF and thus supplied in the 
+configuration file for each VF. 
+
+.sp
+.gv fig
+The parameters allow QoS to be enabled, and define each of the four supported traffic classes.
+In addition to separate traffic classes, it is possible to group two or more of the classes into
+what are known as bandwidth groups. 
+The set of parameters for QoS can be quite lengthy, and thus a complete example is presented as an appendix to 
+this document as a part of an overall VFd configuration file. 
+Figure &_fig illustrates how each traffic class may be defined to VFd.
+.ca start qos_main.ca
+&ex_start
+  "tclasses": [
+    {
+      "name": "best effort",
+      "pri": 0,
+      "llatency": false,
+      "lsp": false,
+      "bsp": false,
+      "max_bw": 100,
+      "min_bw": 10
+    },
+&ex_end
+.fg The QoS traffic class definition.
+.ca end
+
+.sp
+.cc 4
+The traffic class definition object contains the following fields:
+.sp .5
+&indent
+&def_list( .75i Helvetical-bold )
+&di( name )	The traffic class name (future and/or diagnostic output).
+.sp .3
+&di( pri ) The priority of the traffic class (0 - 3 where 0 is the lowest).
+.sp .3
+&di( lsp )	When true, sets link strict priority on the class.
+.sp .3
+&di( bst )	When true, sets bandwidth group strict priority on the class.
+.sp .3
+&di( max_bw ) Maximum amount of bandwidth as a percentage (future).
+.sp .3
+&di( min_bw ) Minimum amount of bandwidth as a percentage (future).
+&end_dlist
+&uindent
+
+&h3( Traffic Class Oversubscription )
+By default the percentages associated with any traffic class queue sharing (please refer to the section on 
+configuring VFs for more detains) must not exceed 100%.
+VFd will verify that the addition of a VF (via the iplex add command) does not cause the queue shared to 
+take the amount of any traffic class beyond 100%, and if it does VFd will refuse to accept the VF.
+If the over subscription parameter is set to &ital( true ) in the main VFd configuration file, as 
+illustrated below, VFd will allow the percentages to total more than 100% across all VFs which are 
+defined.  
+When in oversubscription mode, the minimum share of a traffic class for a VF will be 'normalised down'
+such that the overall total after normalisation is 100% (the NICs require that the queues be sliced such 
+that the percentages total 100%).
+.sp .5
+&ex_start
+  "vf_oversubscription": true,
+&ex_end
+.sp
+
+IF the VF definitions define one or more traffic classes which do not total 100%, the values are 
+'normalised up' such that the overall usage is equal to 100%.  
+
+
+
+&h3( Enabling QoS )
+By default, VFd starts up in non-QoS mode (v1 mode) and thus QoS must be enabled in the main configuration
+file in order for VFd to recognise any of the QoS configuration. 
+The following configuration file parameter may be defined to enable QoS:
+.sp .5
+&ex_start
+  "enable_qos": true
+&ex_end
+
+
+
 &h1( Running VFd)
 The daemon can be started manually, or using the upstart start and stop commands as would be done 
 for any other system service. 
@@ -464,7 +568,7 @@ Where:
 	.ep figures/vfd_process.eps x=.75i l=2.5i close proportional
 	.fg VFd process overview
 	.sp
-	.ca end
+.ca end
 	.gv remain
 	&ifroom(2.5:process.ca)
 .ei
@@ -479,7 +583,7 @@ configuration files, and the assumed interaction with nova.
 &h2( VF Configuration  )
 In a normal operation environment nova, or some similar virtualisation manager, would create a configuration file
 for each VM and place that file into the configuration directory named in the main VFd config file. 
-When hacking the environment, the hacker is responsible for creating these files, adding them to the 
+When manually managing the environment, the hacker is responsible for creating these files, adding them to the 
 config directory, and using the &cw( iplex ) command line tool to cause VFd to parse and configure 
 the NIC(s) based on the file contents.  
 The following sections describe this process and provide the details of the VF configuration files. 
@@ -487,17 +591,17 @@ The following sections describe this process and provide the details of the VF c
 &h3( Internal configuration management )
 VFd manages only the VFs which have been added to its view of the world; if a configuration file is not 
 provided for a PF/VF combination, VFd makes no attempt to manage that VF. 
-This allows for VFs to be managed and/or used by other elements on the system (contrail vRouter?).
-VFd will continue to manage (configure) a VF until it is removed from view.
+This allows for VFs to be managed and/or used by other elements on the system which do not need VFd supervision.
+VFd will continue to manage (configure) a VF until  the configuration is deleted with an &cw( iplex ) command.
 
 &h3( The VF configuration file )
-The VF configuration file is a simple set of JSON encoded parameters similar to the main VFd configuration 
-in the &cw(/etc) directory.
+The VF configuration file is a simple set of JSON encoded parameters which defines the aspects of 
+a single VF that VFd is expected to manage.
+These files are typically in &cw( /var/lib/vfd/config, ) however the directory where VFd expects to 
+find them may be set in the main VFd configuration file. 
 .gv fig
-Figure &_fig provides a sample configuration which contains the following information:
-.sp
 
-.ca start vf.ca
+.ca start vf_config.ca
 &ex_start
 {
   "comments": [
@@ -508,8 +612,7 @@ Figure &_fig provides a sample configuration which contains the following inform
   "name":             "VM_daniels1/uuid-dummy-daniels-1",
   "pciid":            "9999:00:00.0",
   "vfid":             1,
-  "strip_stag":       true,
-  "insert_stag":      true,
+  "strip_stag":       false,
   "allow_bcast":      true,
   "allow_mcast":      true,
   "allow_un_ucast":   true,
@@ -524,11 +627,13 @@ Figure &_fig provides a sample configuration which contains the following inform
 .fg Sample VF configuration file normally created by nova.
 .sp
 .ca end
-&ifroom(3:vf.ca)
+&ifroom(3:vf_config.ca)
 
+Figure &_fig provides a sample configuration which contains the following information:
+.sp .5
 .cc 
 &indent
-&def_list( .5i Helvetica-bold )
+&def_list( .65i Helvetica-bold )
 &di(name) Is any string provided by the user for identification of the configuration file. 
 .sp .3
 &di(pciid) is the ID of the &bold(PF) that the VF is allocated from.
@@ -536,6 +641,8 @@ Figure &_fig provides a sample configuration which contains the following inform
 &di(vfid) Is the ID number (0-31) of the VF on the PF supplied by the pciid.
 .sp .3
 &di(vlans) Is an array of one or more VLAN IDs which VFd will configure on the VF.
+	When more than one VLAN ID is supplied, the &cw( strip_stag ) field &bold( must ) be set to &ital( false ) as 
+	when there are multiple IDs supplied it is impossible for the NIC to know which ID to insert on outbound traffic.
 .sp .3
 &di(macs) Is an array of one or more MAC addresses which VFd will configure on the VF. It is generally &bold(not) necessary to configure any MAC addresses.
 .sp .3
@@ -547,9 +654,38 @@ Figure &_fig provides a sample configuration which contains the following inform
 &uindent
 .sp
 
+&h3( VF Quality of service configuration )
+In addition to the parameters noted above, a set of QoS paraemters may be supplied in the VF configuration file.
+These parameters, defined with the &cw( queues ) array,  are ignored when VFd is not started in QoS mode, and are used to define the amount of 
+bandwidth that the VF should receive for outbound packets.
+.gv fig
+The queues parameters are illustrated in figure &_fig.
+.ca start qos_parms.ca
+.sp .5
+&ex_start
+ "queues": [
+   { "priority": 0, "share": "10%" },
+   { "priority": 1, "share": "14%" },
+   { "priority": 2, "share": "20%" },
+   { "priority": 3, "share": "10%" },
+  ]
+&ex_end
+.fg Quality of service parameters which may be supplied in a VF configuration file.
+.sp 
+.ca end
+&ifroom(1.5:qos_parms.ca)
+
+
+.sp
+Each element in the QoS &ital( queues ) array defines the bandwidth share for each of the four traffic classes
+that are supported.
+Traffic classes are numbered from 0 (low priority) to 3 (highest priority). 
+In the illustration, the VF being configured would be allocated 20% of the priority 2 traffic class. 
+
+
 &h3( Adding a configuration  )
 The VF configuration files are placed into the directory named in the main VFd configuration file, 
-generally in &cw(/lib/vfd) and are named with any prefix and a &cw(.json) suffix. 
+generally in &cw( /var/lib/vfd/config ) and are named with any prefix and a &cw(.json) suffix. 
 Once a configuration file is placed into the directory, the &cw(iplex) command line tool is used to add 
 the configuration to VFd. 
 .gv fig
@@ -681,7 +817,7 @@ value.
 &h2( Kernel Version )
 A kernel version of  3.13.0-60 or later is required. 
 VFd will likely run on earlier kernels, but there have been some which presented very odd packet dropping
-behavour with earlier versions.
+behaviour with earlier versions.
 
 
 .** -----------------------------------------------------------------------------------------------
@@ -690,6 +826,8 @@ behavour with earlier versions.
 	.cn showend
 	&line
 .fi
+
+.im appendix_a.im
 
 .** -----------------------------------------------------------------------------------------------
 .gv remain
@@ -710,5 +848,8 @@ behavour with earlier versions.
 .sp 1
 &di(Formatter^:) &_ver
 &end_dlist
-.im caution.im 
+
+.if tfm
+	.im caution.im 
+.fi
 
