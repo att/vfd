@@ -36,7 +36,7 @@
 
 .dv note_num 1
 .dv ss_num 1
-.dv super .sm .tf superscript 2/3 ^&note_num ^: .dv note_num ^[ ^&note_num 1 + ] ^:
+.** .dv super .sm .tf superscript 2/3 ^&note_num ^: .dv note_num ^[ ^&note_num 1 + ] ^:
 .dv super .dv ss_num ^[ ^&ss_num 1 + ] ^: .sm .tf superscript 2/3 ^&ss_num  ^:
 .dv start_note .cn start atbot Times-roman 8p .5i
 .dv start_sized_note .cn start atbot Times-roman 8p $1
@@ -64,9 +64,10 @@
 .ei
 	.** .dv super ^[^&note_num] .dv note_num ^[ ^&note_num 1 + ] ^:
 	.dv super .dv ss_num ^[ ^&ss_num 1 + ] ^: .sm ^[ .sm ^&{ss_num}]
-	.sv super
+	.** .sv super
 
 	.dv start_note .cn start atend Times-roman 8p .5i
+	.dv start_sized_note .cn start atend Times-roman 8p $1
 	.dv bold $1
 	.dv cw $1
 	.dv ital $1
@@ -658,7 +659,12 @@ Figure &_fig provides a sample configuration which contains the following inform
 	When more than one VLAN ID is supplied, the &cw( strip_stag ) field &bold( must ) be set to &ital( false ) as 
 	when there are multiple IDs supplied it is impossible for the NIC to know which ID to insert on outbound traffic.
 .sp .3
-&di(macs) Is an array of one or more MAC addresses which VFd will configure on the VF. It is generally &bold(not) necessary to configure any MAC addresses.
+&di(macs) Is an array of one or more MAC addresses which VFd will configure on the VF. 
+.** It is generally &bold(not) necessary to configure any MAC addresses.
+Any MAC addresses placed into the array act as a whitelist and outbound (Tx) packets from the guest with
+any listed MAC address as the source will not be blocked.
+The MAC address assigned to the VF is automatically included in the list by VFd, and thus does &bold( not ) need to be 
+supplied, therefore it is valid to have an empty MAC list.
 .sp .3
 &di(start_cb) Is a command (script) which VFd will execute as the last step in the VFd start up process.
 (See section on callback command hooks below.)
@@ -667,6 +673,10 @@ Figure &_fig provides a sample configuration which contains the following inform
 &end_dlist
 &uindent
 .sp
+
+There are limits to the number of MAC addresses and VLAN IDs wich can be supplied both for a single VF and 
+across all VFs on each PF.  
+Please refer to the limits section later in this document for more details.
 
 &h3( Strip/Insert VLAN IDs )
 The VF may be configured to automatically remove the VLAN tag as each packet is received, and to automatically insert
@@ -854,6 +864,7 @@ behaviour with earlier versions.
 
 .** -----------------------------------------------------------------------------------------------
 .if tfm
+	&h1( Notes: )
 	.sp 2
 	.cn showend
 	&line
@@ -868,20 +879,23 @@ behaviour with earlier versions.
 .ei
 	.sp 5
 .fi
+
+.if tfm
+	.sp 5
+	.ln
+	.im caution.im 
+.fi
+
 .st 8p
 .gv version
 .gv Date
 &def_list( .75i &ditext )
-&di(Source^:) vfd_hackers.xfm
+&di(Source) vfd_hackers.xfm
 .sp 1
-&di(Original^:) 12 April 2016
+&di(Original) 12 April 2016
 .sp 1
-&di(Revised^:) &_date
+&di(Revised) &_date
 .sp 1
-&di(Formatter^:) &_ver
+&di(Formatter) &_ver
 &end_dlist
-
-.if tfm
-	.im caution.im 
-.fi
 

@@ -4,14 +4,14 @@
 
 fig_src = vfd_process
 
-all:V: vfd_hackers.pdf 
+all:V: vfd_hackers.pdf  vfd_hackers.md
 
 figures:V: ${fig_src:%=figures/%.eps}
 
 vfd_users.ps::	vfd_hackers.ps
 	cp vfd_hackers.ps vfd_users.ps
 
-vfd_hackers.ps:: vfd_hackers.xfm appendix_a.im
+vfd_hackers.ps:: vfd_hackers.xfm appendix_a.im figures
 	pfm vfd_hackers.xfm vfd_hackers.ps
 
 vfd_hackers.md:: vfd_hackers.xfm
