@@ -3,6 +3,11 @@ Top level source directory.  Things which maybe aren't obvious are described
 in this file.
 
 
+VFd (master branch) should now build cleanly against (and requeres) DPDK 16.11.
+As with earlier versions of VFd, a symbolic link to the DPDK library in src/lib
+is recommended, and the usual RTE_ environment variables must be defined. 
+
+
 This code makes use of a modified dpdk library which must be pulled from the
 github:/att/dpdk repo.  The suggested method is to clone it alongside other 
 repos and create a sim-link in src/lib here.   There are some includes which
@@ -13,13 +18,20 @@ Once the dpdk repo has been cloned, it must be built before anything in the
 vfd source tree can be built. To do this follow the following steps:
 
     -   create symlink in src/lib
-	- 	cd dpdk
-	-	make config T=x86_64-native-linuxapp-gcc
-	-	make
-	-	tools/dpdk-setup.sh 		#select option 15, it will set environment 
-	-	export RTE_SDK=$PWD
-	-	export RTE_TARGET=x86_64-native-linuxapp-gcc
+    -   cd dpdk
+    -   git checkout v16.11
+    -   make config T=x86_64-native-linuxapp-gcc
+    -   make
+    -   tools/dpdk-setup.sh
+         + select the option which corresponds to the correct
+           environment, most likely: x86_64-native-linuxapp-gcc
+           This will go through another make process which sets
+           libraries and such up. If there are link errors during
+           the build, it is likely this step was not executed, or
+           didn't finish correctly
 
+    -   export RTE_SDK=$PWD
+    -   export RTE_TARGET=x86_64-native-linuxapp-gcc
 
 Todo:
 	A toplevel mk/make build needs to be provided
