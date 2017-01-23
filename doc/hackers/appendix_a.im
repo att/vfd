@@ -1,0 +1,162 @@
+
+.** appendix
+
+.cc 1000
+&h1( Appendix A -- Configuration File Examples )
+
+
+&h2( Main VFd Configuration file )
+&ex_start
+
+{   
+    "comment":      "config for agave207",
+    "log_dir":      "/var/log/vfd",
+    "log_keep":     9,
+    "log_level":    3,
+    "init_log_level": 2,
+    "config_dir":   "/var/lib/vfd/config",
+    "fifo":   "/var/lib/vfd/request",
+    "cpu_mask":   "0x01",
+    "dpdk_log_level": 2,
+    "dpdk_init_log_level": 8,
+    "default_mtu": 9000,
+    "enable_qos": true,
+
+    "pciids": [ 
+     {       "id": "0000:08:00.0",
+      "mtu": 9000,
+      "enable_loopback": false,
+      "pf_driver": "igb-uio",
+      "vf_driver": "vfio-pci",
+      "vf_oversubscription": true,
+
+      "tc_comment": "traffic classes define human readable name, tc number (priority) and other parms",
+      "tclasses": [
+        {
+          "name": "best effort",
+          "pri": 0,
+          "llatency": false,
+          "lsp": false,
+          "bsp": false,
+          "max_bw": 100,
+          "min_bw": 10
+        },
+        {
+          "name": "realtime",
+          "pri": 1,
+          "llatency": false,
+          "lsp": false,
+          "bsp": false,
+          "max_bw": 100,
+          "min_bw": 40
+        },
+        {
+          "name": "voice",
+          "pri": 2,
+          "llatency": false,
+          "lsp": false,
+          "bsp": false,
+          "max_bw": 100,
+          "min_bw": 40
+        },
+        {
+          "name": "control",
+          "pri": 3,
+          "llatency": false,
+          "lsp": false,
+          "bsp": false,
+          "max_bw": 100,
+          "min_bw": 10
+        }
+      ],
+      "bwg_comment": "groups traffic classes together, min derived from TC values",
+      "bw_grps":
+      {
+        "bwg0": [0],
+        "bwg1": [1, 2],
+        "bwg2": [3]
+      }
+    },
+
+    {       "id": "0000:08:00.1",
+      "mtu": 9000,
+      "enable_loopback": false,
+      "pf_driver": "igb-uio",
+      "vf_driver": "vfio-pci",
+      "vf_oversubscription": false,
+      "tclasses": [
+        {
+          "name": "best effort",
+          "pri": 0,
+          "llatency": false,
+          "lsp": false,
+          "bsp": false,
+          "max_bw": 100,
+          "min_bw": 10
+        },
+        {
+          "name": "realtime",
+          "pri": 1,
+          "llatency": false,
+          "lsp": false,
+          "bsp": false,
+          "max_bw": 100,
+          "min_bw": 40
+        },
+        {
+          "name": "voice",
+          "pri": 2,
+          "llatency": false,
+          "lsp": false,
+          "bsp": false,
+          "max_bw": 100,
+          "min_bw": 40
+        },
+        {
+          "name": "control",
+          "pri": 3,
+          "llatency": false,
+          "lsp": false,
+          "bsp": false,
+          "max_bw": 100,
+          "min_bw": 10
+        }
+      ],
+      "bw_grps":
+      {
+        "bwg0": [0],
+        "bwg1": [1, 2],
+        "bwg2": [3]
+      }
+    }
+    ]
+}
+&ex_end
+
+&h2( VF Configuration file )
+&ex_start
+ {
+    "comments":      "",
+
+    "name":       "daniels_0_1",
+    "pciid":      "0000:08:00.0",
+    "vfid":       2,
+    "strip_stag":       true,
+    "allow_bcast":      true,
+    "allow_mcast":      true,
+    "allow_un_ucast":   true,
+    "vlan_anti_spoof":  true,
+    "mac_anti_spoof":   true,
+    "vlans":      [ 10 ],
+    "macs":       [ ],
+
+    "queues": [
+  { "priority": 0, "share": "10%" },
+  { "priority": 1, "share": "10%" },
+  { "priority": 2, "share": "10%" },
+  { "priority": 3, "share": "10%" },
+    ]
+ }
+&ex_end
+
+

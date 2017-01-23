@@ -41,7 +41,7 @@ VFD_VERSION = $(shell junk=$$( (git log -n 1 2>/dev/null || echo Commit non-git-
 
 # all source are stored in SRCS-y	(again, for the dpdk mk file)
 #SRCS-y := main.c sriov.c /usr/local/lib/libconfig.a
-SRCS-y := main.c sriov.c $(libvfd) $(libjsmn)
+SRCS-y := main.c sriov.c qos.c vfd_rif.c vfd_dcb.c $(libvfd) $(libjsmn)
 
 CFLAGS += $(WERROR_FLAGS) -I $(PWD)/../lib/
 #-lconfig
@@ -58,9 +58,8 @@ include $(RTE_SDK)/mk/rte.extapp.mk
 
 
 
-	
 clean: 
-	rm -rf build/*
+	rm -rf build
 
 verify:
 	echo "$(VFD_VERSION)"

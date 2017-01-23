@@ -475,6 +475,10 @@ extern int jw_exists( void* st, const char* name ) {
 extern int jw_is_value( void* st, const char* name ) {
 	jthing_t* jtp;									// thing that is referenced by the symtab
 
+	if( st == NULL ) {
+		return 0;
+	}
+
 	jtp = (jthing_t *) sym_get( st, name, 0 );		// get it or NULL
 
 	if( ! jtp ) {
@@ -489,6 +493,10 @@ extern int jw_is_value( void* st, const char* name ) {
 */
 extern int jw_is_bool( void* st, const char* name ) {
 	jthing_t* jtp;									// thing that is referenced by the symtab
+
+	if( st == NULL ) {
+		return 0;
+	}
 
 	jtp = (jthing_t *) sym_get( st, name, 0 );		// get it or NULL
 
@@ -505,6 +513,10 @@ extern int jw_is_bool( void* st, const char* name ) {
 extern int jw_is_null( void* st, const char* name ) {
 	jthing_t* jtp;									// thing that is referenced by the symtab
 
+	if( st == NULL ) {
+		return 0;
+	}
+
 	jtp = (jthing_t *) sym_get( st, name, 0 );		// get it or NULL
 
 	if( ! jtp ) {
@@ -519,6 +531,10 @@ extern int jw_is_null( void* st, const char* name ) {
 */
 extern char* jw_string( void* st, const char* name ) {
 	jthing_t* jtp;									// thing that is referenced by the symtab
+
+	if( st == NULL ) {
+		return NULL;
+	}
 
 	jtp = (jthing_t *) sym_get( st, name, 0 );		// get it or NULL
 
@@ -539,6 +555,10 @@ extern char* jw_string( void* st, const char* name ) {
 extern float jw_value( void* st, const char* name ) {
 	jthing_t* jtp;									// thing that is referenced by the symtab
 
+	if( st == NULL ) {
+		return 0;
+	}
+
 	jtp = (jthing_t *) sym_get( st, name, 0 );		// get it or NULL
 
 	if( ! jtp ) {
@@ -557,6 +577,10 @@ extern float jw_value( void* st, const char* name ) {
 */
 extern void* jw_blob( void* st, const char* name ) {
 	jthing_t* jtp;									// thing that is referenced by the symtab
+
+	if( st == NULL ) {
+		return NULL;
+	}
 
 	jtp = (jthing_t *) sym_get( st, name, 0 );		// get it or NULL
 
@@ -581,6 +605,10 @@ extern void* jw_blob( void* st, const char* name ) {
 extern char* jw_string_ele( void* st, const char* name, int idx ) {
 	jthing_t* jtp;									// thing that is referenced by the symtab entry
 
+	if( st == NULL ) {
+		return NULL;
+	}
+
 	if( (jtp = suss_element( st, name, idx )) == NULL ) {
 		return NULL;
 	}
@@ -602,6 +630,10 @@ extern char* jw_string_ele( void* st, const char* name, int idx ) {
 extern float jw_value_ele( void* st, const char* name, int idx ) {
 	jthing_t* jtp;									// thing that is referenced by the symtab entry
 
+	if( st == NULL ) {
+		return 0;
+	}
+
 	if( (jtp = suss_element( st, name, idx )) == NULL ) {
 		return 0;
 	}
@@ -620,6 +652,10 @@ extern float jw_value_ele( void* st, const char* name, int idx ) {
 extern int jw_is_value_ele( void* st, const char* name, int idx ) {
 	jthing_t* jtp;									// thing that is referenced by the symtab entry
 
+	if( st == NULL ) {
+		return 0;
+	}
+
 	if( (jtp = suss_element( st, name, idx )) == NULL ) {
 		return 0;
 	}
@@ -634,6 +670,10 @@ extern int jw_is_value_ele( void* st, const char* name, int idx ) {
 extern int jw_is_bool_ele( void* st, const char* name, int idx ) {
 	jthing_t* jtp;									// thing that is referenced by the symtab entry
 
+	if( st == NULL ) {
+		return 0;
+	}
+
 	if( (jtp = suss_element( st, name, idx )) == NULL ) {
 		return 0;
 	}
@@ -647,6 +687,10 @@ extern int jw_is_bool_ele( void* st, const char* name, int idx ) {
 */
 extern int jw_is_null_ele( void* st, const char* name, int idx ) {
 	jthing_t* jtp;									// thing that is referenced by the symtab entry
+
+	if( st == NULL ) {
+		return -1;
+	}
 
 	if( (jtp = suss_element( st, name, idx )) == NULL ) {
 		return 0;
@@ -670,12 +714,16 @@ extern int jw_is_null_ele( void* st, const char* name, int idx ) {
 extern void* jw_obj_ele( void* st, const char* name, int idx ) {
 	jthing_t* jtp;									// thing that is referenced by the symtab entry
 
+	if( st == NULL ) {
+		return NULL;
+	}
+
 	if( (jtp = suss_element( st, name, idx )) == NULL ) {
-		return 0;
+		return NULL;
 	}
 
 	if( jtp->jsmn_type != JSMN_OBJECT ) {
-		return 0;
+		return NULL;
 	}
 
 	return (void *) jtp->v.pv;
@@ -687,6 +735,10 @@ extern void* jw_obj_ele( void* st, const char* name, int idx ) {
 */
 extern int jw_array_len( void* st, const char* name ) {
 	jthing_t* jtp;									// thing that is referenced by the symtab entry
+
+	if( st == NULL ) {
+		return -1;
+	}
 
 	if( (jtp = suss_array( st, name )) == NULL ) {
 		return -1;

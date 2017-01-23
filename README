@@ -1,4 +1,5 @@
-Virtual Function Daemon - VFD
+Virtual Function Daemon 
+
 
 VFD is a daemon which is used to configures NIC PF/VFs in ways which are not possible through 
 the standard ixgbe driver.
@@ -8,7 +9,7 @@ command line interface tool which is used to interact with the daemon.
 
 
 Some requirements:
-	- DPDK version 16.07 with special AT&T patches (https://github.com/att/dpdk)
-	- Linux kernel version  3.13 or later.  (VFd may execute on earlier kernels,
-	  however odd behavour has been observed with respect to packet dropping in one 
-	  or both directions with seem to be related to shared memory.)
+   - DPDK version 16.11 (possibly with the need for special AT&T patches (https://github.com/att/dpdk))
+   - Linux kernel version  3.13 or later.  (VFd may execute on earlier kernels,
+     however odd behavour has been observed with respect to packet dropping in one 
+     or both directions with seem to be related to shared memory.)

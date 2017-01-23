@@ -3,6 +3,7 @@
 
 #ifndef _vfdlib_h_
 #define _vfdlib_h_
+#include <stdint.h>
 #include <time.h>
 #include <sys/types.h>
 
@@ -11,72 +12,106 @@
 */
 
 //----------------- config.c --------------------------------------------------------------------------
-
-
+                                    // tc_class_t struct flags
+#define TCF_LOW_LATENCY 0x01
+#define TCF_BW_STRICTP  0x02
+#define TCF_LNK_STRICTP 0x04
 									// pfdef_t struct flags
 #define PFF_LOOP_BACK	0x01		// loop back enabled flag
+#define PFF_VF_OVERSUB  0x02        // vf_oversubscription enabled flag
+
+									// flags set in parm struct related to running state
+#define RF_ENABLE_QOS	0x01		// enable qos
+#define RF_INITIALISED	0x02		// init has finished
+
+#define MAX_TCS			8			// max number of traffic classes supported (0 - 7)
+#define NUM_BWGS		8			// number of bandwidth groups
+
+typedef struct {
+    char* hr_name;          // human readable name used for diagnostics
+    unsigned int flags;     // TCF_ flasg constants
+    int32_t max_bw;         // percentage of link bandwidth (value 0-100) (default == 100)
+    int32_t min_bw;        // percentage of link bandwidth (value 0-100)
+} tc_class_t;
+
+typedef struct {
+    int32_t ntcs;           // number of TCs in the group
+    int32_t tcs[MAX_TCS];	// priority of each TC in the group (index into tcs array in pfdef_t)
+} bw_grp_t;
 
 /*
-	pf_def -- definition info picked up from the parm file for a PF
+	pf_def_t -- definition info picked up from the parm file for a PF.
+	Traffic classes (tcs) exist as either 4 or 8 and are contiguous in
+	the array (0-3 or 0-7). The position is the priority and generally
+	accepted practice is that the higher the number the higher the
+	priority. If a traffic class is not supplied in the parm file
+	it might be represented by a nil pointer, or a pointer to a
+	default struct.
 */
 typedef struct {
 	char*	id;
 	int		mtu;
-	unsigned int flags;		// PFF_ flag constants
+	unsigned int flags;				// PFF_ flag constants
+									// QoS members
+    int32_t ntcs;					// number of TCs (4 or 8)
+    tc_class_t* tcs[MAX_TCS];		// defined TCs (0-3 or 0-7) position in the array is the priority (from pri in the json)
+    bw_grp_t    bw_grps[NUM_BWGS];	// definition of each bandwidth group
 } pfdef_t;
 
 /*
         Parameter file contents parsed from json
 */
 typedef struct {
-	char*	log_dir;        // directory where log files should be written
-	int		log_level;      // verbose (bleat) log level (set after initialisation)
-	int		init_log_level; // vlog level used during initialisation
+	char*	log_dir;        		// directory where log files should be written
+	int		log_level;      		// verbose (bleat) log level (set after initialisation)
+	int		init_log_level; 		// vlog level used during initialisation
 	int		dpdk_log_level;			// log level passed to dpdk; allow it to be different than verbose level
 	int		dpdk_init_log_level;	// log level for dpdk during initialisation
-	char*	fifo_path;      // path to fifo that cli will write to
-	int		log_keep;       // number of days of logs to keep (do we need this?)
-	int		delete_keep;	// if true we will keep the deleted config files in the confid directory (marked with trailing -)
-	char*	config_dir;     // directory where nova writes pf config files
-	char*	stats_path;		// filename where we might dump stats
-	char*	pid_fname;		// if we daemonise we should write our pid here.
-	char*	cpu_mask;		// should be something like 0x04, but could be decimal.  string so it can have lead 0x
+	char*	fifo_path;      		// path to fifo that cli will write to
+	int		log_keep;       		// number of days of logs to keep (do we need this?)
+	int		delete_keep;			// if true we will keep the deleted config files in the confid directory (marked with trailing -)
+	char*	config_dir;     		// directory where nova writes pf config files
+	char*	stats_path;				// filename where we might dump stats
+	char*	pid_fname;				// if we daemonise we should write our pid here.
+	char*	cpu_mask;				// should be something like 0x04, but could be decimal.  string so it can have lead 0x
 
-							// these things have no defaults
-	int		npciids;		// number of pciids specified for us to configure
-	pfdef_t*	pciids;		// list of the pciid and mtu settings from the config file. 
+									// these things have no defaults
+	int		npciids;				// number of pciids specified for us to configure
+	pfdef_t*	pciids;				// list of the pciid and mtu settings from the config file.
 
 
-							// these are NOT populated from the file, but are added so the struct can be the one stop shopping place for info
-	void*	rfifo;			// the read fifo 'handle' where we 'listen' for requests
-	int		forreal;		// if not set we don't execute any dpdk calls
-	int		initialised;	// all things have been initialised
+									// these are NOT populated from the file, but are added so the struct can be the one stop shopping place for info
+	void*	rfifo;					// the read fifo 'handle' where we 'listen' for requests
+	int		forreal;				// if not set we don't execute any dpdk calls
+	//int		initialised;			// all things have been initialised
+	int		rflags;					// running flags (RF_ constants)
 } parms_t;
 
 /*
-	vf config file data
+	Manages configuration information read from a specific vf config file.
 */
 typedef struct {
-	uid_t	owner;			// user id that owns the file (used for pre/post command execution)
-	char*	name;			// nova supplied name or id; mostly ignored by us, but possibly useful
-	char*	pciid;			// physical interface id (0000:07:00.1)
-	int		vfid;			// the vf on the pf 1-32
-	int		strip_stag;		// bool
-	int		allow_bcast;	// bool
-	int		allow_mcast;	// bool
-	int		allow_un_ucast;	// bool
-	int		antispoof_mac;	//	bool -- forced to true but here for future
-	int		antispoof_vlan;	//	bool -- forced to true but here for future
-	int		allow_untagged;	//	bool -- forced to true but here for future
-	char*	link_status;	// on, off, auto
-	char*	start_cb;		// external command/script to execute on the owner's behalf after we start up
-	char*	stop_cb;		// external command/script to execute on the owner's behalf just before we shutdown
-	char*	vm_mac;			// the mac to force onto the VF (optional)
-	int*	vlans;			// array of vlan IDs
-	int		nvlans;			// number of vlans allocated
-	char**	macs;			// array of mac addresses (filter)
-	int		nmacs;			// number of mac addresses
-	float	rate;			// percentage of the total link speed this to be confined to (rate limiting)
+	uid_t	owner;					// user id that owns the file (used for pre/post command execution)
+	char*	name;					// nova supplied name or id; mostly ignored by us, but possibly useful
+	char*	pciid;					// physical interface id (0000:07:00.1)
+	int		vfid;					// the vf on the pf 1-32
+	int		strip_stag;				// bool
+	int		allow_bcast;			// bool
+	int		allow_mcast;			// bool
+	int		allow_un_ucast;			// bool
+	int		antispoof_mac;			//	bool -- forced to true but here for future
+	int		antispoof_vlan;			//	bool -- forced to true but here for future
+	int		allow_untagged;			//	bool -- forced to true but here for future
+	char*	link_status;			// on, off, auto
+	char*	start_cb;				// external command/script to execute on the owner's behalf after we start up
+	char*	stop_cb;				// external command/script to execute on the owner's behalf just before we shutdown
+	char*	vm_mac;					// the mac to force onto the VF (optional)
+	int*	vlans;					// array of vlan IDs
+	int		nvlans;					// number of vlans allocated
+	char**	macs;					// array of mac addresses (filter)
+	int		nmacs;					// number of mac addresses
+	float	rate;					// percentage of the total link speed this to be confined to (rate limiting)
+	uint8_t	qshare[MAX_TCS];		// share (percentage) of each traffic class
 	// ignoring mirrors right now
 	/*
     "mirror":           [ { "vlan": 100; "vfid": 3 },
@@ -90,6 +125,7 @@ typedef struct {
 extern parms_t* read_parms( char* fname );
 extern vf_config_t*	read_config( char* fname );
 extern void free_config( vf_config_t* );
+extern void free_parms( parms_t* parms );
 
 //------------------ ng_flowmgr --------------------------------------------------------------------------
 void ng_flow_close( void *vf );

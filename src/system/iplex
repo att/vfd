@@ -13,12 +13,14 @@
                 2016 03 May - Add dump action
                 2016 11 July- Add update action
                 2016 20 July - Add list pf's, per vf status functionality
+				2017 13 Jan - Allow any argument to follow show to enable show pfn[:vfn]
+                      where n:m supplies a pf and vf number rather than all or pfs.
 """
 
 __doc__ = """ iplex
     Usage:
     iplex (add | update | delete | status) <port-id> [--loglevel=<value>]
-    iplex show (all | pfs) [--loglevel=<value>]
+    iplex show <what> [--loglevel=<value>]
     iplex verbose [--loglevel=<value>]
     iplex (ping | dump)
     iplex -h | --help
@@ -26,7 +28,9 @@ __doc__ = """ iplex
     Options:
         -h, --help      show this help message and exit
         --version       show version and exit
-    --loglevel=<value>  Default logvalue [default: 0]
+        --loglevel=<value>  Default logvalue [default: 0]
+
+	<what> may be one of:  all, pfs, extended, or <n> where <n> is a PF number.
 """
 
 from docopt import docopt
@@ -170,10 +174,11 @@ class Iplex(object):
         msg["params"] = {}
         if self.filename is not None:
             msg["params"]["filename"] = self.filename
-        if self.options['all']:
-            msg["params"]["resource"] = "all"
-        if self.options['pfs']:
-            msg["params"]["resource"] = "pfs"
+        #if self.options['all']:
+        #    msg["params"]["resource"] = "all"
+        #if self.options['pfs']:
+        #    msg["params"]["resource"] = "pfs"
+        msg["params"]["resource"] = self.options["<what>"]				# pick up generic option
         msg["params"]["loglevel"] = int(self.options["--loglevel"])
         msg["params"]["r_fifo"] = self.resp_fifo
         self.log.info("REQUEST MESSAGE: %s", msg)

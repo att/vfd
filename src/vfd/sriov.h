@@ -1,4 +1,4 @@
-// vi: sw=4 ts=4:
+// vi: sw=4 ts=4 noet:
 /*
 	Mnemonic:	sriov.h
 	Abstract: 	Main header file for vfd.
@@ -6,6 +6,10 @@
 
 	Date:		February 2016
 	Authors:	Alex Zelezniak (original code)
+				E. Scott Daniels
+
+	Mods:		2016 18 Nov - Reorganised to group defs, structs, globals and protos 
+					rather than to have them scattered.
 */
 
 #ifndef _SRIOV_H_
@@ -61,8 +65,13 @@
 #include <rte_ethdev.h>
 #include <rte_string_fns.h>
 #include <rte_spinlock.h>
+#include <rte_pmd_ixgbe.h>
 
 #include "../lib/dpdk/drivers/net/ixgbe/base/ixgbe_mbx.h"
+
+#include <vfdlib.h>
+
+// ---------------------------------------------------------------------------------------
 
 #define RX_RING_SIZE 128
 #define TX_RING_SIZE 64
@@ -70,20 +79,18 @@
 #define MBUF_SIZE (800 + sizeof(struct rte_mbuf) + RTE_PKTMBUF_HEADROOM)
 #define MBUF_CACHE_SIZE 125
 
-
 #define BURST_SIZE 32
 #define MAX_VFS    254
+#define MAX_QUEUES	128			// max supported queues
 #define MAX_PORTS  16
+#define MAX_TCS		8			// max number of TCs possible
 #define RESTORE_DELAY 2
 
+#define TC_4PERQ_MODE	0		// bool flag passed to qos funcitons indicating 4 or 8 mode
+#define TC_8PERQ_MODE	1
 
 #define RTE_PORT_ALL            (~(portid_t)0x0)
 #define IXGBE_RXDCTL_VME        0x40000000 /* VLAN mode enable */
-
-//#define STATS_FILE "/tmp/sriov_stats"
-
-
-//#define timeval_to_ms(timeval)  (timeval.tv_sec * 1000) + (timeval.tv_usec / 1000)
 
 #define TOGGLE(i) ((i+ 1) & 1)
 //#define TV_TO_US(tv) ((tv)->tv_sec * 1000000 + (tv)->tv_usec)
@@ -93,25 +100,14 @@
 #define simpe_atomic_swap(var, newval)  __sync_lock_test_and_set(&var, newval)
 #define barrier()                       __sync_synchronize()
 
-
-
-
-#define TRACE_EMERG       0, __FILE__, __LINE__       /* system is unusable */
-#define TRACE_ALERT       1, __FILE__, __LINE__       /* action must be taken immediately */
-#define TRACE_CRIT        2, __FILE__, __LINE__       /* critical conditions */
-#define TRACE_ERROR       3, __FILE__, __LINE__       /* error conditions */
-#define TRACE_WARNING     4, __FILE__, __LINE__       /* warning conditions */
-#define TRACE_NORMAL      5, __FILE__, __LINE__       /* normal but significant condition */
-#define TRACE_INFO        6, __FILE__, __LINE__       /* informational */
-#define TRACE_DEBUG       7, __FILE__, __LINE__       /* debug-level messages */
-
-
 typedef unsigned char __u8;
 typedef unsigned int uint128_t __attribute__((mode(TI))); 
 
 
 #define __UINT128__
 
+#define PFS_ONLY	1		// display only the PF stats (!PFS_ONLY displays VF stats too)
+#define ALL_PFS		-1		// display stats for all PFs
 
 #define MAX_VF_VLANS 64
 #define MAX_VF_MACS  64
@@ -129,7 +125,15 @@ typedef uint16_t streamid_t;
 
 #define BUF_SIZE 1024
 
+#define ENABLED		1
+#define DISABLED	0
+								// port flags
+#define PF_LOOPBACK	0x01		// loopback is enabled
+#define PF_OVERSUB	0x02
 
+/*
+	Provides a static port configuration struct with defaults.
+*/
 static const struct rte_eth_conf port_conf_default = {
 	.rxmode = {
 		.max_rx_pkt_len = 9000,
@@ -142,13 +146,9 @@ static const struct rte_eth_conf port_conf_default = {
 		.hw_strip_crc   = 0, /**< CRC stripped by hardware */
 		},
 	.intr_conf = {
-		.lsc = 1, /**< lsc interrupt feature enabled */
-    //.lsc = 0, /**< lsc interrupt feature disabled */
+		.lsc = ENABLED, 		// < lsc interrupt feature enabled
 	},
 };
-
-
-
 
 
 unsigned int itvl_idx;
@@ -162,8 +162,9 @@ struct itvl_stats
   uint64_t num_bytes;
 } itvl[2];
 
- 
-
+/*
+	Manages information for a single virtual function (VF).
+*/
 struct vf_s
 {
   int     num;
@@ -192,6 +193,7 @@ struct vf_s
 	uid_t	owner;					// user id which 'owns' the VF (owner of the config file from stat())
 	char*	start_cb;				// user commands driven just after initialisation and just before termination
 	char*	stop_cb;
+	uint8_t	qshares[MAX_TCS];		// percentage of each queue (TC) that has been set in the config for the vf
 };
 
 
@@ -202,41 +204,70 @@ struct mirror_s
 };
 
 
-struct sriov_port_s
+/*
+	Manages information for a single NIC port. Each port may have up to MAX_VFS configured.
+*/
+typedef struct sriov_port_s
 {
-  int     rte_port_number;
-  char    name[64];
-	char    pciid[64];
-  int     last_updated;
-  int     mtu;
-  int     num_mirros;
-	int		nvfs_config;		// actual number of configured vfs; could be less than max
-	int		enable_loopback;		// allow VM-VM traffic looping back through the NIC
-  int     num_vfs;
-  struct  mirror_s mirror[MAX_VFS];
-  struct  vf_s vfs[MAX_VFS];
-};
+	int			flags;					// PF_ constants (enable loopback etc.)
+	int     	rte_port_number;		// the real device number (as known by rte functions)
+	char    	name[64];				// human readable name (probalby unused)
+	char    	pciid[64];				// the ID of the device
+	int     	last_updated;			// flags a change
+	int     	mtu;
+	int     	num_mirrors;
+	int			nvfs_config;			// actual number of configured vfs; could be less than max
+	int			ntcs;					// number traffic clases (must be 4 or 8)
+	int     	num_vfs;
+	struct  	mirror_s mirror[MAX_VFS];
+	struct  	vf_s vfs[MAX_VFS];
+	tc_class_t*	tc_config[MAX_TCS];		// configuration information (max/min lsp/gsp) for the TC	(set from config)
+	int*		vftc_qshares;			// queue percentages arranged by vf/tc (computed with each add/del of a vf)
+	uint8_t		tc2bwg[MAX_TCS];		// maps each TC to a bandwidth group (set from config info)
+} sriov_port_t;
 
-
-struct sriov_conf_c
+/*
+	Overall configuration anchor.
+*/
+typedef struct sriov_conf_c
 {
-  int     num_ports;
-  struct sriov_port_s ports[MAX_PORTS];
-} sriov_config;
+  int     num_ports;						// number of ports actually used in ports array
+  struct sriov_port_s ports[MAX_PORTS];		// ports; CAUTION: order may not be device id order
+} sriov_conf_t;
 
-
-
-struct sriov_conf_c running_config;
-
-
-int rte_config_portmap[MAX_PORTS];
 
 enum print_warning {
 	ENABLED_WARN = 0,
 	DISABLED_WARN
 };
 
+struct pstat
+{
+  u_int64_t pcount;
+  u_int64_t bcount;
+  u_int64_t pcount_before;
 
+  struct timeval startTime;
+  struct timeval endTime;
+};
+
+/*
+	Manages a reset for a port/vf pair. These are queued when a reset is received
+	by callback/mbox message until the VF's queues are ready.
+*/
+struct rq_entry 
+{
+	struct rq_entry* next;		// link references
+	struct rq_entry* prev;
+
+	uint8_t	port_id;
+	uint16_t vf_id;
+	uint8_t enabled;
+	int		mcounter;			// message counter so as not to flood the log
+};
+
+
+// ----------- inline expansions ---------------------------------------------------------------------
 
 /**
  * Read/Write operations on a PCI register of a port.
@@ -277,8 +308,39 @@ port_pci_reg_write(portid_t port, uint32_t reg_off, uint32_t reg_v)
 	port_pci_reg_write(&ports[(pt_id)], (reg_off), (reg_value))
 
 
-void port_mtu_set(portid_t port_id, uint16_t mtu);
+// ---------------------- globals ------------------------------------------------------------------
+const char* version;
+sriov_conf_t* running_config;		// global so that callbacks can access
+int port2config_map[MAX_PORTS];		// map hardware port number to our config array index
 
+int terminated;				// set when a signal is received -- causes main loop to gracefully exit
+
+int debug;
+int traceLevel;			  // NORMAL == 5 level, INFO == 6  (deprecated)
+int useSyslog;         // 0 send messages to stdout			(deprecated)
+int logFacility;       // LOG_LOCAL0
+
+
+char *prog_name;
+char *fname;
+
+int     n_ports;			// number of ports reported by hw/dpdk
+struct ether_addr addr;
+
+struct pstat st;
+struct timeval startTime;
+struct timeval endTime;
+
+// will keep PCI First VF offset and Stride here
+uint16_t vf_offfset;
+uint16_t vf_stride;
+
+uint32_t spoffed[MAX_PORTS]; 		// # of spoffed packets per PF
+
+struct rq_entry *rq_list;			// reset queue list of VMs we are waiting on queue ready bits for
+
+// ---------------------- prototypes ------------------------------------------------------------------
+void port_mtu_set(portid_t port_id, uint16_t mtu);
 
 void rx_vlan_strip_set_on_vf(portid_t port_id, uint16_t vf_id, int on);
 void tx_vlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id);
@@ -305,40 +367,11 @@ int set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_m
 void nic_stats_clear(portid_t port_id);
 int nic_stats_display(uint8_t port_id, char * buff, int blen);
 int vf_stats_display(uint8_t port_id, uint32_t pf_ari, int vf, char * buff, int bsize);
+int port_xstats_display(uint8_t port_id, char * buff, int bsize);
 int dump_vlvf_entry(portid_t port_id);
 
 int port_init(uint8_t port, struct rte_mempool *mbuf_pool);
 void tx_set_loopback(portid_t port_id, u_int8_t on);
-
-int terminated;				// set when a signal is received -- causes main loop to gracefully exit
-
-int debug;
-int traceLevel;			  // NORMAL == 5 level, INFO == 6  (deprecated)
-int useSyslog;         // 0 send messages to stdout			(deprecated)
-int logFacility;       // LOG_LOCAL0
-
-
-char *prog_name;
-char *fname;
-
-int     n_ports;			// number of ports reported by hw/dpdk
-struct ether_addr addr;
-
-struct pstat
-{
-  u_int64_t pcount;
-  u_int64_t bcount;
-  u_int64_t pcount_before;
-
-  struct timeval startTime;
-  struct timeval endTime;
-};
-
-struct pstat st;
-
-struct timeval startTime;
-struct timeval endTime;
-
 
 void ether_aton_r(const char *asc, struct ether_addr * addr);
 int xdigit(char c);
@@ -352,12 +385,11 @@ void daemonize( char* pid_fname );
 void detachFromTerminal( void );
 void traceLog(int eventTraceLevel, const char * file, int line, const char * format, ...);
 int readConfigFile(char *fname);
-void dump_sriov_config(struct sriov_conf_c config);
+void dump_sriov_config( sriov_conf_t* config);
 void dump_dev_info( int num_ports );
 int update_ports_config(void);
 int cmp_vfs (const void * a, const void * b);
 void disable_default_pool(portid_t port_id);
-
 
 void lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
 void vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
@@ -367,31 +399,36 @@ void restore_vf_setings(uint8_t port_id, int vf);
 int valid_mtu( int port, int mtu );
 int valid_vlan( int port, int vfid, int vlan );
 
-// will keep PCI First VF offset and Stride here
-uint16_t vf_offfset;
-uint16_t vf_stride;
-
-// this array holds # of spoffed packets per PF
-uint32_t spoffed[MAX_PORTS];
-/*
-	Manages a reset for a port/vf pair. These are queued when a reset is received
-	by callback/mbox message until the VF's queues are ready.
-*/
-struct rq_entry
-{
-	struct rq_entry* next;		// link references
-	struct rq_entry* prev;
-
-	uint8_t	port_id;
-	uint16_t vf_id;
-	uint8_t enabled;
-	int		mcounter;			// message counter so as not to flood the log
-};
-
-struct rq_entry *rq_list;		// reset queue list of VMs we are waiting on queue ready bits for
-
 void add_refresh_queue(u_int8_t port_id, uint16_t vf_id);
 void process_refresh_queue(void);
 int is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter );
+
+int vfd_update_nic( parms_t* parms, sriov_conf_t* conf );
+int vfd_init_fifo( parms_t* parms );
+int is_valid_mac_str( char* mac );
+char*  gen_stats( sriov_conf_t* conf, int pf_only, int pf );
+
+// --- tools --------------------------------------------
+extern int stricmp(const char *s1, const char *s2);
+
+
+// ---- new qos, merge up after initial testing ----
+void gen_port_qshares( sriov_port_t *port );
+int check_qs_oversub( struct sriov_port_s* port, uint8_t *qshares );
+int check_qs_spread( struct sriov_port_s* port, uint8_t* qshares );
+
+// --- qos hard coded nic funcitons that need to move to dpdk
+void qos_set_credits( portid_t pf, int mtu, int* rates, int tc8_mode );
+extern void qos_enable_arb( portid_t pf );
+extern void qos_set_tdplane( portid_t pf, uint8_t* pctgs, uint8_t *bwgs, int ntcs, int mtu );
+extern void qos_set_txpplane( portid_t pf, uint8_t* pctgs, uint8_t *bwgs, int ntcs, int mtu );
+
+
+//------- these are hacks in the dpdk library and we  must find a good way to rid ourselves of them ------
+struct rth_eth_dev;
+extern void ixgbe_configure_dcb(struct rte_eth_dev *dev);
+extern void scott_ixgbe_configure_dcb_pctgs( struct rte_eth_dev *dev );
+
+
 
 #endif /* _SRIOV_H_ */
