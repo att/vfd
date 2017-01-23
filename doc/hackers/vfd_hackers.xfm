@@ -157,7 +157,7 @@ The command line tool &cw(iplex) is used to communicate with VFd and provides th
 add or remove VF configurations. 
 
 .sp
-Under normal circumstances VFd and any related software tools are installed on the system via 
+Under normal circumstances VFd, and any related software tools, are installed on the system via 
 some distribution mechanism (chef, puppet, or the like), which is also responsible for the 
 creation of the configuration file in &cw(/etc) and ensures that the VFs have been created. 
 &cw(Nova,) or some similar VM management environment is generally responsible for creating the 
@@ -166,12 +166,12 @@ add the configuration information as a VM is created.
 
 .sp
 &start_sized_note( .75i )
-We use the terms hack, hacker, and hacking in the original sense of the term as it applies to the computer science world. 
-Hacking is something that a programmer does manually in order to get the system to work, or to behave differently
-in order to improve and/or test it.  From the perspective of VFd, the setup and configuration of the overall environment
-and the definition of VF configurations will likely be done by one or more automated processes, however to use and or 
-test VFd independently of that automation, you the reader become the hacker who must manually hack together 
-bits and pieces normally provided by the missing automation.
+We use the terms hack, hacker, and hacking in their original computer science sense. 
+Hacking is the act of manually manipulating a programme or environment in order to tailor it to 
+the programmer's needs.  In a production environment, the overall VFd configuration, and the specifications of each
+underlying VF, will likely be managed by an automated process, however in a test environment it will be necessary
+for the systems programmer and/or tester to hack together the various configurations and to execute the 
+necessary configuration commands to interact with VFd.  
 &end_note
 At times it may be necessary to install and make use of VFd without the usual distribution and virtual 
 environment management components. 
@@ -240,10 +240,10 @@ Note that only the PCI address is needed for these commands, and if another driv
 it will automatically be unbound first.
 
 &h3( Number of VFs to create)
-A logcial question at this point would be &ital( how many VFs should I create? )
+A logical question at this point would be &ital( how many VFs should I create? )
 The answer depends on whether or not VFd will be running with quality of service (QoS) enabled. 
 When running in QoS mode, it is a requirement that 31 VFs be created for each PF. 
-When running in &ital( version 1 mode ) (QoS diabled), it is possible to allocate less than 
+When running in &ital( version 1 mode ) (QoS disabled), it is possible to allocate less than 
 32 VFs for a PF, but it is recommended to allocate 32. 
 
 .gv figure
@@ -503,24 +503,32 @@ The traffic class definition object contains the following fields:
 &end_dlist
 &uindent
 
-&h3( Traffic Class Oversubscription )
-By default the percentages associated with any traffic class queue sharing (please refer to the section on 
-configuring VFs for more detains) must not exceed 100%.
-VFd will verify that the addition of a VF (via the iplex add command) does not cause the queue shared to 
-take the amount of any traffic class beyond 100%, and if it does VFd will refuse to accept the VF.
-If the over subscription parameter is set to &ital( true ) in the main VFd configuration file, as 
-illustrated below, VFd will allow the percentages to total more than 100% across all VFs which are 
-defined.  
-When in oversubscription mode, the minimum share of a traffic class for a VF will be 'normalised down'
-such that the overall total after normalisation is 100% (the NICs require that the queues be sliced such 
-that the percentages total 100%).
+&h3( Traffic Class Over Subscription )
+By default, the percentages associated with any traffic class queue sharing (please refer to the section on 
+configuring VFs for more details) must not exceed 100%.
+When a request to add a VF is made, VFd will examine the queue share settings in the VF configuration file
+and will reject the request if the new settings cause one or more of the queue percentage totals to exceed 100%.
+As an example, if two VFs are currently managed by VFd and each has been given 50% share of the priority 2 queue, 
+it will be impossible to add another VF that defines a non-zero share for the priority 2 queue.
+.sp
+
+&ital( Over subscription ) allows for the sum of percentages of any traffic class queue to exceed 100%. 
+When enabled, the percentages for each queue with a total exceeding 100% are normalised such that the 
+values given to the NIC total 100%.
+Continuing the previous example, if a third VF is added, with a queue share of 20%, taking the total for the priority 2 queue to 120%, 
+the actual percentages used when configuring the underlying hardware would be reduced to approximately 83% of
+the indicated value (41.5%, 41.5% and 16.6%).
+
+.sp
+To enable over subscription for a PF, he following field may be added to any of the definitions in the &cw( pciid ) array.
+(Please see Appendix A for a complete example.)
 .sp .5
 &ex_start
   "vf_oversubscription": true,
 &ex_end
 .sp
 
-IF the VF definitions define one or more traffic classes which do not total 100%, the values are 
+IF the set VF configuration files define one or more traffic classes which do not total 100%, the values are 
 'normalised up' such that the overall usage is equal to 100%.  
 
 
@@ -534,6 +542,9 @@ The following configuration file parameter may be defined to enable QoS:
   "enable_qos": true
 &ex_end
 
+.sp
+The &cw( -q ) command line option can also be used to turn on QoS which may be a more convenient way of
+enabling this feature when testing.
 
 
 &h1( Running VFd)
@@ -543,8 +554,9 @@ When running manually the user must be &ital(root,) and various command line opt
 provided allowing for a diverse testing environment.  
 The VFd command line syntax is:
 .sp .5
+.cc 4
 &ex_start
-  vfd [-f] [-n] [-p config-parm-file] 
+  vfd [-f] [-n] [-p config-parm-file] [-q]
 &ex_end
 .sp
 Where:
@@ -557,6 +569,8 @@ Where:
 &di(-n) Enables &ital(no-execution) mode which prevents VFd from actually doing anything through DPDK
 .sp .3
 &di(-p) Provides the filename of the configuration file (default is &cw(/etc/vfd/vfd.cfg) .sm )
+.sp .3
+&di(-q) Enable QoS.
 &end_dlist
 &smuindent
 .sp 
@@ -654,8 +668,18 @@ Figure &_fig provides a sample configuration which contains the following inform
 &uindent
 .sp
 
+&h3( Strip/Insert VLAN IDs )
+The VF may be configured to automatically remove the VLAN tag as each packet is received, and to automatically insert
+a VLAN tag as each packet is transmitted.
+Both functions are set with the same &cw( strip_stag ) field; as the strip and insert operations are related, they 
+are both either enabled or disabled and thus only one field is necessary.
+When this field is set to &cw( true, ) the array of VLAN IDs must contain only a single ID as it is impossible for 
+the NIC to know which VLAN ID to insert if multiple IDs are defined in the array. 
+Thus, VFd will reject the configuration if the strip stag field is set to &cw( true, ) and the VLAN array has more 
+than one element.
+
 &h3( VF Quality of service configuration )
-In addition to the parameters noted above, a set of QoS paraemters may be supplied in the VF configuration file.
+In addition to the parameters noted above, a set of QoS parameters may be supplied in the VF configuration file.
 These parameters, defined with the &cw( queues ) array,  are ignored when VFd is not started in QoS mode, and are used to define the amount of 
 bandwidth that the VF should receive for outbound packets.
 .gv fig
@@ -793,13 +817,21 @@ the PFs on a system, and with respect to the configuration of each VF within VFd
 The following must be observed, or unexpected behaviour will result.
 
 &h2( Number of VFs Per PF )
+.if false
+.** before bug fix
 While it is possible to configure a small number of VFs for each PF, VFd requires that &bold(all 32 VFs)
 be configured for each PF listed in the VFd configuration file. 
-If fewer than 32 Vfs are configured VFd is unable to properly see the queue ready (enabled) indicator
+If fewer than 32 VFs are configured VFd is unable to properly see the queue ready (enabled) indicator
 and as a result the necessary NIC configuration which must wait until the guest enables the Tx queues
 is never performed.  
 Fewer than 32 VFs configured for a PF also interferes with VFd's ability to properly observe and report
 statistics about each VF (up/down state and counts).
+.fi
+When running with QoS enabled, VFd requires that 31 VFs (yes, 31, that is not a typo) be created for each PF.
+This ensures that the proper number of traffic classes are created, and allows one set of queues for the 
+PF to 'own.' 
+.sp
+When running with QoS disabled, it should be possible to configure any number of VFs from 1 through 32.
 
 &h2( MAC Limits )
 The number of MAC addresses which may be defined across all VFs for a PF is limited by hardware to 128.
