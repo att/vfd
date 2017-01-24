@@ -61,7 +61,7 @@ hot_plug_test::	hot_plug_test.c $lib
 	$cc $cflags hot_plug_test.c -o hot_plug_test -L. -lvfd $jsmn_lib
 
 
-all_tests:V:	parm_file_test jwrapper_test
+all_tests:V:	parm_file_test jwrapper_test jwrapper_test2 vf_config_test fifo_test bleat_test list_test pfx_list_test
 
 test:V:
 	ksh jwrapper_test.ksh
