@@ -30,7 +30,7 @@ static void loop_test( char* fname ) {
 		exit( 1 );
 	}
 
-	fifo = rfifo_create( fname );
+	fifo = rfifo_create( fname, 0664 );
 	if( fifo == NULL ) {
 		fprintf( stderr, "[FAIL] unable to create fifo: %s\n", strerror( errno ) );
 		exit( 1 );
@@ -59,16 +59,20 @@ int main( int argc, char** argv ) {
 	char*	rbuf;			// read buffer
 
 
-	if( strcmp( argv[1], "loop" ) == 0 ) {
-		loop_test( argv[2] );
-		exit( 0 );
-	}
-
 	if( argv[1] != NULL ) {
+		if( strcmp( argv[1], "loop" ) == 0 ) {
+			if( argv[2] != NULL ) {
+				fname = argv[2];
+			}
+
+			loop_test( fname );
+			exit( 0 );
+		}
+
 		fname = argv[1];
 	}
 
-	fifo = rfifo_create( fname );
+	fifo = rfifo_create( fname, 0664 );
 	if( fifo == NULL ) {
 		fprintf( stderr, "[FAIL] unable to create fifo: %s\n", strerror( errno ) );
 		exit( 1 );
