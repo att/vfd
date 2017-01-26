@@ -13,7 +13,7 @@
 .ju on
 .hn off
 
-.** ------ macros which hold across most desired output ---------------------
+.** ------ macros which hold across most desired output formats ---------------------
 .dv fontsize 10p
 .dv textfont Helvetica
 .dv textsize 10p
@@ -46,7 +46,17 @@
 .dv def_list .bd $1 
 .dv end_dlist .ed
 
-.**  ---- specialised macros; might override above ------------------------------------
+.** allow markdown, must redefine header directive and definition item
+.dv h1 .h1 $1
+.dv h2 .h2 $1
+.dv h3 .h3 $1
+.dv di .di $1 ^: 
+
+.** we omit this from markdown output as pasting links in wiki on github  seems
+.** to flag the account of the user who pastes the markdown text into the page.
+.dv http http://
+
+.**  ---- specialised macros based on output format; might override above ------------------------------------
 .if pfm
 	.dv cw .tf Courier 8p  $1 ^:
 	.dv bold .tf Helvetica-bold  ^&fontsize $1  ^:
@@ -56,31 +66,24 @@
 	.ll 5.75i
 	.pn on 0 center f=-%d- noline
 
-	.** allow markdown, must redefine header directive
-	.dv h1 .h1 $1
-	.dv h2 .h2 $1
-	.dv h3 .h3 $1
-	.dv di .di $1 ^: 
 .ei
 	.** .dv super ^[^&note_num] .dv note_num ^[ ^&note_num 1 + ] ^:
 	.dv super .dv ss_num ^[ ^&ss_num 1 + ] ^: .sm ^[ .sm ^&{ss_num}]
 	.** .sv super
 
+	.** at the moment tfm ignores atbot as there is no concept of a page, so we must set to atend
 	.dv start_note .cn start atend Times-roman 8p .5i
 	.dv start_sized_note .cn start atend Times-roman 8p $1
-	.dv bold $1
-	.dv cw $1
-	.dv ital $1
+
 	.dv lic1 *
 	.dv lic2 +
 
-	.dv line .ln
-
 	.** if the env var is set, redefine macros to generate the limited markdown things
 	.gv e MARKDOWN markdown
-	.if markdown
+	.if &markdown 0 >
 		.ju off
 
+		.dv http xxxx://
 		.** no concept of a definition list in markdown; no start/end and just make the text bold to emulate
 		.dv def_list  .sp 1
 		.dv end_dlist .sp 1
@@ -94,6 +97,7 @@
 		.dv smindent
 		.dv smuindent .sp 2
 		.dv bold **$1**
+		.dv cw <code>$1</code>
 		.dv ital _ .sm $1 .sm _
 		.dv h1 .sp 2 # $1 .br
 		.dv h2 .sp 2 ## $1 .br
@@ -102,6 +106,13 @@
 		.dv ex_start .ll -4 .in .5i .sp 2 .fo off 
 		.dv ex_end .fo on .in 0i .ll +4 .sp 2
 		.dv ifroom .im $2
+	.ei
+		.** plain text output has a few overrides to pfm output
+		.dv bold $1
+		.dv cw $1
+		.dv ital $1
+
+		.dv line .ln
 	.fi
 .fi
 
@@ -129,7 +140,7 @@
 &h1( Overview )
 &start_note
 A basic primer on SR-IOV can be found at .br
-http://www.intel.com/content/dam/doc/application-note/pci-sig-sr-iov-primer-sr-iov-technology-paper.pdf
+&{http}www.intel.com/content/dam/doc/application-note/pci-sig-sr-iov-primer-sr-iov-technology-paper.pdf
 .sp .3
 &end_note
 VFd is a daemon which manages the configuration of virtual and physical functions (VFs and PFs) which 
@@ -468,6 +479,7 @@ what are known as bandwidth groups.
 The set of parameters for QoS can be quite lengthy, and thus a complete example is presented as an appendix to 
 this document as a part of an overall VFd configuration file. 
 Figure &_fig illustrates how each traffic class may be defined to VFd.
+.sp .5
 .ca start qos_main.ca
 &ex_start
   "tclasses": [
@@ -483,6 +495,7 @@ Figure &_fig illustrates how each traffic class may be defined to VFd.
 &ex_end
 .fg The QoS traffic class definition.
 .ca end
+&ifroom( 2i:qos_main.ca )
 
 .sp
 .cc 4
@@ -490,17 +503,17 @@ The traffic class definition object contains the following fields:
 .sp .5
 &indent
 &def_list( .75i Helvetical-bold )
-&di( name )	The traffic class name (future and/or diagnostic output).
+&di(name)	The traffic class name (future and/or diagnostic output).
 .sp .3
-&di( pri ) The priority of the traffic class (0 - 3 where 0 is the lowest).
+&di(pri) The priority of the traffic class (0 - 3 where 0 is the lowest).
 .sp .3
-&di( lsp )	When true, sets link strict priority on the class.
+&di(lsp)	When true, sets link strict priority on the class.
 .sp .3
-&di( bst )	When true, sets bandwidth group strict priority on the class.
+&di(bst)	When true, sets bandwidth group strict priority on the class.
 .sp .3
-&di( max_bw ) Maximum amount of bandwidth as a percentage (future).
+&di(max_bw) Maximum amount of bandwidth as a percentage (future).
 .sp .3
-&di( min_bw ) Minimum amount of bandwidth as a percentage (future).
+&di(min_bw) Minimum amount of bandwidth as a percentage (future).
 &end_dlist
 &uindent
 
@@ -588,7 +601,8 @@ Where:
 	&ifroom(2.5:process.ca)
 .ei
 	.sp 2
-	[ IMAGE ] 	
+	[ IMAGE ] 	 .br
+	.fg VFd process overview
 	.sp 2
 .fi
 
