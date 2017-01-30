@@ -57,7 +57,5 @@ jsmn:
 	then \
 		git clone https://github.com/zserge/jsmn ;\
 	fi 
-	cd jsmn ;
-	git pull ;
-	make
+	cd jsmn; git pull; make
 
