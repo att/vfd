@@ -9,6 +9,7 @@
 
 	Mods:		29 Nov 2016 : Add queue share support from vf config.
 				06 Jan 2017 : Incorporate DJ's fix for link mode.
+				30 Jan 2017 : Fix vfid check to detect pars error.
 */
 
 
@@ -339,7 +340,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	bleat_printf( 2, "add: config data: pciid: %s", vfc->pciid );
 	bleat_printf( 2, "add: config data: vfid: %d", vfc->vfid );
 
-	if( vfc->pciid == NULL || vfc->vfid < 1 ) {
+	if( vfc->pciid == NULL || vfc->vfid < 0 ) {			// this is a parse check so <0 is right; proper range check is later with appropriate msg
 		snprintf( mbuf, sizeof( mbuf ), "unable to read or parse config file: %s", fname );
 		bleat_printf( 1, "vfd_add_vf failed: %s", mbuf );
 		if( reason ) {
