@@ -19,7 +19,7 @@ function build_it
 	(
 		set -e
         cd $src_dir/src/lib
-        git clone https://github.com/att/dpdk.git -b vfd-1607
+        git clone http://dpdk.org/git/dpdk -b v16.11
 		cd $src_dir/src/lib/dpdk
 		echo "building dpdk...."
         cat <<endKat >config/defconfig_x86_64-vfd-linuxapp-gcc
@@ -51,7 +51,7 @@ endKat
 		make
 
 		cd build/app
-		./vfd -? | grep "^vfd" >/dev/null
+		./vfd -? | grep "^VFd" >/dev/null
 	)
 
 	if (( $? != 0 ))
