@@ -67,7 +67,9 @@
 #include <rte_spinlock.h>
 #include <rte_pmd_ixgbe.h>
 
-#include "../lib/dpdk/drivers/net/ixgbe/base/ixgbe_mbx.h"
+//#include "../lib/dpdk/drivers/net/ixgbe/base/ixgbe_mbx.h"
+// requires -I $(RTE_SDK)
+#include <drivers/net/ixgbe/base/ixgbe_mbx.h>
 
 #include <vfdlib.h>
 

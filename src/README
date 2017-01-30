@@ -4,8 +4,7 @@ in this file.
 
 
 VFd (master branch) should now build cleanly against (and requeres) DPDK 16.11.
-As with earlier versions of VFd, a symbolic link to the DPDK library in src/lib
-is recommended, and the usual RTE_ environment variables must be defined. 
+The usual RTE_ environment variables must be defined. 
 
 
 This code makes use of a modified dpdk library which must be pulled from the
@@ -17,8 +16,7 @@ built via the dpdk make environment.
 Once the dpdk repo has been cloned, it must be built before anything in the 
 vfd source tree can be built. To do this follow the following steps:
 
-    -   create symlink in src/lib
-    -   cd dpdk
+    -   cd dpdk				# where ever you installed it
     -   git checkout v16.11
     -   make config T=x86_64-native-linuxapp-gcc
     -   make
@@ -33,7 +31,20 @@ vfd source tree can be built. To do this follow the following steps:
     -   export RTE_SDK=$PWD
     -   export RTE_TARGET=x86_64-native-linuxapp-gcc
 
+Building VFd Itself
+After the DPDK library has been built, you can cd into vfd/src and:
+	- cd vfd    # which ever directory you cloned the vfd repo into
+	- cd lib
+	- make jsmn			# will clone and build the jsmn library
+	- make libvfd.a		# will build vfd support library
+	- cd ../vfd
+	- make clean 
+	- make
+
+
 Todo:
 	A toplevel mk/make build needs to be provided
 
 
+The original requirement to have a symlink to the dpdk library in the vfd
+lib directory is _no longer_ needed.

@@ -43,7 +43,7 @@ VFD_VERSION = $(shell junk=$$( (git log -n 1 2>/dev/null || echo Commit non-git-
 #SRCS-y := main.c sriov.c /usr/local/lib/libconfig.a
 SRCS-y := main.c sriov.c qos.c vfd_rif.c vfd_dcb.c $(libvfd) $(libjsmn)
 
-CFLAGS += $(WERROR_FLAGS) -I $(PWD)/../lib/
+CFLAGS += $(WERROR_FLAGS) -I $(PWD)/../lib/ -I $(RTE_SDK)
 #-lconfig
 
 # workaround for a gcc bug with noreturn attribute
