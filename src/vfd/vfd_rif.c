@@ -394,7 +394,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		vidx = i;
 	}
 
-	if( vidx >= MAX_VFS || vfc->vfid < 1 || vfc->vfid > 31) {							// something is out of range
+	if( vidx >= MAX_VFS || vfc->vfid < 0 || vfc->vfid > 31) {							// something is out of range
 		snprintf( mbuf, sizeof( mbuf ), "max VFs already defined or vfid %d is out of range", vfc->vfid );
 		bleat_printf( 1, "vf not added: %s", mbuf );
 		if( reason ) {
