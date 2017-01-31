@@ -42,12 +42,8 @@ endKat
 		echo "building vfd...."
 		cd $src_dir/src/lib
 		make jsmn
-		cd jsmn && make
+        make libvfd.a
 		cd $src_dir/src/vfd
-		if [[ ! -a vfdlib.h ]]
-		then
-			ln -s $src_dir/src/lib/vfdlib.h vfdlib.h
-		fi
 		make
 
 		cd build/app
