@@ -118,7 +118,7 @@ def get_pciids_group(dev_id):
     cmd = "find /sys/kernel/iommu_groups -type l|grep %s | awk -F/ '{print $(NF-2)}'" % dev_id
     group_num = subprocess.check_output(cmd, shell=True)
     if group_num != None:
-        cmd = "find /sys/kernel/iommu_groups -type l|grep groups.%s/" % group_num
+        cmd = "find /sys/kernel/iommu_groups -type l|grep groups.%s/" % int(group_num)
         list_pciids = subprocess.check_output(cmd, shell=True)
         for pciid in list_pciids.splitlines():
             group_pciids.append(pciid.split('/')[-1])
