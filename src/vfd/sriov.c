@@ -17,6 +17,8 @@
 				20 Oct 2016 - Changes to support the dpdk 16.11 rc1 code.
 				01 Nov 2016 - Correct queue drop enable bug (wrong ixgbe function invoked).
 				10 Nov 2016 - Extend queue ready to support less than 32 configured VFs.
+				31 Jan 2017 - Corrected error messages for untagged, mcast & bcast; added rc 
+					value to all failure msgs.
 
 	useful doc:
 				 http://www.intel.com/content/dam/doc/design-guide/82599-sr-iov-driver-companion-guide.pdf
@@ -152,7 +154,7 @@ tx_vlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id)
 	diag = rte_pmd_ixgbe_set_vf_vlan_insert( port_id, vf_id, vlan_id );
 
 	if (diag < 0) {
-		bleat_printf( 0, "set tx vlan insert on vf failed: port_pi=%d, vf_id=%d, vlan_id=%d) failed " "diag=%d", port_id, vf_id, vlan_id, diag);
+		bleat_printf( 0, "set tx vlan insert on vf failed: port_pi=%d, vf_id=%d, vlan_id=%d) failed rc=%d", port_id, vf_id, vlan_id, diag );
 	} else {
 		bleat_printf( 3, "set tx vlan insert on vf successful: port=%d, vf=%d vlan=%d", port_id, vf_id, vlan_id );
 	}
@@ -166,7 +168,7 @@ rx_vlan_strip_set_on_vf(portid_t port_id, uint16_t vf_id, int on)
 
 	diag = rte_pmd_ixgbe_set_vf_vlan_stripq(port_id, vf_id, on);
 	if (diag < 0) {
-		bleat_printf( 0, "set rx vlan strip on vf failed: port_pi=%d, vf_id=%d, on=%d) failed " "diag=%d", port_id, vf_id, on, diag);
+		bleat_printf( 0, "set rx vlan strip on vf failed: port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, on, diag );
 	} else {
 		bleat_printf( 3, "set rx vlan strip on vf successful: port=%d, vf_id=%d on/off=%d", port_id, vf_id, on );
 	}
@@ -179,9 +181,9 @@ set_vf_allow_bcast(portid_t port_id, uint16_t vf_id, int on)
   int ret = rte_eth_dev_set_vf_rxmode(port_id, vf_id, ETH_VMDQ_ACCEPT_BROADCAST,(uint8_t) on);
 
 	if (ret < 0) {
-		bleat_printf( 0, "set allow bcast failed: port/vf %d/%d on/off=%d", port_id, vf_id, on );
+		bleat_printf( 0, "set allow bcast failed: port/vf %d/%d on/off=%d rc=%d", port_id, vf_id, on, ret );
 	} else {
-		bleat_printf( 3, "set allow bcast failed: port/vf %d/%d on/off=%d", port_id, vf_id, on );
+		bleat_printf( 3, "set allow bcast successful: port/vf %d/%d on/off=%d", port_id, vf_id, on );
 	}
 }
 
@@ -192,9 +194,9 @@ set_vf_allow_mcast(portid_t port_id, uint16_t vf_id, int on)
 	int ret = rte_eth_dev_set_vf_rxmode(port_id, vf_id, ETH_VMDQ_ACCEPT_MULTICAST,(uint8_t) on);
 
 	if (ret < 0) {
-		bleat_printf( 0, "set allow mcast failed: port/vf %d/%d on/off=%d", port_id, vf_id, on );
+		bleat_printf( 0, "set allow mcast failed: port/vf %d/%d on/off=%d rc=%d", port_id, vf_id, on, ret );
 	} else {
-		bleat_printf( 3, "set allow mcast failed: port/vf %d/%d on/off=%d", port_id, vf_id, on );
+		bleat_printf( 3, "set allow mcast successful: port/vf %d/%d on/off=%d", port_id, vf_id, on );
 	}
 }
 
@@ -205,7 +207,7 @@ set_vf_allow_un_ucast(portid_t port_id, uint16_t vf_id, int on)
 	int ret = rte_eth_dev_set_vf_rxmode(port_id, vf_id, ETH_VMDQ_ACCEPT_HASH_UC,(uint8_t) on);
 
 	if (ret < 0) {
-		bleat_printf( 0, "set allow ucast failed: port/vf %d/%d on/off=%d", port_id, vf_id, on );
+		bleat_printf( 0, "set allow ucast failed: port/vf %d/%d on/off=%d rc=%d", port_id, vf_id, on, ret );
 	} else {
 		bleat_printf( 3, "set allow ucast successful: port/vf %d/%d on/off=%d", port_id, vf_id, on );
 	}
@@ -223,7 +225,7 @@ set_vf_allow_untagged(portid_t port_id, uint16_t vf_id, int on)
 	int ret = rte_eth_dev_set_vf_rxmode(port_id, vf_id, rx_mode, (uint8_t) on);
 
 	if (ret >= 0) {
-		bleat_printf( 3, "set allow untagged successful: port/vf %d/%d on/off=%d", port_id, vf_id, on );
+		bleat_printf( 3, "set allow untagged failed: port/vf %d/%d on/off=%d rc=%d", port_id, vf_id, on, ret );
 	} else {
 		bleat_printf( 3, "set allow untagged successful: port/vf %d/%d on/off=%d", port_id, vf_id, on );
 	}
@@ -243,7 +245,7 @@ set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  __attribute__((__
 
 	diag = rte_eth_dev_mac_addr_add(port_id, &mac_addr, vf);
 	if (diag < 0) {
-		bleat_printf( 0, "set rx mac failed: port=%d vf=%d on/off=%d mac=%s", (int)port_id, (int)vf, on, mac );
+		bleat_printf( 0, "set rx mac failed: port=%d vf=%d on/off=%d mac=%s rc=%d", (int)port_id, (int)vf, on, mac, diag );
 	} else {
 		bleat_printf( 3, "set rx mac successful: port=%d vf=%d on/off=%d mac=%s", (int)port_id, (int)vf, on, mac );
 	}
@@ -258,7 +260,7 @@ set_vf_rx_vlan(portid_t port_id, uint16_t vlan_id, uint64_t vf_mask, uint8_t on)
 
 	diag = rte_eth_dev_set_vf_vlan_filter(port_id, vlan_id, vf_mask, on);
 	if (diag < 0) {
-		bleat_printf( 0, "set rx vlan filter failed: port=%d vlan=%d on/off=%d", (int)port_id, (int) vlan_id, on );
+		bleat_printf( 0, "set rx vlan filter failed: port=%d vlan=%d on/off=%d rc=%d", (int)port_id, (int) vlan_id, on, diag );
 	} else {
 		bleat_printf( 3, "set rx vlan filter successful: port=%d vlan=%d on/off=%d", (int)port_id, (int) vlan_id, on );
 	}
@@ -273,7 +275,7 @@ set_vf_vlan_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 
 	diag = rte_pmd_ixgbe_set_vf_vlan_anti_spoof(port_id, vf, on);
 	if (diag < 0) {
-		bleat_printf( 0, "set vlan antispoof failed: port=%d vf=%d on/off=%d", (int)port_id, (int)vf, on );
+		bleat_printf( 0, "set vlan antispoof failed: port=%d vf=%d on/off=%d rc=%d", (int)port_id, (int)vf, on, diag );
 	} else {
 		bleat_printf( 3, "set vlan antispoof successful: port=%d vf=%d on/off=%d", (int)port_id, (int)vf, on );
 	}
@@ -288,7 +290,7 @@ set_vf_mac_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 
 	diag = rte_pmd_ixgbe_set_vf_mac_anti_spoof(port_id, vf, on);
 	if (diag < 0) {
-		bleat_printf( 0, "set mac antispoof failed: port=%d vf=%d on/off=%d", (int)port_id, (int)vf, on );
+		bleat_printf( 0, "set mac antispoof failed: port=%d vf=%d on/off=%d rc=%d", (int)port_id, (int)vf, on, diag );
 	} else {
 		bleat_printf( 3, "set mac antispoof successful: port=%d vf=%d on/off=%d", (int)port_id, (int)vf, on );
 	}
@@ -302,7 +304,7 @@ tx_set_loopback(portid_t port_id, u_int8_t on)
 
 	diag = rte_pmd_ixgbe_set_tx_loopback(port_id, on);
 	if (diag < 0) {
-		bleat_printf( 0, "set tx loopback failed: port=%d on/off=%d", (int)port_id, on );
+		bleat_printf( 0, "set tx loopback failed: port=%d on/off=%d rc=%d", (int)port_id, on, diag );
 	} else {
 		bleat_printf( 3, "set tx loopback successful: port=%d on/off=%d", (int)port_id, on );
 	}
