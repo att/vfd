@@ -1,4 +1,4 @@
-// vi: sw=4 ts=4:
+// vi: sw=4 ts=4 noet:
 /*
 	Mnemonic:	vfd -- VF daemon
 	Abstract: 	Daemon which manages the configuration and management of VF interfaces
@@ -47,7 +47,7 @@
 				01 Nov 2016 - renamed var to port2config_map to avoid looking like dpdk var/function (lead rte)
                 03 Jan 2017 - Add new string compare function to ignore case-sensitive strings,
                             fix to link_status vfconfig param
-
+				31 Jan 2017 - ensure that the *cast settings are restored after vlan and vlanmac callbacks.
 */
 
 
@@ -74,7 +74,7 @@
 #define DEBUG
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
-static parms_t *g_parms = NULL;						// most functions should accept a pointer, however we have to have a global for the callback function support
+static parms_t *g_parms = NULL;											// dpdk callback does not allow data pointer so we must have a global. all other functions should accept a pointer!
 
 
 // -- global initialisation ----
@@ -242,6 +242,7 @@ static struct sriov_port_s *suss_port( int portid ) {
 	return &running_config->ports[rc_idx];
 }
 
+
 /*
 	Given a port and vfid, find the vf block and return a pointer to it.
 */
@@ -257,6 +258,57 @@ static struct vf_s *suss_vf( int port, int vfid ) {
 	}
 
 	return NULL;
+}
+
+/*
+	Given a dpdk port id and vf id, suss out the desired configuration setting.
+	What is a VF_VAL_ constant. Only settings which can be represnted by an
+	integer can be sussed out.
+
+	Depends on global running config pointer so that callback functions have
+	access.
+*/
+extern int get_vf_setting( int portid, int vf, int what ) {
+	struct vf_s *p;
+	int		rval = 0;			// return value
+
+	if( (p = suss_vf( portid, vf )) == NULL ) {
+		return 0;
+	}
+
+	rte_spinlock_lock( &running_config->update_lock );	// ensure it doesn't change while we read
+	switch( what ) {
+		case VF_VAL_MCAST:
+			rval = p->allow_mcast;
+			break;
+
+		case VF_VAL_BCAST:
+			rval = p->allow_bcast;
+			break;
+
+		case VF_VAL_MSPOOF:
+			rval = p->mac_anti_spoof;
+			break;
+
+		case VF_VAL_VSPOOF:
+			rval = p->vlan_anti_spoof;
+			break;
+
+		case VF_VAL_STRIPVLAN:
+			rval = p->strip_stag;
+			break;
+
+		case VF_VAL_UNTAGGED:
+			rval = p->allow_untagged;
+			break;
+
+		case VF_VAL_UNUCAST:
+			rval = p->allow_un_ucast;
+			break;
+	}
+
+	rte_spinlock_unlock( &running_config->update_lock );
+	return rval;
 }
 
 
@@ -454,7 +506,7 @@ static int vfd_eal_init( parms_t* parms ) {
 
 /*
 	Generate a set of stats to a single buffer. Return buffer to caller (caller must free).
-	If pf_only is true, then the VF stats are skipped. If pf >= 0, then only that pf, and 
+	If pf_only is true, then the VF stats are skipped. If pf >= 0, then only that pf, and
 	its VFs are printed.
 */
 char*  gen_stats( sriov_conf_t* conf, int pf_only, int pf ) {
@@ -622,11 +674,12 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
     uint32_t vf_mask;
     int y;
 
-	//if( parms->initialised == 0 ) {
 	if( (parms->rflags & RF_INITIALISED) == 0 ) {
 		bleat_printf( 2, "update_nic: not initialised, nic settings not updated" );
 		return 0;
 	}
+
+	rte_spinlock_lock( &running_config->update_lock );
 
 	for (i = 0; i < conf->num_ports; ++i){							// run each port we know about
 		int ret;
@@ -768,10 +821,8 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 			if( change2port && (g_parms->rflags & RF_ENABLE_QOS) ) {		// changes, we must recompute queue shares and push to nic
 				//uint8_t* pp;
 				gen_port_qshares( port );									// compute and save in the port struct
-//pp = port->vftc_qshares;
 				qos_set_credits( port->rte_port_number, port->mtu, port->vftc_qshares, TC_4PERQ_MODE );	// push out to nic
 				//qos_set_credits( port->rte_port_number, port->mtu, pp, TC_4PERQ_MODE );	// push out to nic
-/// push into nic
 			}
 
 			if( vf->num >= 0 ) {
@@ -800,6 +851,7 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 		}				// end for each vf on this port
     }     // end for each port
 
+	rte_spinlock_unlock( &running_config->update_lock );
 	return 0;
 }
 
@@ -1106,9 +1158,12 @@ main(int argc, char **argv)
 	}
 	g_parms->forreal = forreal;
 
-	running_config = (sriov_conf_t *) malloc( sizeof( *running_config ) );
+	if( (running_config = (sriov_conf_t *) malloc( sizeof( *running_config ) )) == NULL ) {
+		bleat_printf( 0, "abort: unable to allocate memory for running config" );
+		exit( 1 );
+	}
 	memset( running_config, 0, sizeof( *running_config ) );
-
+	rte_spinlock_init( &running_config->update_lock );			// initialise and leave unlocked
 
 	snprintf( log_file, BUF_1K, "%s/vfd.log", g_parms->log_dir );
 	if( run_asynch ) {
@@ -1272,7 +1327,8 @@ main(int argc, char **argv)
 	
 	run_start_cbs( running_config );				// run any user startup callback commands defined in VF configs
 
-	bleat_printf( 1, "%s initialisation complete, setting bleat level to %d; starting to looop", version, g_parms->log_level );
+	bleat_printf( 1, "version: %s", version );
+	bleat_printf( 1, "initialisation complete, setting bleat level to %d; starting to loop", g_parms->log_level );
 	bleat_set_lvl( g_parms->log_level );					// initialisation finished, set log level to running level
 	if( forreal ) {
 		rte_set_log_level( g_parms->dpdk_log_level );

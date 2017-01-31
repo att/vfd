@@ -236,6 +236,7 @@ extern void vfd_add_ports( parms_t* parms, sriov_conf_t* conf ) {
 	struct sriov_port_s* port;
 	pfdef_t*	pfc;			// pointer to the config info for a port (pciid)
 
+	rte_spinlock_lock( &conf->update_lock );
 	if( called )
 		return;
 	called = 1;
@@ -287,8 +288,8 @@ extern void vfd_add_ports( parms_t* parms, sriov_conf_t* conf ) {
 	}
 
 	conf->num_ports = pidx;
+	rte_spinlock_unlock( &conf->update_lock );
 }
-
 /*
 	Add one of the virtualisation manager generated configuration files to a global
 	config struct passed in.  A small amount of error checking (vf id dup, etc) is
@@ -303,7 +304,8 @@ extern void vfd_add_ports( parms_t* parms, sriov_conf_t* conf ) {
 	a separate location and copy it anyway, so the manual copy, rathter than a
 	memcpy() is a minor annoyance.  Ultimately, the port should reference an
 	array of pointers, and config should pull directly into a vf_s and if the
-	parms are valid, then the pointer added to the list.
+	parms are valid, then the pointer added to the list. This would be beneficial
+	as the lock would be held for less time.
 */
 extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	vf_config_t* vfc;					// raw vf config file contents	
@@ -587,6 +589,8 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		port->num_vfs++;
 	}
 	
+	rte_spinlock_lock( &conf->update_lock );
+
 	vf = &port->vfs[vidx];						// copy from config data doing any translation needed
 	memset( vf, 0, sizeof( *vf ) );				// assume zeroing everything is good
 	vf->owner = vfc->owner;
@@ -637,8 +641,10 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		vf->qshares[i] = vfc->qshare[i];
 	}
 
+	rte_spinlock_unlock( &conf->update_lock );		// updates finished, safe to release now
+
 	if( reason ) {
-		*reason = NULL;
+		*reason = NULL;								// no reason passed back when successful
 	}
 
 	bleat_printf( 2, "VF was added: %s %s id=%d", vfc->name, vfc->pciid, vfc->vfid );

@@ -140,6 +140,26 @@ set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk)
 	return diag;
 }
 
+/*
+	Reset the *cast settings to what we have in the config.
+	This is intended to be called either from a callback or when the queue becomes ready
+	and not from main.
+*/
+static void set_xcast( int port_id, int vf ) {
+	int setting;			// the current setting in the config file
+	
+	setting = get_vf_setting( port_id, vf, VF_VAL_BCAST );
+	bleat_printf( 2, "set_xcast: vf/pf: %d/%d set allow broadcast %d", port_id, vf, setting );
+	set_vf_allow_bcast( port_id, vf, setting );
+
+	setting = get_vf_setting( port_id, vf, VF_VAL_MCAST );
+	bleat_printf( 2, "set_xcast: vf/pf: %d/%d set allow mcast %d", port_id, vf, setting );
+	set_vf_allow_mcast( port_id, vf, setting );
+
+	setting = get_vf_setting( port_id, vf, VF_VAL_UNUCAST );
+	bleat_printf( 2, "set_xcast: vf/pf: %d/%d set allow unucast %d", port_id, vf, setting );
+	set_vf_allow_un_ucast( port_id, vf, setting );
+}
 
 
 /*
@@ -554,7 +574,7 @@ process_refresh_queue(void)
 			if(refresh_item->enabled){
 				bleat_printf( 2, "refresh item enabled: updating VF: %d", refresh_item->vf_id);
 
-				restore_vf_setings(refresh_item->port_id, refresh_item->vf_id);
+				restore_vf_setings(refresh_item->port_id, refresh_item->vf_id);		// refresh all of our configuration back onto the NIC
 
 				if( refresh_item->prev ) {
 					refresh_item->prev->next = refresh_item->next;
@@ -927,7 +947,7 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			break;
 
 		case IXGBE_VF_SET_MULTICAST:
-			bleat_printf( 1, "setmulticast event received: port=%d", port_id );
+			bleat_printf( 1, "set multicast event received: port=%d", port_id );
 			p.retval = RTE_PMD_IXGBE_MB_EVENT_PROCEED;    /* do what's needed */
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
 				type, port_id, vf, p.retval, "IXGBE_VF_SET_MULTICAST");
@@ -942,6 +962,9 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 					new_mac->addr_bytes[2], new_mac->addr_bytes[3],
 					new_mac->addr_bytes[4], new_mac->addr_bytes[5]);
 			}
+
+			set_xcast( port_id, vf );				// restore the settings we have in our config
+
 			break;
 
 		case IXGBE_VF_SET_VLAN:
@@ -954,6 +977,8 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 				bleat_printf( 1, "vlan set event rejected; vlan not not configured: port=%d vf=%d vlan=%d (responding noop-ack)", port_id, vf, (int) msgbuf[1] );
 				p.retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     // VM should see failure
 			}
+
+			set_xcast( port_id, vf );				// must reset all of the *cast flags 
 
 			//bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_VLAN");
 			//bleat_printf( 3, "setting vlan id = %d", p[1]);
@@ -978,6 +1003,9 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			p.retval =  RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;    /* noop & nack */
 			bleat_printf( 3, "type: %d, port: %d, vf: %d, out: %d, _T: %s ", type, port_id, vf, p.retval, "IXGBE_VF_SET_MACVLAN");
 			bleat_printf( 3, "setting mac_vlan = %d", msgbuf[1] );
+
+			set_xcast( port_id, vf );				// must reset all of the *cast flags 
+
 			//bleat_printf( 3, "calling enable with: %d %d", port_id, vf );
 
 			// ### this is a hack, but until we see a queue ready everywhere/everytime we assume we can enable things when we see this message
