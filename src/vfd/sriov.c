@@ -17,6 +17,12 @@
 				20 Oct 2016 - Changes to support the dpdk 16.11 rc1 code.
 				01 Nov 2016 - Correct queue drop enable bug (wrong ixgbe function invoked).
 				10 Nov 2016 - Extend queue ready to support less than 32 configured VFs.
+				31 Jan 2017 - Corrected error messages for untagged, mcast & bcast; added rc 
+					value to all failure msgs. Added calls to either directly refresh or queue a
+					refresh on callbacks which didn't already have one. This is necessary for
+					guest-guest across a back to back connection (no intermediate switch) and
+					for properly resetting mcast flag (unknown what event is turning that off on
+					the NIC).
 
 	useful doc:
 				 http://www.intel.com/content/dam/doc/design-guide/82599-sr-iov-driver-companion-guide.pdf
@@ -138,6 +144,26 @@ set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk)
 	return diag;
 }
 
+/*
+	Reset the *cast settings to what we have in the config.
+	This is intended to be called either from a callback or when the queue becomes ready
+	and not from main.
+static void set_xcast( int port_id, int vf ) {
+	int setting;			// the current setting in the config file
+	
+	setting = get_vf_setting( port_id, vf, VF_VAL_BCAST );
+	bleat_printf( 2, "set_xcast: vf/pf: %d/%d set allow broadcast %d", port_id, vf, setting );
+	set_vf_allow_bcast( port_id, vf, setting );
+
+	setting = get_vf_setting( port_id, vf, VF_VAL_MCAST );
+	bleat_printf( 2, "set_xcast: vf/pf: %d/%d set allow mcast %d", port_id, vf, setting );
+	set_vf_allow_mcast( port_id, vf, setting );
+
+	setting = get_vf_setting( port_id, vf, VF_VAL_UNUCAST );
+	bleat_printf( 2, "set_xcast: vf/pf: %d/%d set allow unucast %d", port_id, vf, setting );
+	set_vf_allow_un_ucast( port_id, vf, setting );
+}
+*/
 
 
 /*
@@ -152,7 +178,7 @@ tx_vlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id)
 	diag = rte_pmd_ixgbe_set_vf_vlan_insert( port_id, vf_id, vlan_id );
 
 	if (diag < 0) {
-		bleat_printf( 0, "set tx vlan insert on vf failed: port_pi=%d, vf_id=%d, vlan_id=%d) failed " "diag=%d", port_id, vf_id, vlan_id, diag);
+		bleat_printf( 0, "set tx vlan insert on vf failed: port_pi=%d, vf_id=%d, vlan_id=%d) failed rc=%d", port_id, vf_id, vlan_id, diag );
 	} else {
 		bleat_printf( 3, "set tx vlan insert on vf successful: port=%d, vf=%d vlan=%d", port_id, vf_id, vlan_id );
 	}
@@ -166,7 +192,7 @@ rx_vlan_strip_set_on_vf(portid_t port_id, uint16_t vf_id, int on)
 
 	diag = rte_pmd_ixgbe_set_vf_vlan_stripq(port_id, vf_id, on);
 	if (diag < 0) {
-		bleat_printf( 0, "set rx vlan strip on vf failed: port_pi=%d, vf_id=%d, on=%d) failed " "diag=%d", port_id, vf_id, on, diag);
+		bleat_printf( 0, "set rx vlan strip on vf failed: port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, on, diag );
 	} else {
 		bleat_printf( 3, "set rx vlan strip on vf successful: port=%d, vf_id=%d on/off=%d", port_id, vf_id, on );
 	}
@@ -179,9 +205,9 @@ set_vf_allow_bcast(portid_t port_id, uint16_t vf_id, int on)
   int ret = rte_eth_dev_set_vf_rxmode(port_id, vf_id, ETH_VMDQ_ACCEPT_BROADCAST,(uint8_t) on);
 
 	if (ret < 0) {
-		bleat_printf( 0, "set allow bcast failed: port/vf %d/%d on/off=%d", port_id, vf_id, on );
+		bleat_printf( 0, "set allow bcast failed: port/vf %d/%d on/off=%d rc=%d", port_id, vf_id, on, ret );
 	} else {
-		bleat_printf( 3, "set allow bcast failed: port/vf %d/%d on/off=%d", port_id, vf_id, on );
+		bleat_printf( 3, "set allow bcast successful: port/vf %d/%d on/off=%d", port_id, vf_id, on );
 	}
 }
 
@@ -192,9 +218,9 @@ set_vf_allow_mcast(portid_t port_id, uint16_t vf_id, int on)
 	int ret = rte_eth_dev_set_vf_rxmode(port_id, vf_id, ETH_VMDQ_ACCEPT_MULTICAST,(uint8_t) on);
 
 	if (ret < 0) {
-		bleat_printf( 0, "set allow mcast failed: port/vf %d/%d on/off=%d", port_id, vf_id, on );
+		bleat_printf( 0, "set allow mcast failed: port/vf %d/%d on/off=%d rc=%d", port_id, vf_id, on, ret );
 	} else {
-		bleat_printf( 3, "set allow mcast failed: port/vf %d/%d on/off=%d", port_id, vf_id, on );
+		bleat_printf( 3, "set allow mcast successful: port/vf %d/%d on/off=%d", port_id, vf_id, on );
 	}
 }
 
@@ -205,7 +231,7 @@ set_vf_allow_un_ucast(portid_t port_id, uint16_t vf_id, int on)
 	int ret = rte_eth_dev_set_vf_rxmode(port_id, vf_id, ETH_VMDQ_ACCEPT_HASH_UC,(uint8_t) on);
 
 	if (ret < 0) {
-		bleat_printf( 0, "set allow ucast failed: port/vf %d/%d on/off=%d", port_id, vf_id, on );
+		bleat_printf( 0, "set allow ucast failed: port/vf %d/%d on/off=%d rc=%d", port_id, vf_id, on, ret );
 	} else {
 		bleat_printf( 3, "set allow ucast successful: port/vf %d/%d on/off=%d", port_id, vf_id, on );
 	}
@@ -223,7 +249,7 @@ set_vf_allow_untagged(portid_t port_id, uint16_t vf_id, int on)
 	int ret = rte_eth_dev_set_vf_rxmode(port_id, vf_id, rx_mode, (uint8_t) on);
 
 	if (ret >= 0) {
-		bleat_printf( 3, "set allow untagged successful: port/vf %d/%d on/off=%d", port_id, vf_id, on );
+		bleat_printf( 3, "set allow untagged failed: port/vf %d/%d on/off=%d rc=%d", port_id, vf_id, on, ret );
 	} else {
 		bleat_printf( 3, "set allow untagged successful: port/vf %d/%d on/off=%d", port_id, vf_id, on );
 	}
@@ -243,7 +269,7 @@ set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  __attribute__((__
 
 	diag = rte_eth_dev_mac_addr_add(port_id, &mac_addr, vf);
 	if (diag < 0) {
-		bleat_printf( 0, "set rx mac failed: port=%d vf=%d on/off=%d mac=%s", (int)port_id, (int)vf, on, mac );
+		bleat_printf( 0, "set rx mac failed: port=%d vf=%d on/off=%d mac=%s rc=%d", (int)port_id, (int)vf, on, mac, diag );
 	} else {
 		bleat_printf( 3, "set rx mac successful: port=%d vf=%d on/off=%d mac=%s", (int)port_id, (int)vf, on, mac );
 	}
@@ -258,7 +284,7 @@ set_vf_rx_vlan(portid_t port_id, uint16_t vlan_id, uint64_t vf_mask, uint8_t on)
 
 	diag = rte_eth_dev_set_vf_vlan_filter(port_id, vlan_id, vf_mask, on);
 	if (diag < 0) {
-		bleat_printf( 0, "set rx vlan filter failed: port=%d vlan=%d on/off=%d", (int)port_id, (int) vlan_id, on );
+		bleat_printf( 0, "set rx vlan filter failed: port=%d vlan=%d on/off=%d rc=%d", (int)port_id, (int) vlan_id, on, diag );
 	} else {
 		bleat_printf( 3, "set rx vlan filter successful: port=%d vlan=%d on/off=%d", (int)port_id, (int) vlan_id, on );
 	}
@@ -273,7 +299,7 @@ set_vf_vlan_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 
 	diag = rte_pmd_ixgbe_set_vf_vlan_anti_spoof(port_id, vf, on);
 	if (diag < 0) {
-		bleat_printf( 0, "set vlan antispoof failed: port=%d vf=%d on/off=%d", (int)port_id, (int)vf, on );
+		bleat_printf( 0, "set vlan antispoof failed: port=%d vf=%d on/off=%d rc=%d", (int)port_id, (int)vf, on, diag );
 	} else {
 		bleat_printf( 3, "set vlan antispoof successful: port=%d vf=%d on/off=%d", (int)port_id, (int)vf, on );
 	}
@@ -288,7 +314,7 @@ set_vf_mac_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 
 	diag = rte_pmd_ixgbe_set_vf_mac_anti_spoof(port_id, vf, on);
 	if (diag < 0) {
-		bleat_printf( 0, "set mac antispoof failed: port=%d vf=%d on/off=%d", (int)port_id, (int)vf, on );
+		bleat_printf( 0, "set mac antispoof failed: port=%d vf=%d on/off=%d rc=%d", (int)port_id, (int)vf, on, diag );
 	} else {
 		bleat_printf( 3, "set mac antispoof successful: port=%d vf=%d on/off=%d", (int)port_id, (int)vf, on );
 	}
@@ -302,7 +328,7 @@ tx_set_loopback(portid_t port_id, u_int8_t on)
 
 	diag = rte_pmd_ixgbe_set_tx_loopback(port_id, on);
 	if (diag < 0) {
-		bleat_printf( 0, "set tx loopback failed: port=%d on/off=%d", (int)port_id, on );
+		bleat_printf( 0, "set tx loopback failed: port=%d on/off=%d rc=%d", (int)port_id, on, diag );
 	} else {
 		bleat_printf( 3, "set tx loopback successful: port=%d on/off=%d", (int)port_id, on );
 	}
@@ -552,7 +578,7 @@ process_refresh_queue(void)
 			if(refresh_item->enabled){
 				bleat_printf( 2, "refresh item enabled: updating VF: %d", refresh_item->vf_id);
 
-				restore_vf_setings(refresh_item->port_id, refresh_item->vf_id);
+				restore_vf_setings(refresh_item->port_id, refresh_item->vf_id);		// refresh all of our configuration back onto the NIC
 
 				if( refresh_item->prev ) {
 					refresh_item->prev->next = refresh_item->next;
@@ -925,7 +951,7 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			break;
 
 		case IXGBE_VF_SET_MULTICAST:
-			bleat_printf( 1, "setmulticast event received: port=%d", port_id );
+			bleat_printf( 1, "set multicast event received: port=%d", port_id );
 			p.retval = RTE_PMD_IXGBE_MB_EVENT_PROCEED;    /* do what's needed */
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
 				type, port_id, vf, p.retval, "IXGBE_VF_SET_MULTICAST");
@@ -933,13 +959,19 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			new_mac = (struct ether_addr *) (&msgbuf[1]);
 
 			if (is_valid_assigned_ether_addr(new_mac)) {
-				bleat_printf( 3, "setting mcast, vf %u, MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
+				bleat_printf( 3, "setting mac, vf %u, MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
 					" %02" PRIx8 " %02" PRIx8 " %02" PRIx8,
 					(uint32_t)vf,
 					new_mac->addr_bytes[0], new_mac->addr_bytes[1],
 					new_mac->addr_bytes[2], new_mac->addr_bytes[3],
 					new_mac->addr_bytes[4], new_mac->addr_bytes[5]);
 			}
+
+			//set_xcast( port_id, vf );				// restore the settings we have in our config
+			//restore_vf_setings(port_id, vf);		// refresh all of our configuration back onto the NIC
+
+			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
+
 			break;
 
 		case IXGBE_VF_SET_VLAN:
@@ -953,12 +985,17 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 				p.retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     // VM should see failure
 			}
 
+			//set_xcast( port_id, vf );				// must reset all of the *cast flags 
+			//restore_vf_setings(port_id, vf);		// refresh all of our configuration back onto the NIC
+
+			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
+
 			//bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_VLAN");
 			//bleat_printf( 3, "setting vlan id = %d", p[1]);
 			break;
 
 		case IXGBE_VF_SET_LPE:
-			bleat_printf( 1, "set mtu event received %d %d", port_id, (int) msgbuf[1]  );
+			bleat_printf( 1, "set lpe event received %d %d", port_id, (int) msgbuf[1]  );
 			if( valid_mtu( port_id, (int) msgbuf[1] ) ) {
 				bleat_printf( 1, "mtu set event approved: port=%d vf=%d mtu=%d", port_id, vf, (int) msgbuf[1]  );
 				p.retval = RTE_PMD_IXGBE_MB_EVENT_PROCEED;
@@ -969,6 +1006,9 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 
 			//bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_LPE");
 			//bleat_printf( 3, "setting mtu = %d", p[1]);
+			//restore_vf_setings(port_id, vf);		// refresh all of our configuration back onto the NIC
+
+			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
 			break;
 
 		case IXGBE_VF_SET_MACVLAN:
@@ -976,31 +1016,38 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			p.retval =  RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;    /* noop & nack */
 			bleat_printf( 3, "type: %d, port: %d, vf: %d, out: %d, _T: %s ", type, port_id, vf, p.retval, "IXGBE_VF_SET_MACVLAN");
 			bleat_printf( 3, "setting mac_vlan = %d", msgbuf[1] );
-			//bleat_printf( 3, "calling enable with: %d %d", port_id, vf );
 
-			// ### this is a hack, but until we see a queue ready everywhere/everytime we assume we can enable things when we see this message
-			//enable_refresh_queue( port_id, vf );
+			//set_xcast( port_id, vf );				// must reset all of the *cast flags 
+			//restore_vf_setings(port_id, vf);		// refresh all of our configuration back onto the NIC
+
+			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
 			break;
 
 		case IXGBE_VF_API_NEGOTIATE:
 			bleat_printf( 1, "set negotiate event received: port=%d (responding proceed)", port_id );
 			p.retval =  RTE_PMD_IXGBE_MB_EVENT_PROCEED;   /* do what's needed */
-			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
-				type, port_id, vf, p.retval, "IXGBE_VF_API_NEGOTIATE");
+			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p.retval, "IXGBE_VF_API_NEGOTIATE");
+			
+			restore_vf_setings(port_id, vf);		// this must happen now, do NOT queue it. if not immediate guest-guest may hang
 			break;
 
 		case IXGBE_VF_GET_QUEUES:
 			bleat_printf( 1, "get queues  event received: port=%d (responding proceed)", port_id );
 			p.retval =  RTE_PMD_IXGBE_MB_EVENT_PROCEED;   /* do what's needed */
-			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
-				type, port_id, vf, p.retval, "IXGBE_VF_GET_QUEUES");
+			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p.retval, "IXGBE_VF_GET_QUEUES");
+			//set_xcast( port_id, vf );				// must reset all of the *cast flags 
+			//restore_vf_setings(port_id, vf);		// refresh all of our configuration back onto the NIC
+
+			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
 			break;
 
 		default:
 			bleat_printf( 1, "unknown  event request received: port=%d (responding nop+nak)", port_id );
 			p.retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     /* noop & nack */
-			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, MBOX_TYPE: %d",
-				type, port_id, vf, p.retval, mbox_type);
+			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, MBOX_TYPE: %d", type, port_id, vf, p.retval, mbox_type);
+
+			//set_xcast( port_id, vf );				// restore the settings we have in our config
+			restore_vf_setings(port_id, vf);		// refresh all of our configuration back onto the NIC
 			break;
 	}
 

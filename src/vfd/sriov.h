@@ -74,6 +74,13 @@
 #include <vfdlib.h>
 
 // ---------------------------------------------------------------------------------------
+#define VF_VAL_MCAST		0		// constants passed to get_vf_value()
+#define VF_VAL_BCAST		1
+#define VF_VAL_MSPOOF		2
+#define VF_VAL_VSPOOF		3
+#define VF_VAL_STRIPVLAN	4
+#define VF_VAL_UNTAGGED		5
+#define VF_VAL_UNUCAST		6
 
 #define RX_RING_SIZE 128
 #define TX_RING_SIZE 64
@@ -233,8 +240,9 @@ typedef struct sriov_port_s
 */
 typedef struct sriov_conf_c
 {
-  int     num_ports;						// number of ports actually used in ports array
-  struct sriov_port_s ports[MAX_PORTS];		// ports; CAUTION: order may not be device id order
+	int     num_ports;						// number of ports actually used in ports array
+	struct sriov_port_s ports[MAX_PORTS];	// ports; CAUTION: order may not be device id order
+	rte_spinlock_t update_lock;				// we lock the config during update and deployment
 } sriov_conf_t;
 
 
@@ -400,6 +408,7 @@ void restore_vf_setings(uint8_t port_id, int vf);
 // callback validation support
 int valid_mtu( int port, int mtu );
 int valid_vlan( int port, int vfid, int vlan );
+int get_vf_setting( int portid, int vf, int what );
 
 void add_refresh_queue(u_int8_t port_id, uint16_t vf_id);
 void process_refresh_queue(void);
