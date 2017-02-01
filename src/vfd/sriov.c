@@ -18,7 +18,11 @@
 				01 Nov 2016 - Correct queue drop enable bug (wrong ixgbe function invoked).
 				10 Nov 2016 - Extend queue ready to support less than 32 configured VFs.
 				31 Jan 2017 - Corrected error messages for untagged, mcast & bcast; added rc 
-					value to all failure msgs.
+					value to all failure msgs. Added calls to either directly refresh or queue a
+					refresh on callbacks which didn't already have one. This is necessary for
+					guest-guest across a back to back connection (no intermediate switch) and
+					for properly resetting mcast flag (unknown what event is turning that off on
+					the NIC).
 
 	useful doc:
 				 http://www.intel.com/content/dam/doc/design-guide/82599-sr-iov-driver-companion-guide.pdf
@@ -144,7 +148,6 @@ set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk)
 	Reset the *cast settings to what we have in the config.
 	This is intended to be called either from a callback or when the queue becomes ready
 	and not from main.
-*/
 static void set_xcast( int port_id, int vf ) {
 	int setting;			// the current setting in the config file
 	
@@ -160,6 +163,7 @@ static void set_xcast( int port_id, int vf ) {
 	bleat_printf( 2, "set_xcast: vf/pf: %d/%d set allow unucast %d", port_id, vf, setting );
 	set_vf_allow_un_ucast( port_id, vf, setting );
 }
+*/
 
 
 /*
@@ -955,7 +959,7 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			new_mac = (struct ether_addr *) (&msgbuf[1]);
 
 			if (is_valid_assigned_ether_addr(new_mac)) {
-				bleat_printf( 3, "setting mcast, vf %u, MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
+				bleat_printf( 3, "setting mac, vf %u, MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
 					" %02" PRIx8 " %02" PRIx8 " %02" PRIx8,
 					(uint32_t)vf,
 					new_mac->addr_bytes[0], new_mac->addr_bytes[1],
@@ -963,7 +967,10 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 					new_mac->addr_bytes[4], new_mac->addr_bytes[5]);
 			}
 
-			set_xcast( port_id, vf );				// restore the settings we have in our config
+			//set_xcast( port_id, vf );				// restore the settings we have in our config
+			//restore_vf_setings(port_id, vf);		// refresh all of our configuration back onto the NIC
+
+			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
 
 			break;
 
@@ -978,14 +985,17 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 				p.retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     // VM should see failure
 			}
 
-			set_xcast( port_id, vf );				// must reset all of the *cast flags 
+			//set_xcast( port_id, vf );				// must reset all of the *cast flags 
+			//restore_vf_setings(port_id, vf);		// refresh all of our configuration back onto the NIC
+
+			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
 
 			//bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_VLAN");
 			//bleat_printf( 3, "setting vlan id = %d", p[1]);
 			break;
 
 		case IXGBE_VF_SET_LPE:
-			bleat_printf( 1, "set mtu event received %d %d", port_id, (int) msgbuf[1]  );
+			bleat_printf( 1, "set lpe event received %d %d", port_id, (int) msgbuf[1]  );
 			if( valid_mtu( port_id, (int) msgbuf[1] ) ) {
 				bleat_printf( 1, "mtu set event approved: port=%d vf=%d mtu=%d", port_id, vf, (int) msgbuf[1]  );
 				p.retval = RTE_PMD_IXGBE_MB_EVENT_PROCEED;
@@ -996,6 +1006,9 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 
 			//bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_LPE");
 			//bleat_printf( 3, "setting mtu = %d", p[1]);
+			//restore_vf_setings(port_id, vf);		// refresh all of our configuration back onto the NIC
+
+			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
 			break;
 
 		case IXGBE_VF_SET_MACVLAN:
@@ -1004,33 +1017,37 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			bleat_printf( 3, "type: %d, port: %d, vf: %d, out: %d, _T: %s ", type, port_id, vf, p.retval, "IXGBE_VF_SET_MACVLAN");
 			bleat_printf( 3, "setting mac_vlan = %d", msgbuf[1] );
 
-			set_xcast( port_id, vf );				// must reset all of the *cast flags 
+			//set_xcast( port_id, vf );				// must reset all of the *cast flags 
+			//restore_vf_setings(port_id, vf);		// refresh all of our configuration back onto the NIC
 
-			//bleat_printf( 3, "calling enable with: %d %d", port_id, vf );
-
-			// ### this is a hack, but until we see a queue ready everywhere/everytime we assume we can enable things when we see this message
-			//enable_refresh_queue( port_id, vf );
+			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
 			break;
 
 		case IXGBE_VF_API_NEGOTIATE:
 			bleat_printf( 1, "set negotiate event received: port=%d (responding proceed)", port_id );
 			p.retval =  RTE_PMD_IXGBE_MB_EVENT_PROCEED;   /* do what's needed */
-			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
-				type, port_id, vf, p.retval, "IXGBE_VF_API_NEGOTIATE");
+			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p.retval, "IXGBE_VF_API_NEGOTIATE");
+			
+			restore_vf_setings(port_id, vf);		// this must happen now, do NOT queue it. if not immediate guest-guest may hang
 			break;
 
 		case IXGBE_VF_GET_QUEUES:
 			bleat_printf( 1, "get queues  event received: port=%d (responding proceed)", port_id );
 			p.retval =  RTE_PMD_IXGBE_MB_EVENT_PROCEED;   /* do what's needed */
-			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
-				type, port_id, vf, p.retval, "IXGBE_VF_GET_QUEUES");
+			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p.retval, "IXGBE_VF_GET_QUEUES");
+			//set_xcast( port_id, vf );				// must reset all of the *cast flags 
+			//restore_vf_setings(port_id, vf);		// refresh all of our configuration back onto the NIC
+
+			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
 			break;
 
 		default:
 			bleat_printf( 1, "unknown  event request received: port=%d (responding nop+nak)", port_id );
 			p.retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     /* noop & nack */
-			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, MBOX_TYPE: %d",
-				type, port_id, vf, p.retval, mbox_type);
+			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, MBOX_TYPE: %d", type, port_id, vf, p.retval, mbox_type);
+
+			//set_xcast( port_id, vf );				// restore the settings we have in our config
+			restore_vf_setings(port_id, vf);		// refresh all of our configuration back onto the NIC
 			break;
 	}
 
