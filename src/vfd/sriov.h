@@ -66,10 +66,16 @@
 #include <rte_string_fns.h>
 #include <rte_spinlock.h>
 #include <rte_pmd_ixgbe.h>
+#ifdef BNXT_SUPPORT
+#include <rte_pmd_bnxt.h>
+#endif
 
 //#include "../lib/dpdk/drivers/net/ixgbe/base/ixgbe_mbx.h"
 // requires -I $(RTE_SDK)
 #include <drivers/net/ixgbe/base/ixgbe_mbx.h>
+#ifdef BNXT_SUPPORT
+#include <drivers/net/bnxt/hsi_struct_def_dpdk.h>
+#endif
 
 #include <vfdlib.h>
 
@@ -402,7 +408,8 @@ int cmp_vfs (const void * a, const void * b);
 void disable_default_pool(portid_t port_id);
 
 void lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
-void vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
+void ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
+void bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
 void restore_vf_setings(uint8_t port_id, int vf);
 
 // callback validation support

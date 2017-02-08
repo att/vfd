@@ -54,8 +54,11 @@ endif
 
 EXTRA_CFLAGS += -O3 -g -Wfatal-errors -DVFD_VERSION='"$(VFD_VERSION)"'
 
-include $(RTE_SDK)/mk/rte.extapp.mk
+ifneq ($(BNXT_SUPPORT),)
+EXTRA_CFLAGS += -DBNXT_SUPPORT
+endif
 
+include $(RTE_SDK)/mk/rte.extapp.mk
 
 
 clean: 
