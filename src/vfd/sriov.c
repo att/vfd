@@ -175,7 +175,12 @@ tx_vlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id)
 {
 	int diag;
 
-	diag = rte_pmd_ixgbe_set_vf_vlan_insert( port_id, vf_id, vlan_id );
+#ifdef BNXT_SUPPORT
+	if (strcmp(rte_eth_devices[port_id].driver->pci_drv.driver.name, "net_bnxt") == 0)
+		diag = rte_pmd_bnxt_set_vf_vlan_insert( port_id, vf_id, vlan_id );
+	else
+#endif
+		diag = rte_pmd_ixgbe_set_vf_vlan_insert( port_id, vf_id, vlan_id );
 
 	if (diag < 0) {
 		bleat_printf( 0, "set tx vlan insert on vf failed: port_pi=%d, vf_id=%d, vlan_id=%d) failed rc=%d", port_id, vf_id, vlan_id, diag );
@@ -190,7 +195,12 @@ rx_vlan_strip_set_on_vf(portid_t port_id, uint16_t vf_id, int on)
 {
 	int diag;
 
-	diag = rte_pmd_ixgbe_set_vf_vlan_stripq(port_id, vf_id, on);
+#ifdef BNXT_SUPPORT
+	if (strcmp(rte_eth_devices[port_id].driver->pci_drv.driver.name, "net_bnxt") == 0)
+		diag = rte_pmd_bnxt_set_vf_vlan_stripq(port_id, vf_id, on);
+	else
+#endif
+		diag = rte_pmd_ixgbe_set_vf_vlan_stripq(port_id, vf_id, on);
 	if (diag < 0) {
 		bleat_printf( 0, "set rx vlan strip on vf failed: port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, on, diag );
 	} else {
@@ -297,7 +307,13 @@ set_vf_vlan_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 {
 	int diag;
 
-	diag = rte_pmd_ixgbe_set_vf_vlan_anti_spoof(port_id, vf, on);
+#ifdef BNXT_SUPPORT
+	if (strcmp(rte_eth_devices[port_id].driver->pci_drv.driver.name, "net_bnxt") == 0)
+		//diag = rte_pmd_bnxt_set_vf_vlan_anti_spoof(port_id, vf, on);
+		diag = -ENOTSUP;
+	else
+#endif
+		diag = rte_pmd_ixgbe_set_vf_vlan_anti_spoof(port_id, vf, on);
 	if (diag < 0) {
 		bleat_printf( 0, "set vlan antispoof failed: port=%d vf=%d on/off=%d rc=%d", (int)port_id, (int)vf, on, diag );
 	} else {
@@ -312,7 +328,12 @@ set_vf_mac_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 {
 	int diag;
 
-	diag = rte_pmd_ixgbe_set_vf_mac_anti_spoof(port_id, vf, on);
+#ifdef BNXT_SUPPORT
+	if (strcmp(rte_eth_devices[port_id].driver->pci_drv.driver.name, "net_bnxt") == 0)
+		diag = rte_pmd_bnxt_set_vf_mac_anti_spoof(port_id, vf, on);
+	else
+#endif
+		diag = rte_pmd_ixgbe_set_vf_mac_anti_spoof(port_id, vf, on);
 	if (diag < 0) {
 		bleat_printf( 0, "set mac antispoof failed: port=%d vf=%d on/off=%d rc=%d", (int)port_id, (int)vf, on, diag );
 	} else {
@@ -326,7 +347,12 @@ tx_set_loopback(portid_t port_id, u_int8_t on)
 {
 	int diag;
 
-	diag = rte_pmd_ixgbe_set_tx_loopback(port_id, on);
+#ifdef BNXT_SUPPORT
+	if (strcmp(rte_eth_devices[port_id].driver->pci_drv.driver.name, "net_bnxt") == 0)
+		diag = rte_pmd_bnxt_set_tx_loopback(port_id, on);
+	else
+#endif
+		diag = rte_pmd_ixgbe_set_tx_loopback(port_id, on);
 	if (diag < 0) {
 		bleat_printf( 0, "set tx loopback failed: port=%d on/off=%d rc=%d", (int)port_id, on, diag );
 	} else {
@@ -393,7 +419,12 @@ void set_queue_drop( portid_t port_id, int state ) {
 	int		result;
 
 	bleat_printf( 2, "setting queue drop for port %d on all queues to: on/off=%d", port_id, !!state );
-	result = rte_pmd_ixgbe_set_all_queues_drop_en( port_id, !!state );			// (re)set flag for all queues on the port
+#ifdef BNXT_SUPPORT
+	if (strcmp(rte_eth_devices[port_id].driver->pci_drv.driver.name, "net_bnxt") == 0)
+		result = rte_pmd_bnxt_set_all_queues_drop_en( port_id, !!state );			// (re)set flag for all queues on the port
+	else
+#endif
+		result = rte_pmd_ixgbe_set_all_queues_drop_en( port_id, !!state );			// (re)set flag for all queues on the port
 	if( result != 0 ) {
 		bleat_printf( 0, "fail: unable to set drop enable for port %d on/off=%d: errno=%d", port_id, !state, -result );
 	}
@@ -834,7 +865,12 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 
 
 	rte_eth_dev_callback_register(port, RTE_ETH_EVENT_INTR_LSC, lsi_event_callback, NULL);
-	rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vf_msb_event_callback, NULL);
+#ifdef BNXT_SUPPORT
+	if (strcmp(rte_eth_devices[port].driver->pci_drv.driver.name, "net_bnxt") == 0)
+		rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, bnxt_vf_msb_event_callback, NULL);
+	else
+#endif
+		rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, ixgbe_vf_msb_event_callback, NULL);
 
 
 	// Allocate and set up 1 RX queue per Ethernet port.
@@ -907,8 +943,82 @@ lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param)
 	Called when a 'mailbox' message is received.  Examine and take action based on
 	the message type.
 */
+#ifdef BNXT_SUPPORT
 void
-vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param) {
+bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param)
+{
+	struct rte_pmd_bnxt_mb_event_param *p = param;
+	struct input *req_base = p->msg;
+	uint16_t vf = p->vf_id;
+	uint16_t mbox_type = rte_le_to_cpu_16(req_base->req_type);
+	bool add_refresh = false;
+
+	/* check & process VF to PF mailbox message */
+	switch (mbox_type) {
+		/* Allow */
+		case HWRM_VER_GET:
+		case HWRM_FUNC_RESET:
+		case HWRM_FUNC_QCAPS:
+		case HWRM_FUNC_QCFG:
+		case HWRM_FUNC_DRV_RGTR:
+		case HWRM_FUNC_DRV_UNRGTR:
+		case HWRM_PORT_PHY_QCFG:
+		case HWRM_QUEUE_QPORTCFG:
+		case HWRM_VNIC_ALLOC:
+		case HWRM_VNIC_FREE:
+		case HWRM_VNIC_CFG:
+		case HWRM_VNIC_QCFG:
+		case HWRM_VNIC_RSS_CFG:
+		case HWRM_RING_ALLOC:
+		case HWRM_RING_FREE:
+		case HWRM_RING_GRP_ALLOC:
+		case HWRM_RING_GRP_FREE:
+		case HWRM_VNIC_RSS_COS_LB_CTX_ALLOC:
+		case HWRM_VNIC_RSS_COS_LB_CTX_FREE:
+		case HWRM_STAT_CTX_ALLOC:
+		case HWRM_STAT_CTX_FREE:
+		case HWRM_STAT_CTX_CLR_STATS:
+		case HWRM_CFA_L2_FILTER_FREE:
+		case HWRM_TUNNEL_DST_PORT_FREE:
+			p->retval = RTE_PMD_BNXT_MB_EVENT_PROCEED;
+			add_refresh = true;
+			break;
+
+		/* Disallowed */
+		case HWRM_FUNC_BUF_UNRGTR:
+		case HWRM_FUNC_VF_VNIC_IDS_QUERY:
+		case HWRM_FUNC_BUF_RGTR:
+		case HWRM_PORT_PHY_CFG:
+		case HWRM_CFA_L2_FILTER_ALLOC:
+		case HWRM_CFA_L2_FILTER_CFG:
+		case HWRM_CFA_L2_SET_RX_MASK:
+		case HWRM_TUNNEL_DST_PORT_ALLOC:
+		case HWRM_EXEC_FWD_RESP:
+		case HWRM_REJECT_FWD_RESP:
+		default:
+			p->retval = RTE_PMD_BNXT_MB_EVENT_NOOP_NACK;     // VM should see failure
+			break;
+
+		/* Verify */
+	}
+
+	if (add_refresh)
+		add_refresh_queue(port_id, vf);		// schedule a complete refresh when the queue goes hot
+	else
+		restore_vf_setings(port_id, vf);	// refresh all of our configuration back onto the NIC
+
+	bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %d",
+	             type, port_id, vf, p->retval, mbox_type);
+}
+#endif
+
+
+/*
+	Called when a 'mailbox' message is received.  Examine and take action based on
+	the message type.
+*/
+void
+ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param) {
 
 	struct rte_pmd_ixgbe_mb_event_param p = *(struct rte_pmd_ixgbe_mb_event_param*) param;
   uint16_t vf = p.vfid;
