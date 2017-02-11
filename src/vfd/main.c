@@ -48,6 +48,9 @@
                 03 Jan 2017 - Add new string compare function to ignore case-sensitive strings,
                             fix to link_status vfconfig param
 				31 Jan 2017 - ensure that the *cast settings are restored after vlan and vlanmac callbacks.
+				11 Feb 2017 - Set drop enable bit on VF's queues only between reset and queue ready. Setting
+							on constantly causes packet loss on the NIC.  Change the hardware CRC strip
+							setting to true.
 */
 
 
@@ -524,8 +527,20 @@ char*  gen_stats( sriov_conf_t* conf, int pf_only, int pf ) {
 		return NULL;
 	}
 
-	rbidx = snprintf( rbuf, BUF_SIZE, "%s %14s %10s %10s %10s %10s %10s %10s %10s %10s %10s %10s\n",
-			"\nPF/VF  ID    PCIID", "Link", "Speed", "Duplex", "RX pkts", "RX bytes", "RX errors", "RX dropped", "TX pkts", "TX bytes", "TX errors", "Spoofed");
+	rbidx = snprintf( rbuf, BUF_SIZE, "%s %6s  %6s %6s %15s %15s %15s %15s %15s %15s %15s %15s\n",
+			"\nPF/VF  ID           PCIID",
+			 "Link",
+			 "Speed",
+			 "Duplex",
+			 "RX pkts",
+			 "RX bytes",
+			 "RX errors",
+			 "RX dropped",
+			 "TX pkts",
+			 "TX bytes",
+			 "TX errors",
+			 "Spoofed"
+		);
 	
 	for( i = 0; i < conf->num_ports; ++i ) {
 		if( pf > 0 && i != pf ) {					// if specific pf requested, do only that one
@@ -688,8 +703,11 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 		port = &conf->ports[i];
 
 		if( parms->forreal ) {
-			tx_set_loopback( i, !!(port->flags & PF_LOOPBACK) );		// enable loopback if set (disabled: all vm-vm traffic must go to TOR and back
-			set_queue_drop( i, 1 );										// enable packet dropping if no descriptor matches
+			tx_set_loopback( port->rte_port_number, !!(port->flags & PF_LOOPBACK) );		// enable loopback if set (disabled: all vm-vm traffic must go to TOR and back
+
+			// do NOT call set_queue_drop() as it causes packetloss; drop enable handled by callback process now
+
+			disable_default_pool( port->rte_port_number );
 		}
 
 		if( port->last_updated == ADDED ) {								// updated since last call, reconfigure
@@ -791,9 +809,6 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 
 				if( vf->num >= 0 ) {
 					if( parms->forreal ) {
-						// deprecated, now handeled by set queue drop function
-						//set_split_erop( i, y, 1 );				// allow drop of packets when there is no matching descriptor
-
 						bleat_printf( 2, "%s vf: %d set anti-spoof %d", port->name, vf->num, vf->vlan_anti_spoof );
 						set_vf_vlan_anti_spoofing(port->rte_port_number, vf->num, vf->vlan_anti_spoof);
 	
@@ -1082,7 +1097,7 @@ main(int argc, char **argv)
 	int		fd = -1;
 	int		enable_qos = 0;				// off by default enable_qos in config should be used to set on
 	int		state;
-
+	int 	j;
 
   const char * main_help =
 		"\n"
@@ -1093,6 +1108,7 @@ main(int argc, char **argv)
 		"\t -n        no-nic actions executed\n"
 		"\t -p <file> parmm file (/etc/vfd/vfd.cfg)\n"
 		"\t -q        enable dcb qos (use config file parm as general rule)\n"
+
 		"\t -h|?  Display this help screen\n"
 		"\n";
 
@@ -1262,6 +1278,10 @@ main(int argc, char **argv)
 			}
 
 			if( pfidx >= 0 ) {														// initialise only if in our confilg file list (we may not manage everything)
+				for( j = 0; j < 64; j++ ) {
+					set_split_erop( portid, j, SET_ON );							// set the split receive drop enable for all VFs
+				}
+
 				if( g_parms->rflags & RF_ENABLE_QOS ) {
 					//state = dcb_port_init(portid, mbuf_pool);
 					state = dcb_port_init( &running_config->ports[pfidx], mbuf_pool );
@@ -1275,6 +1295,8 @@ main(int argc, char **argv)
 				} else {
 					bleat_printf( 2, "port initialisation successful for port %d [%d]", portid, pfidx );
 				}
+
+				set_pfrx_drop( portid, 1 );			// enable the drop bit for the PF queues on this port
 			
 				rte_eth_macaddr_get(portid, &addr);
 				bleat_printf( 1,  "mapping port: %u, MAC: %02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ", ",
@@ -1323,7 +1345,6 @@ main(int argc, char **argv)
 			exit( 1 );
 		}
 	}
-
 	
 	run_start_cbs( running_config );				// run any user startup callback commands defined in VF configs
 

@@ -17,12 +17,15 @@
 				20 Oct 2016 - Changes to support the dpdk 16.11 rc1 code.
 				01 Nov 2016 - Correct queue drop enable bug (wrong ixgbe function invoked).
 				10 Nov 2016 - Extend queue ready to support less than 32 configured VFs.
-				31 Jan 2017 - Corrected error messages for untagged, mcast & bcast; added rc 
+				31 Jan 2017 - Corrected error messages for untagged, mcast & bcast; added rc
 					value to all failure msgs. Added calls to either directly refresh or queue a
 					refresh on callbacks which didn't already have one. This is necessary for
 					guest-guest across a back to back connection (no intermediate switch) and
 					for properly resetting mcast flag (unknown what event is turning that off on
 					the NIC).
+				11 Feb 2017 - Changes to prevent packet loss which was occuring when the drop
+					enable bit was set for VF queues. Fixed alignment on show output to handle
+					wider fields.
 
 	useful doc:
 				 http://www.intel.com/content/dam/doc/design-guide/82599-sr-iov-driver-companion-guide.pdf
@@ -46,7 +49,6 @@ uint64_t RDTSC(void)
   __asm__ volatile("rdtsc" : "=a" (lo), "=d" (hi));
   return ((uint64_t)hi << 32) | lo;
 }
-
 
 int
 xdigit(char c)
@@ -90,6 +92,17 @@ static int get_max_qpp( uint32_t port_id ) {
 	return 8;
 }
 
+/*
+	Return the number of VFs for the port.
+*/
+static int get_num_vfs( uint32_t port_id ) {
+	struct rte_eth_dev_info dev_info;
+
+	rte_eth_dev_info_get( port_id, &dev_info );
+
+	return dev_info.max_vfs;
+}
+
 void
 ether_aton_r(const char *asc, struct ether_addr *addr)
 {
@@ -120,7 +133,6 @@ ether_aton_r(const char *asc, struct ether_addr *addr)
 }
 
 
-
 int
 set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk)
 {
@@ -143,28 +155,6 @@ set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk)
 
 	return diag;
 }
-
-/*
-	Reset the *cast settings to what we have in the config.
-	This is intended to be called either from a callback or when the queue becomes ready
-	and not from main.
-static void set_xcast( int port_id, int vf ) {
-	int setting;			// the current setting in the config file
-	
-	setting = get_vf_setting( port_id, vf, VF_VAL_BCAST );
-	bleat_printf( 2, "set_xcast: vf/pf: %d/%d set allow broadcast %d", port_id, vf, setting );
-	set_vf_allow_bcast( port_id, vf, setting );
-
-	setting = get_vf_setting( port_id, vf, VF_VAL_MCAST );
-	bleat_printf( 2, "set_xcast: vf/pf: %d/%d set allow mcast %d", port_id, vf, setting );
-	set_vf_allow_mcast( port_id, vf, setting );
-
-	setting = get_vf_setting( port_id, vf, VF_VAL_UNUCAST );
-	bleat_printf( 2, "set_xcast: vf/pf: %d/%d set allow unucast %d", port_id, vf, setting );
-	set_vf_allow_un_ucast( port_id, vf, setting );
-}
-*/
-
 
 /*
 	Set VLAN tag on transmission.  If no tag is to be inserted, then a VLAN
@@ -356,20 +346,21 @@ int get_split_ctlreg( portid_t port_id, uint16_t vf_id ) {
 /*
 	Set/reset the enable drop bit in the split receive control register. State is either 1 (on) or 0 (off).
 
-	DEPRECATED:  per the datasheet, the setting of the SRRCTL drop enable bit is
-			overridden by the setting of the PFQDE drop enable which is a global
-			policy (7.10.3.10) and is set by the rte_pmd_ixgbe_set_all_queues_drop_en()
-			function which should be used instead of a direct NIC access.
+	This bit must be set on for all queues to prevent head of line blocking in certain
+	cases. The setting for a queue _is_ overridden by the drop enable setting (QDE)
+	for the queue if it is set.
 */
-/*
 void set_split_erop( portid_t port_id, uint16_t vf_id, int state ) {
 
 	uint32_t reg_off = 0x01014; 							// split receive control regs (pg598)
 	uint32_t reg_value;
+	uint32_t qpvf;					// number of queues per vf
 
 	if( vf_id > 63  ) {				// this offset good only for 0-63; we won't support 64-127
 		return;
 	}
+
+	qpvf = (uint32_t) get_max_qpp( port_id );
 
 	reg_off += 0x40 * vf_id;
 
@@ -381,23 +372,94 @@ void set_split_erop( portid_t port_id, uint16_t vf_id, int state ) {
 		reg_value &= ~IXGBE_SRRCTL_DROP_EN;								// turn off the enable bit
 	}
 
-	bleat_printf( 2, "setting split receive drop for port %d vf %d to %d", port_id, vf_id, state );
-	port_pci_reg_write( port_id, reg_off, reg_value );
+	bleat_printf( 4, "setting split receive drop for %d queues on port=%d vf=%d on/off=%d", qpvf, port_id, vf_id, state );
+
+	for( ; qpvf > 0; qpvf-- ) {
+		port_pci_reg_write( port_id, reg_off, reg_value );
+		reg_off += 0x40;
+	}
 }
+
+/*
+	Set/reset the drop bit for all queues on the given VF.
 */
+static void set_rx_drop(portid_t port_id, uint16_t vf_id, int state )
+{
+	int          i;
+	uint32_t reg_off;
+	uint32_t reg_value;          // value to write into the register
+	int q_num;
+
+	q_num = get_max_qpp( port_id );		// number of queues per vf on this port
+	if( q_num > 8 ) {
+		bleat_printf( 0, "internal mishap in set_rx_drop: qpp is out of range: %d", q_num );
+		return;							// panic in the face of potential disaster and do nothing
+	}
+	bleat_printf( 0, "setting rx drop enable to %d for pf/vf %d/%d on/off=%d", state, port_id, vf_id, !!state );
+
+	reg_off = 0x02f04;
+
+	for( i = vf_id * q_num; i < (vf_id * q_num) + q_num; i++ ) {						// one bit per queue writes the right most three bits into the proper place
+		reg_value = IXGBE_QDE_WRITE | (i << IXGBE_QDE_IDX_SHIFT) | (!!state);
+		port_pci_reg_write( port_id, reg_off, reg_value );
+	}
+}
+
+/*
+	Set/reset the drop bit for PF queues on the given port.
+	This will set the drop enable bit for all of the PF queues. It should be called only
+	during initialisation, after the port has been initialised.
+*/
+extern void set_pfrx_drop(portid_t port_id, int state )
+{
+	uint16_t qstart;			// point where the queue starts (1 past the last VF)
+	int          i;
+	uint32_t reg_off;
+	uint32_t reg_value;          // value to write into the register
+	int q_num;
+
+	q_num = get_max_qpp( port_id );				// number of queues per vf on this port
+	if( q_num > 8 ) {
+		bleat_printf( 0, "internal mishap in set_pfrx_drop: qpp is out of range: %d", q_num );
+		return;							// panic in the face of potential disaster and do nothing
+	}
+
+	qstart = get_num_vfs( port_id ) * q_num;	// PF queue starts just past last possible vf
+	if( qstart > (128 - q_num) ) {
+		bleat_printf( 0, "internal mishap in set_pfrx_drop: qstart (%d) is out of range for nqueues=%d", qstart, q_num );
+		return;
+	}
+
+	bleat_printf( 0, "setting pf drop enable for port %d qstart=%d on/off=%d", port_id, qstart, !!state );
+	reg_off = 0x02f04;
+
+	for( i = qstart; i < qstart + q_num; i++ ) {						// one bit per queue writes the right most three bits into the proper place
+		reg_value = IXGBE_QDE_WRITE | (i << IXGBE_QDE_IDX_SHIFT) | (!!state);
+		port_pci_reg_write( port_id, reg_off, reg_value );
+	}
+}
+
 
 /*
 	Set/reset the queue drop enable bit for all pools. State is either 1 (on) or 0 (off).
+
+	CAUTION:
+	This should proabaly not be used as setting the drop enable bit has the side effect of
+	causing packet loss.  To avoid this, we slectively set the drop enable bit when we
+	get a reset on a VF, and then clear the bit when the VF's queues go ready.
+
+	This funciton probably should be deprecated!
 */
 void set_queue_drop( portid_t port_id, int state ) {
-	int		result;
+	int		result = 0;
 
+	
+	bleat_printf( 0, "WARN: something is calling set_queue drop which may not be expected\n" );
 	bleat_printf( 2, "setting queue drop for port %d on all queues to: on/off=%d", port_id, !!state );
 	result = rte_pmd_ixgbe_set_all_queues_drop_en( port_id, !!state );			// (re)set flag for all queues on the port
 	if( result != 0 ) {
 		bleat_printf( 0, "fail: unable to set drop enable for port %d on/off=%d: errno=%d", port_id, !state, -result );
 	}
-
 
 	/*
 	 disable default pool to avoid DMAR errors when we get packets not destined to any VF
@@ -470,7 +532,8 @@ is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter )
 
 /*
 	Drop packets which are not directed to any of VF's
-	instead of sending them to default pool
+	instead of sending them to default pool. This helps
+	prevent DMAR errors in the system log.
 */
 void
 disable_default_pool(portid_t port_id)
@@ -497,8 +560,9 @@ add_refresh_queue(u_int8_t port_id, uint16_t vf_id)
 	rte_spinlock_lock(&rte_refresh_q_lock);
 	for( refresh_item = rq_list; refresh_item != NULL; refresh_item = refresh_item->next ) {
 		if (refresh_item->port_id == port_id && refresh_item->vf_id == vf_id){
-			if (!refresh_item->enabled)
+			if (!refresh_item->enabled) {
 				refresh_item->enabled = is_rx_queue_on(port_id, vf_id, &refresh_item->mcounter );
+			}
 
 			rte_spinlock_unlock(&rte_refresh_q_lock);
 			return;
@@ -519,6 +583,9 @@ add_refresh_queue(u_int8_t port_id, uint16_t vf_id)
 	bleat_printf( 2, "adding refresh to queue for %d/%d", port_id, vf_id );
 
 	rte_spinlock_lock(&rte_refresh_q_lock);
+	
+	set_rx_drop( refresh_item->port_id, refresh_item->vf_id, SET_ON );		// set the drop enable flag (emulate kernel driver)
+
 	refresh_item->next = rq_list;						// push on the head of the list, order is unimportant
 	rq_list = refresh_item;
 	if( refresh_item->next ) {
@@ -555,9 +622,11 @@ static void enable_refresh_queue(u_int8_t port_id, uint16_t vf_id)
 
 /*
 	This is executed in it's own thread and is responsible for checking the
-	queue of pending resets. If a pending reset becomes 'enabled' then
-	the reset is 'executed' by invoking the restore_vf_setings() function
-	and the reset is removed from our queue.
+	queue of pending resets. When a pending reset becomes 'enabled' then
+	the following happen:
+		- restore_vf_settings() executed for the VF
+		- drop enable bit is CLEARED for all of the VF's queues.
+		- the block is removed from the queue
 */
 void
 process_refresh_queue(void)
@@ -579,6 +648,9 @@ process_refresh_queue(void)
 				bleat_printf( 2, "refresh item enabled: updating VF: %d", refresh_item->vf_id);
 
 				restore_vf_setings(refresh_item->port_id, refresh_item->vf_id);		// refresh all of our configuration back onto the NIC
+
+				bleat_printf( 3, "refresh_queue: clearing enable queue drop for %d/%d", refresh_item->port_id, refresh_item->vf_id );
+				set_rx_drop( refresh_item->port_id, refresh_item->vf_id, SET_OFF );
 
 				if( refresh_item->prev ) {
 					refresh_item->prev->next = refresh_item->next;
@@ -642,8 +714,20 @@ nic_stats_display(uint8_t port_id, char * buff, int bsize)
 	else
 		stpcpy(status, "UP  ");
 
-	return snprintf(buff, bsize, "    %s %10"PRIu16" %10"PRIu16" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu64" %10"PRIu32"\n",
-		status, link.link_speed, link.link_duplex, stats.ipackets, stats.ibytes, stats.ierrors, stats.imissed, stats.opackets, stats.obytes, stats.oerrors, spoffed[port_id]);
+		//" %6s %6"PRIu16" %6"PRIu16" %15"PRIu64" %15"PRIu64" %15"PRIu64" %15"PRIu64" %15"PRIu64" %15"PRIu64" %15"PRIu64" %15"PRIu32" %lld\n",
+	return snprintf( buff, bsize, " %6s  %6d %6d %15lld %15lld %15lld %15lld %15lld %15lld %15d %15lld\n",
+		status,
+		(int) link.link_speed,
+		(int) link.link_duplex,
+		(long long) stats.ipackets,
+		(long long) stats.ibytes,
+		(long long) stats.ierrors,
+		(long long) stats.imissed,
+		(long long) stats.opackets,
+		(long long) stats.obytes,
+		(int) stats.oerrors,
+		(long long) spoffed[port_id]
+	);
 }
 
 /*
@@ -694,18 +778,9 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 	else
 	    stpcpy(status, "UP  ");
 
-	return 	snprintf(buff, bsize, "%s   %4d    %04X:%02X:%02X.%01X    %s %32"PRIu32" %10"PRIu64" %32"PRIu32" %10"PRIu64"\n",
-				"vf",
-				vf,
-				vf_pci_addr.domain,
-				vf_pci_addr.bus,
-				vf_pci_addr.devid,
-				vf_pci_addr.function,
-				status,
-				rx_pkts,
-				rx_octets,
-				tx_pkts,
-				tx_octets);
+	return 	snprintf(buff, bsize, "%2s %6d    %04X:%02X:%02X.%01X %6s %30"PRIu32" %15"PRIu64" %47"PRIu32" %15"PRIu64"\n",
+				"vf", vf, vf_pci_addr.domain, vf_pci_addr.bus, vf_pci_addr.devid, vf_pci_addr.function, status,
+				rx_pkts, rx_octets, tx_pkts, tx_octets);
 }
 
 
@@ -724,7 +799,7 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 	tx_size_512_to_1023_packets: 0
 	tx_size_1024_to_max_packets: 0
 
-	Returns number of characters placed into buff.  
+	eturns number of characters placed into buff.
 */
 int
 port_xstats_display(uint8_t port_id, char * buff, int bsize)
@@ -824,6 +899,7 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 		return 1;
 	}
 
+	//TODO -- set crc to 0 if config indicates it is to be off
 
 	// Configure the Ethernet device.
 	retval = rte_eth_dev_configure(port, rx_rings, tx_rings, &port_conf);
@@ -967,9 +1043,6 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 					new_mac->addr_bytes[4], new_mac->addr_bytes[5]);
 			}
 
-			//set_xcast( port_id, vf );				// restore the settings we have in our config
-			//restore_vf_setings(port_id, vf);		// refresh all of our configuration back onto the NIC
-
 			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
 
 			break;
@@ -984,9 +1057,6 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 				bleat_printf( 1, "vlan set event rejected; vlan not not configured: port=%d vf=%d vlan=%d (responding noop-ack)", port_id, vf, (int) msgbuf[1] );
 				p.retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     // VM should see failure
 			}
-
-			//set_xcast( port_id, vf );				// must reset all of the *cast flags 
-			//restore_vf_setings(port_id, vf);		// refresh all of our configuration back onto the NIC
 
 			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
 
@@ -1004,10 +1074,6 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 				p.retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     /* noop & nack */
 			}
 
-			//bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_LPE");
-			//bleat_printf( 3, "setting mtu = %d", p[1]);
-			//restore_vf_setings(port_id, vf);		// refresh all of our configuration back onto the NIC
-
 			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
 			break;
 
@@ -1016,9 +1082,6 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			p.retval =  RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;    /* noop & nack */
 			bleat_printf( 3, "type: %d, port: %d, vf: %d, out: %d, _T: %s ", type, port_id, vf, p.retval, "IXGBE_VF_SET_MACVLAN");
 			bleat_printf( 3, "setting mac_vlan = %d", msgbuf[1] );
-
-			//set_xcast( port_id, vf );				// must reset all of the *cast flags 
-			//restore_vf_setings(port_id, vf);		// refresh all of our configuration back onto the NIC
 
 			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
 			break;
@@ -1035,8 +1098,6 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			bleat_printf( 1, "get queues  event received: port=%d (responding proceed)", port_id );
 			p.retval =  RTE_PMD_IXGBE_MB_EVENT_PROCEED;   /* do what's needed */
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p.retval, "IXGBE_VF_GET_QUEUES");
-			//set_xcast( port_id, vf );				// must reset all of the *cast flags 
-			//restore_vf_setings(port_id, vf);		// refresh all of our configuration back onto the NIC
 
 			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
 			break;
@@ -1046,13 +1107,11 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			p.retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     /* noop & nack */
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, MBOX_TYPE: %d", type, port_id, vf, p.retval, mbox_type);
 
-			//set_xcast( port_id, vf );				// restore the settings we have in our config
 			restore_vf_setings(port_id, vf);		// refresh all of our configuration back onto the NIC
 			break;
 	}
 
-  bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %d",
-      type, port_id, vf, p.retval, mbox_type);
+	bleat_printf( 3, "callback type: %d, Port: %d, VF: %d, OUT: %d, _T: %d", type, port_id, vf, p.retval, mbox_type);
 }
 
 
@@ -1119,6 +1178,30 @@ daemonize(  char* pid_fname )
 }
 
 /*
+	Dump a bunch of port stats to the log
+*/
+static void dump_port_stats( int port  ) {
+	struct rte_eth_stats stats;
+	int i;
+
+	memset( &stats, -1, sizeof( stats ) );
+	rte_eth_stats_get( port, &stats );
+
+	bleat_printf( 0, "port=%d success rx pkts:    %lld", port, (long long) stats.ipackets );
+	bleat_printf( 0, "port=%d success tx pkts:    %lld", port, (long long) stats.opackets );
+	bleat_printf( 0, "port=%d rx missed:    %lld", port, (long long) stats.imissed );
+	bleat_printf( 0, "port=%d rx errors:    %lld", port, (long long) stats.ierrors );
+	bleat_printf( 0, "port=%d tx errors:    %lld", port, (long long) stats.oerrors );
+	bleat_printf( 0, "port=%d rx no mbufs:  %lld", port, (long long) stats.rx_nombuf );
+
+	for( i = 0; i < RTE_ETHDEV_QUEUE_STAT_CNTRS; i++ ) {
+		bleat_printf( 0, "port=%d q_ipackets[%02d]:  %lld", port, i, stats.q_ipackets[i] );
+		bleat_printf( 0, "port=%d q_opackets[%02d]:  %lld", port, i, stats.q_opackets[i] );
+		bleat_printf( 0, "port=%d q_errors[%02d]:  %lld", port, i, stats.q_errors[i] );
+	}
+}
+
+/*
 	Called when a dump request is received from iplex. Writes general things about each port
 	into the log.
 */
@@ -1152,5 +1235,8 @@ void dump_dev_info( int num_ports  ) {
 		bleat_printf( 0, "port=%d vmdq_queue_base = %d", i, dev_info.vmdq_queue_base);
 		bleat_printf( 0, "port=%d vmdq_queue_num = %d", i, dev_info.vmdq_queue_num);
 		bleat_printf( 0, "port=%d vmdq_pool_base = %d", i, dev_info.vmdq_pool_base);
+
+		dump_port_stats( i  );
 	}
+
 }
