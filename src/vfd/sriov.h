@@ -383,7 +383,7 @@ int vf_stats_display(uint8_t port_id, uint32_t pf_ari, int vf, char * buff, int 
 int port_xstats_display(uint8_t port_id, char * buff, int bsize);
 int dump_vlvf_entry(portid_t port_id);
 
-int port_init(uint8_t port, struct rte_mempool *mbuf_pool);
+int port_init(uint8_t port, struct rte_mempool *mbuf_pool, int hw_strip_crc );
 void tx_set_loopback(portid_t port_id, u_int8_t on);
 
 void ether_aton_r(const char *asc, struct ether_addr * addr);

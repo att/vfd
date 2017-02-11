@@ -884,9 +884,11 @@ dump_vlvf_entry(portid_t port_id)
 	not continue if this function returns anything but 0.
 
 	This is the basic, non-dcb, port initialisation.
+
+	If hw_strip_crc is false, the default will be overridden.
 */
 int
-port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_pool)
+port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_pool, int hw_strip_crc )
 {
 	struct rte_eth_conf port_conf = port_conf_default;
 	const uint16_t rx_rings = 1;
@@ -899,7 +901,10 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 		return 1;
 	}
 
-	//TODO -- set crc to 0 if config indicates it is to be off
+	if( !hw_strip_crc ) {
+		bleat_printf( 2, "hardware crc stripping is now disabled for port %d", port );
+		port_conf.rxmode.hw_strip_crc = 0;
+	}
 
 	// Configure the Ethernet device.
 	retval = rte_eth_dev_configure(port, rx_rings, tx_rings, &port_conf);
@@ -908,10 +913,8 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 		return 1;
 	}
 
-
 	rte_eth_dev_callback_register(port, RTE_ETH_EVENT_INTR_LSC, lsi_event_callback, NULL);
 	rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vf_msb_event_callback, NULL);
-
 
 	// Allocate and set up 1 RX queue per Ethernet port.
 	for (q = 0; q < rx_rings; q++) {

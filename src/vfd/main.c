@@ -50,7 +50,8 @@
 				31 Jan 2017 - ensure that the *cast settings are restored after vlan and vlanmac callbacks.
 				11 Feb 2017 - Set drop enable bit on VF's queues only between reset and queue ready. Setting
 							on constantly causes packet loss on the NIC.  Change the hardware CRC strip
-							setting to true.
+							setting to true. Add ability to turn off hardware crc stripping via the main
+							parm file.
 */
 
 
@@ -1286,7 +1287,7 @@ main(int argc, char **argv)
 					//state = dcb_port_init(portid, mbuf_pool);
 					state = dcb_port_init( &running_config->ports[pfidx], mbuf_pool );
 				} else {
-					state = port_init(portid, mbuf_pool);
+					state = port_init(portid, mbuf_pool, g_parms->pciids[portid].hw_strip_crc );
 				}
 
 				if( state != 0 ) {
