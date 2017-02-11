@@ -13,6 +13,7 @@
 				16 Jun 2016 : Add option to allow loop-back.
 				18 Oct 2016 : Add chenges to support new QoS entries.
 				29 Nov 2016 : Added changes to support queue share in vf config.
+				11 Feb 2017 : Fix issues with leading spaces rather than tabs (formatting)
 */
 
 #include <fcntl.h>
@@ -152,10 +153,10 @@ extern parms_t* read_parms( char* fname ) {
 	char		sm_wrk[128];	// small work buffer
 	int			i, j, k;
 	int			def_mtu;		// default mtu (pulled and used to set pciid struct, but not kept in parms
-	tc_class_t* tc_class_ptr;    // ponter to heap location
-    int         priority;       // hold priority read from tclasses object
-    void*       tcobj;
-    void*       bwgrpobj;
+	tc_class_t* tc_class_ptr;	// ponter to heap location
+	int		 priority;	   // hold priority read from tclasses object
+	void*	   tcobj;
+	void*	   bwgrpobj;
 
 	if( (buf = file_into_buf( fname, NULL )) == NULL ) {
 		return NULL;
@@ -253,84 +254,84 @@ extern parms_t* read_parms( char* fname ) {
 							parms->pciids[i].id = ltrim( stuff );
 
 							parms->pciids[i].mtu = !jw_is_value( pobj, "mtu" ) ? def_mtu : (int) jw_value( pobj, "mtu" );
-							if( !jw_is_bool( pobj, "enable_loopback" ) ? 0 : (int) jw_value( pobj, "enable_loopback" ) ) {		// default to false if not there
-								parms->pciids[i].flags |= PFF_LOOP_BACK;
+							if( !jw_is_bool( pobj, "enable_loopback" ) ? 0 : (int) jw_value( pobj, "enable_loopback" ) ) {		
+								parms->pciids[i].flags |= PFF_LOOP_BACK; 			// default to false if not there
 							} else {
 								parms->pciids[i].flags &= ~PFF_LOOP_BACK;			// disable if set to false
 							}
-							if( !jw_is_bool( pobj, "vf_oversubscription" ) ? 0 : (int) jw_value( pobj,  "vf_oversubscription" ) ) {    // default to false if not there
-                                parms->pciids[i].flags |= PFF_VF_OVERSUB;
-                            } else {
-                                parms->pciids[i].flags &= ~PFF_VF_OVERSUB;          // disable if set to false
-                            }
-                            
-                            parms->pciids[i].ntcs = 4;																// default to 4 and we will up to 8 if we see pri > 3
-                            if( (jntcs = jw_array_len( pobj, "tclasses" )) > 0 ) {					  				// number of tcs supplied in the json
-                                //fprintf( stderr, "parsing tclasses = %d\n", parms->pciids[i].ntcs);  // **Debugging purpose only
-                                if( (tc_class_ptr = (tc_class_t*) malloc (sizeof(tc_class_t) * MAX_TCS)) == NULL ) {	// allways allocate a full set
+							if( !jw_is_bool( pobj, "vf_oversubscription" ) ? 0 : (int) jw_value( pobj,  "vf_oversubscription" ) ) {	
+								parms->pciids[i].flags |= PFF_VF_OVERSUB; 			// default to false if not there
+							} else {
+								parms->pciids[i].flags &= ~PFF_VF_OVERSUB;		  // disable if set to false
+							}
+							
+							parms->pciids[i].ntcs = 4;							// default to 4 and we will up to 8 if we see pri > 3
+							if( (jntcs = jw_array_len( pobj, "tclasses" )) > 0 ) {					  				// number of tcs supplied in the json
+								//fprintf( stderr, "parsing tclasses = %d\n", parms->pciids[i].ntcs);  // **Debugging purpose only
+								if( (tc_class_ptr = (tc_class_t*) malloc (sizeof(tc_class_t) * MAX_TCS)) == NULL ) {	// allways allocate a full set
 									errno = ENOMEM;
 									jw_nuke( jblob );
 									free_parms( parms );
 									return NULL;
 								}
-                                memset( tc_class_ptr, 0, sizeof(tc_class_t) * MAX_TCS );
-								parms->pciids[i].tcs[0] = tc_class_ptr;									// dont chance that pri == 0 is always there; this ensures us a ptr to free
+								memset( tc_class_ptr, 0, sizeof(tc_class_t) * MAX_TCS );
+								parms->pciids[i].tcs[0] = tc_class_ptr;			// dont chance that pri == 0 is always there; this ensures us a ptr to free
 
-                                for( j = 0; j < jntcs; j++ ) {
-                                    if( (tcobj = jw_obj_ele( pobj, "tclasses", j )) != NULL ) {					// pull out the next element
-                                        priority = (int) jw_value( tcobj, "pri" );
+								for( j = 0; j < jntcs; j++ ) {
+									if( (tcobj = jw_obj_ele( pobj, "tclasses", j )) != NULL ) {					// pull out the next element
+										priority = (int) jw_value( tcobj, "pri" );
 										if( priority < 0 || priority >= MAX_TCS ) {								// don't allow priority out of range
 											continue;
 										}
 
 										if( priority > 3 ) {
-                            				parms->pciids[i].ntcs = 8;
+											parms->pciids[i].ntcs = 8;
 										}
 
-                                        parms->pciids[i].tcs[priority] = tc_class_ptr + priority;				// use priority as index into the block allocated
+										parms->pciids[i].tcs[priority] = tc_class_ptr + priority;			// use priority as index into the block allocated
 
-                                        if( (stuff = jw_string( tcobj, "name" )) == NULL ) {
+										if( (stuff = jw_string( tcobj, "name" )) == NULL ) {
 											snprintf( sm_wrk, sizeof( sm_wrk ), "TC-%d", priority );
-                                            stuff = sm_wrk;
-                                        } 
+											stuff = sm_wrk;
+										} 
 										parms->pciids[i].tcs[priority]->hr_name = ltrim( stuff );
 
-                                        if( !jw_is_bool( tcobj, "llatency" ) ? 0 : (int) jw_value( tcobj, "llatency" ) ) {
-                                            parms->pciids[i].tcs[priority]->flags |= TCF_LOW_LATENCY;
-                                        } else {
-                                            parms->pciids[i].tcs[priority]->flags &= ~TCF_LOW_LATENCY;
-                                        }
-                                        if( !jw_is_bool( tcobj, "lsp" ) ? 0 : (int) jw_value( tcobj, "lsp" ) ) {
-                                            parms->pciids[i].tcs[priority]->flags |= TCF_BW_STRICTP;
-                                        } else {
-                                            parms->pciids[i].tcs[priority]->flags &= ~TCF_BW_STRICTP;
-                                        }
-                                        if( !jw_is_bool( tcobj, "bsp" ) ? 0 : (int) jw_value( tcobj, "bsp" ) ) {
-                                            parms->pciids[i].tcs[priority]->flags |= TCF_LNK_STRICTP;
-                                        } else {
-                                            parms->pciids[i].tcs[priority]->flags &= ~TCF_LNK_STRICTP;
-                                        }
-                                        parms->pciids[i].tcs[priority]->max_bw = !jw_is_value( tcobj, "max_bw" ) ? 100 : IBOUND( (int)jw_value( tcobj, "max_bw" ), 1, 100 );
-                                        parms->pciids[i].tcs[priority]->min_bw = !jw_is_value( tcobj, "min_bw" ) ? 1 : IBOUND( (int)jw_value( tcobj, "min_bw" ), 1, 100 );
-                                    } else {
+										if( !jw_is_bool( tcobj, "llatency" ) ? 0 : (int) jw_value( tcobj, "llatency" ) ) {
+											parms->pciids[i].tcs[priority]->flags |= TCF_LOW_LATENCY;
+										} else {
+											parms->pciids[i].tcs[priority]->flags &= ~TCF_LOW_LATENCY;
+										}
+										if( !jw_is_bool( tcobj, "lsp" ) ? 0 : (int) jw_value( tcobj, "lsp" ) ) {
+											parms->pciids[i].tcs[priority]->flags |= TCF_BW_STRICTP;
+										} else {
+											parms->pciids[i].tcs[priority]->flags &= ~TCF_BW_STRICTP;
+										}
+										if( !jw_is_bool( tcobj, "bsp" ) ? 0 : (int) jw_value( tcobj, "bsp" ) ) {
+											parms->pciids[i].tcs[priority]->flags |= TCF_LNK_STRICTP;
+										} else {
+											parms->pciids[i].tcs[priority]->flags &= ~TCF_LNK_STRICTP;
+										}
+										parms->pciids[i].tcs[priority]->max_bw = !jw_is_value( tcobj, "max_bw" ) ? 100 : IBOUND( (int)jw_value( tcobj, "max_bw" ), 1, 100 );
+										parms->pciids[i].tcs[priority]->min_bw = !jw_is_value( tcobj, "min_bw" ) ? 1 : IBOUND( (int)jw_value( tcobj, "min_bw" ), 1, 100 );
+									} else {
 										fprintf( stderr, "internal mishap parsing tclasses from config file j=%d expected=%d\n", j, parms->pciids[i].ntcs );
 										jw_nuke( jblob );
 										free_parms( parms );
 										return NULL;
-                                    }
-                                }
+									}
+								}
 
-                            }
-                            if (( bwgrpobj = jw_blob( pobj, "bw_grps" )) != NULL) {
-                                for ( j = 0; j < sizeof(parms->pciids[i].bw_grps)/sizeof(bw_grp_t); j++ ) {
-                                    sprintf(stuff, "bwg%d", j);
-                                    if( jw_exists(bwgrpobj, stuff) && (parms->pciids[i].bw_grps[j].ntcs  = jw_array_len( bwgrpobj, stuff )) > 0 ) {
-                                        for( k = 0; k < parms->pciids[i].bw_grps[j].ntcs; k++ ) {
-                                            parms->pciids[i].bw_grps[j].tcs[k] = (int) jw_value_ele( bwgrpobj, stuff, k );
-                                        }
-                                    }
-                                }
-                            }
+							}
+							if (( bwgrpobj = jw_blob( pobj, "bw_grps" )) != NULL) {
+								for ( j = 0; j < sizeof(parms->pciids[i].bw_grps)/sizeof(bw_grp_t); j++ ) {
+									sprintf(stuff, "bwg%d", j);
+									if( jw_exists(bwgrpobj, stuff) && (parms->pciids[i].bw_grps[j].ntcs  = jw_array_len( bwgrpobj, stuff )) > 0 ) {
+										for( k = 0; k < parms->pciids[i].bw_grps[j].ntcs; k++ ) {
+											parms->pciids[i].bw_grps[j].tcs[k] = (int) jw_value_ele( bwgrpobj, stuff, k );
+										}
+									}
+								}
+							}
 						}
 					}
 				}
