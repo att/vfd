@@ -639,7 +639,11 @@ extern int enable_dcb_qos( sriov_port_t *port, int* pctgs, int tc8_mode, int opt
 	qos_set_mrqc( pf, tc8_mode );				// set mult rec/tx queue control
 	qos_set_mtqc( pf, tc8_mode );
 	qos_set_vtctl( pf );
-	set_queue_drop( pf, 1 );					// enable queue dropping for all
+
+	// do NOT invoke set_queue_drop(); drop enable bit is set by callback when needed
+	
+	disable_default_pool( pf );					// prevent unknown packets from being placed on default queue
+
 	/*
 	DEPRECATED == this is handled by set_queue_drop
 	for( i = 0; i < 32; i ++ ) {

@@ -11,6 +11,11 @@
 	Things that need to be visible to vfd
 */
 
+// ----- jw_xapi --------------------------
+#define JWFMT_HEX		1
+#define JWFMT_INT		2
+#define JWFMT_FLOAT		3
+
 //----------------- config.c --------------------------------------------------------------------------
                                     // tc_class_t struct flags
 #define TCF_LOW_LATENCY 0x01
@@ -51,6 +56,7 @@ typedef struct {
 typedef struct {
 	char*	id;
 	int		mtu;
+	int		hw_strip_crc;			// set hardware to strip crc when true
 	unsigned int flags;				// PFF_ flag constants
 									// QoS members
     int32_t ntcs;					// number of TCs (4 or 8)
@@ -180,4 +186,12 @@ extern char* jw_string_ele( void* st, const char* name, int idx );
 extern float jw_value_ele( void* st, const char* name, int idx );
 extern void* jw_obj_ele( void* st, const char* name, int idx );
 extern int jw_array_len( void* st, const char* name );
+
+// ---------------- jw_xapi ---------------------------------------------------------------------------------
+extern int get_bool( void* jblob, char const* field_name, int def_value );
+extern float get_value( void* jblob, char const* field_name, float def_value );
+extern int get_ivalue( void* jblob, char const* field_name, int def_value );
+extern char* get_value_as_str( void* jblob, char const* field_name, char const* def_value, int  fmt );
+extern char* get_str( void* jblob, char const* field_name, char const* def_value );
+
 #endif

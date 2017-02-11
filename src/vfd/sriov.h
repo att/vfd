@@ -74,6 +74,9 @@
 #include <vfdlib.h>
 
 // ---------------------------------------------------------------------------------------
+#define SET_ON				1		// on/off parm constants
+#define SET_OFF				0
+
 #define VF_VAL_MCAST		0		// constants passed to get_vf_value()
 #define VF_VAL_BCAST		1
 #define VF_VAL_MSPOOF		2
@@ -152,7 +155,7 @@ static const struct rte_eth_conf port_conf_default = {
 		.hw_vlan_filter = 0, /**< VLAN filtering disabled */
 		.hw_vlan_strip  = 0, /**< VLAN strip enabled. */
 		.hw_vlan_extend = 0, /**< Extended VLAN disabled. */
-		.hw_strip_crc   = 0, /**< CRC stripped by hardware */
+		.hw_strip_crc   = 1, /**< CRC stripped by hardware */
 		},
 	.intr_conf = {
 		.lsc = ENABLED, 		// < lsc interrupt feature enabled
@@ -380,7 +383,7 @@ int vf_stats_display(uint8_t port_id, uint32_t pf_ari, int vf, char * buff, int 
 int port_xstats_display(uint8_t port_id, char * buff, int bsize);
 int dump_vlvf_entry(portid_t port_id);
 
-int port_init(uint8_t port, struct rte_mempool *mbuf_pool);
+int port_init(uint8_t port, struct rte_mempool *mbuf_pool, int hw_strip_crc );
 void tx_set_loopback(portid_t port_id, u_int8_t on);
 
 void ether_aton_r(const char *asc, struct ether_addr * addr);
@@ -418,6 +421,9 @@ int vfd_update_nic( parms_t* parms, sriov_conf_t* conf );
 int vfd_init_fifo( parms_t* parms );
 int is_valid_mac_str( char* mac );
 char*  gen_stats( sriov_conf_t* conf, int pf_only, int pf );
+
+//------- queue support -------------------------
+void set_pfrx_drop(portid_t port_id, int state );
 
 // --- tools --------------------------------------------
 extern int stricmp(const char *s1, const char *s2);

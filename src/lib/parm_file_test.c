@@ -42,6 +42,7 @@ void pprint( parms_t* parms ) {
 	fprintf( stderr, "\tnpciids: %d\n", parms->npciids );
 	for( i = 0; i < parms->npciids; i++ ) {
 		fprintf( stderr, "\tpciid[%d]: %s %d flags=%02x\n", i, parms->pciids[i].id, parms->pciids[i].mtu, parms->pciids[i].flags );
+		fprintf( stderr, "\t\thw_strip_crc=%d\n",  parms->pciids[i].hw_strip_crc );
         for( j = 0; j < parms->pciids[i].ntcs; j++ ) {
             if( (tcp = parms->pciids[i].tcs[j]) != NULL ) {				// traffic class defined for this priority
                 fprintf( stderr, "\t\ttclasses[%d]: %s, flags=%02x, max_bw: %d, min_bw: %d\n", j, tcp->hr_name, tcp->flags, tcp->max_bw, tcp->min_bw );
