@@ -14,6 +14,8 @@
 				18 Oct 2016 : Add chenges to support new QoS entries.
 				29 Nov 2016 : Added changes to support queue share in vf config.
 				11 Feb 2017 : Fix issues with leading spaces rather than tabs (formatting)
+
+	TODO:		convert things to the new jw_xapi functions to make for easier to read code.
 */
 
 #include <fcntl.h>
@@ -254,6 +256,8 @@ extern parms_t* read_parms( char* fname ) {
 							parms->pciids[i].id = ltrim( stuff );
 
 							parms->pciids[i].mtu = !jw_is_value( pobj, "mtu" ) ? def_mtu : (int) jw_value( pobj, "mtu" );
+							parms->pciids[i].hw_strip_crc = jwx_get_bool( pobj, "hw_strip_crc", 1 );		// strip on by default
+
 							if( !jw_is_bool( pobj, "enable_loopback" ) ? 0 : (int) jw_value( pobj, "enable_loopback" ) ) {		
 								parms->pciids[i].flags |= PFF_LOOP_BACK; 			// default to false if not there
 							} else {
