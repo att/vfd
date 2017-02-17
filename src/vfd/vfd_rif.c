@@ -10,6 +10,7 @@
 	Mods:		29 Nov 2016 : Add queue share support from vf config.
 				06 Jan 2017 : Incorporate DJ's fix for link mode.
 				30 Jan 2017 : Fix vfid check to detect pars error.
+				14 Feb 2017 : Correct bug in del range check on vf number.
 */
 
 
@@ -746,7 +747,7 @@ extern int vfd_del_vf( parms_t* parms, sriov_conf_t* conf, char* fname, char** r
 	bleat_printf( 2, "del: config data: pciid: %s", vfc->pciid );
 	bleat_printf( 2, "del: config data: vfid: %d", vfc->vfid );
 
-	if( vfc->pciid == NULL || vfc->vfid < 1 ) {
+	if( vfc->pciid == NULL || vfc->vfid < 0 ) {
 		snprintf( mbuf, sizeof( mbuf ), "unable to read config file: %s", fname );
 		bleat_printf( 1, "vfd_del_vf failed: %s", mbuf );
 		if( reason ) {

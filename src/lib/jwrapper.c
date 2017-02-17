@@ -18,6 +18,7 @@
 #include <string.h>
 #include <jsmn.h>
 
+#include "vfdlib.h"
 #include "symtab.h"
 
 #define JSON_SYM_NAME	"_jw_json_string"
@@ -746,4 +747,3 @@ extern int jw_array_len( void* st, const char* name ) {
 
 	return jtp->nele;
 }
-
