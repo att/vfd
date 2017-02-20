@@ -856,7 +856,7 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 			
 					// don't accept untagged frames
 					rx_mode |= ETH_VMDQ_ACCEPT_UNTAG;
-					ret = rte_eth_dev_set_vf_rxmode(port->rte_port_number, vf->num, rx_mode, !on);
+					ret = rte_pmd_ixgbe_set_vf_rxmode(port->rte_port_number, vf->num, rx_mode, !on);
 			
 					if (ret < 0)
 						bleat_printf( 3, "set_vf_allow_untagged(): bad VF receive mode parameter, return code = %d", ret);
@@ -1313,14 +1313,18 @@ main(int argc, char **argv)
 				port2config_map[portid] = -1;					// we must not allow an interrupt to map (we shouldn't get interrupts, but be parinoid)
 				bleat_printf( 0, "pf %d (%s) is NOT in vfd config file and was not initialised", portid, pciid );
 			}
-	  	}
+			
+			// read PCI config to get VM offset and stride
+			struct rte_eth_dev_info pf_dev;
+			rte_eth_dev_info_get(portid, &pf_dev);
+			rte_eal_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, 0x174);
+			
+			struct sriov_port_s *port = &running_config->ports[portid];
+			port->vf_offfset = pci_control_r & 0x0ffff;
+			port->vf_stride = pci_control_r >> 16;
+	  }
 		bleat_printf( 2, "port initialisation complete" );
 
-		// read PCI config to get VM offset and stride
-		struct rte_eth_dev *pf_dev = &rte_eth_devices[0];
-		rte_eal_pci_read_config(pf_dev->pci_dev, &pci_control_r, 32, 0x174);
-		vf_offfset = pci_control_r & 0x0ffff;
-		vf_stride = pci_control_r >> 16;
 	
 		set_signals();												// register signal handlers
 

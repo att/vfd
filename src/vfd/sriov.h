@@ -79,6 +79,10 @@
 
 #include <vfdlib.h>
 
+#include "vfd_ixgbe.h"
+#include "vfd_i40e.h"
+#include "vfd_bnxt.h"
+
 // ---------------------------------------------------------------------------------------
 #define SET_ON				1		// on/off parm constants
 #define SET_OFF				0
@@ -109,6 +113,10 @@
 
 #define RTE_PORT_ALL            (~(portid_t)0x0)
 #define IXGBE_RXDCTL_VME        0x40000000 /* VLAN mode enable */
+
+#define VFD_NIANTIC	0x10fb
+#define VFD_FVL25		0x158b
+#define VFD_BNXT		0x16d7
 
 #define TOGGLE(i) ((i+ 1) & 1)
 //#define TV_TO_US(tv) ((tv)->tv_sec * 1000000 + (tv)->tv_usec)
@@ -242,6 +250,10 @@ typedef struct sriov_port_s
 	tc_class_t*	tc_config[MAX_TCS];		// configuration information (max/min lsp/gsp) for the TC	(set from config)
 	int*		vftc_qshares;			// queue percentages arranged by vf/tc (computed with each add/del of a vf)
 	uint8_t		tc2bwg[MAX_TCS];		// maps each TC to a bandwidth group (set from config info)
+	
+	// will keep PCI First VF offset and Stride here
+	uint16_t vf_offfset;
+	uint16_t vf_stride;
 } sriov_port_t;
 
 /*
@@ -350,9 +362,6 @@ struct pstat st;
 struct timeval startTime;
 struct timeval endTime;
 
-// will keep PCI First VF offset and Stride here
-uint16_t vf_offfset;
-uint16_t vf_stride;
 
 uint32_t spoffed[MAX_PORTS]; 		// # of spoffed packets per PF
 
@@ -387,7 +396,7 @@ void nic_stats_clear(portid_t port_id);
 int nic_stats_display(uint8_t port_id, char * buff, int blen);
 int vf_stats_display(uint8_t port_id, uint32_t pf_ari, int vf, char * buff, int bsize);
 int port_xstats_display(uint8_t port_id, char * buff, int bsize);
-int dump_vlvf_entry(portid_t port_id);
+int dump_all_vlans(portid_t port_id);
 
 int port_init(uint8_t port, struct rte_mempool *mbuf_pool, int hw_strip_crc );
 void tx_set_loopback(portid_t port_id, u_int8_t on);
@@ -411,8 +420,8 @@ int cmp_vfs (const void * a, const void * b);
 void disable_default_pool(portid_t port_id);
 
 void lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
-void ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
-void bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
+//void ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
+//void bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
 void restore_vf_setings(uint8_t port_id, int vf);
 
 // callback validation support
@@ -428,6 +437,9 @@ int vfd_update_nic( parms_t* parms, sriov_conf_t* conf );
 int vfd_init_fifo( parms_t* parms );
 int is_valid_mac_str( char* mac );
 char*  gen_stats( sriov_conf_t* conf, int pf_only, int pf );
+int get_nic_type(portid_t port_id);
+int get_max_qpp( uint32_t port_id );
+int get_num_vfs( uint32_t port_id );
 
 //------- queue support -------------------------
 void set_pfrx_drop(portid_t port_id, int state );
