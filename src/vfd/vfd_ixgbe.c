@@ -1,5 +1,5 @@
 
-#include "vfd_i40e.h"
+#include "vfd_ixgbe.h"
 
 
 int  

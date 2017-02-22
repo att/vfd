@@ -341,7 +341,7 @@ set_vf_allow_un_ucast(portid_t port_id, uint16_t vf_id, int on)
 			break;
 			
 		case VFD_FVL25:		
-			ret = vfd_ixgbe_set_vf_unicast_promisc(port_id, vf_id, on);
+			ret = vfd_i40e_set_vf_unicast_promisc(port_id, vf_id, on);
 			break;
 
 		case VFD_BNXT:
@@ -389,7 +389,7 @@ set_vf_allow_untagged(portid_t port_id, uint16_t vf_id, int on)
 			break;	
 	}
 	
-	if (ret >= 0) {
+	if (ret < 0) {
 		bleat_printf( 3, "set allow untagged failed: port/vf %d/%d on/off=%d rc=%d", port_id, vf_id, on, ret );
 	} else {
 		bleat_printf( 3, "set allow untagged successful: port/vf %d/%d on/off=%d", port_id, vf_id, on );
@@ -518,7 +518,7 @@ set_vf_mac_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 	uint dev_type = get_nic_type(port_id);
 	switch (dev_type) {
 		case VFD_NIANTIC:
-			diag = vfd_ixgbe_set_vf_mac_anti_spoof(port_id, vf, on);
+			diag = vfd_ixgbe_set_vf_mac_anti_spoof(port_id, vf, 1);  // always set mac anti-spoof on for niantic
 			break;
 			
 		case VFD_FVL25:		
@@ -906,7 +906,8 @@ process_refresh_queue(void)
 
 	while(1) {
 
-		usleep(200000);
+		//usleep(200000);
+		usleep(5000000);
 		struct rq_entry *refresh_item;
 
 		rte_spinlock_lock(&rte_refresh_q_lock);
@@ -1444,5 +1445,4 @@ void dump_dev_info( int num_ports  ) {
 
 		dump_port_stats( i  );
 	}
-
 }

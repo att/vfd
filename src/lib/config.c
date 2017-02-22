@@ -415,10 +415,10 @@ extern vf_config_t*	read_config( char* fname ) {
 
 
 		vfc->owner = uid;
-		vfc->antispoof_mac = 1;				// these are forced to 1 regardless of what was in json
-		vfc->antispoof_vlan = 1;
+		vfc->antispoof_mac = 1;				
+		vfc->antispoof_vlan = 1;	// these are forced to 1 regardless of what was in json
 
-		//vfc->antispoof_mac = jw_missing( jblob, "antispoof_mac" ) ? 0 : (int) jw_value( jblob, "antispoof_mac" );
+		vfc->antispoof_mac = jw_missing( jblob, "antispoof_mac" ) ? 0 : (int) jw_value( jblob, "antispoof_mac" );
 		//vfc->antispoof_vlan = jw_missing( jblob, "antispoof_vlan" ) ? 0 : (int) jw_value( jblob, "antispoof_vlan" );
 
 		vfc->allow_untagged = !jw_is_bool( jblob, "allow_untagged" ) ? 0 : (int) jw_value( jblob, "allow_untagged" );

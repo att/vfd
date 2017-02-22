@@ -844,22 +844,18 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 			if( vf->num >= 0 ) {
 				if( parms->forreal ) {
 					bleat_printf( 3, "set promiscuous: port: %d, vf: %d ", port->rte_port_number, vf->num);
-					uint16_t rx_mode = 0;
+					//uint16_t rx_mode = 0;
 			
 			
 					// az says: figure out if we have to update it every time we change VLANS/MACS
 					// 			or once when update ports config
 					rte_eth_promiscuous_enable(port->rte_port_number);
 					rte_eth_allmulticast_enable(port->rte_port_number);
-					ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
-			
+					ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);			
 			
 					// don't accept untagged frames
-					rx_mode |= ETH_VMDQ_ACCEPT_UNTAG;
-					ret = rte_pmd_ixgbe_set_vf_rxmode(port->rte_port_number, vf->num, rx_mode, !on);
-			
-					if (ret < 0)
-						bleat_printf( 3, "set_vf_allow_untagged(): bad VF receive mode parameter, return code = %d", ret);
+					set_vf_allow_untagged(port->rte_port_number, vf->num, !on);
+
 				} else {
 					bleat_printf( 1, "skipped end round updates to port: %s", port->pciid );
 				}
