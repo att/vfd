@@ -5,13 +5,30 @@
 #ifdef BNXT_SUPPORT
 
 int  
-vfd_bnxt_ping_vfs(uint8_t port_id, uint16_t vf_id)
+vfd_bnxt_ping_vfs(uint8_t port_id, int16_t vf_id)
 {
-	int diag = rte_pmd_bnxt_ping_vfs(port_id, vf_id);
+	int diag = 0;
+	int i;
+	int vf_num = get_num_vfs( port_id );
+	
+	if (vf_id == -1)  // ping every VF
+	{
+		for (i = 0; i < vf_num; i++)
+		{
+			diag = rte_pmd_bnxt_ping_vfs(port_id, i);
+			if (diag < 0) 
+				bleat_printf( 0, "vfd_bnxt_ping_vfs failed: port_pi=%d, vf_id=%d) failed rc=%d", port_id, i, diag );
+		}
+	}
+	else  // only specified
+	{
+		diag = rte_pmd_bnxt_ping_vfs(port_id, vf_id);
+	}
+
 	if (diag < 0) {
-		bleat_printf( 0, "rte_pmd_bnxt_ping_vfs failed: port_pi=%d, vf_id=%d) failed rc=%d", port_id, vf_id, diag );
+		bleat_printf( 0, "vfd_bnxt_ping_vfs failed: port_pi=%d, vf_id=%d) failed rc=%d", port_id, vf_id, diag );
 	} else {
-		bleat_printf( 3, "rte_pmd_bnxt_ping_vfs successful: port_id=%d, vf_id=%d", port_id, vf_id);
+		bleat_printf( 3, "vfd_bnxt_ping_vfs successful: port_id=%d, vf_id=%d", port_id, vf_id);
 	}
 	
 	return diag;

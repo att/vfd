@@ -1253,7 +1253,11 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 			break;	
 	}
 	
-
+	if (retval != 0) {
+		bleat_printf( 0, "CRI: abort: cannot register callback function %u, retval %d", port, retval);
+		return 1;
+	}
+	
 	// Allocate and set up 1 RX queue per Ethernet port.
 	for (q = 0; q < rx_rings; q++) {
 		retval = rte_eth_rx_queue_setup(port, q, RX_RING_SIZE, rte_eth_dev_socket_id(port), NULL, mbuf_pool);
@@ -1317,10 +1321,43 @@ lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param)
 		bleat_printf( 3, "Port %d Link Down", port_id);
 
   // notify every VF about link status change
-  //AZrte_eth_dev_ping_vfs(port_id, -1);
+  ping_vfs(port_id, -1);
 }
 
 
+
+
+void
+ping_vfs(portid_t port_id, int vf)
+{
+	int retval = 0;
+	
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			retval = vfd_ixgbe_ping_vfs(port_id, vf);
+			break;
+			
+		case VFD_FVL25:		
+			retval = vfd_i40e_ping_vfs(port_id, vf);
+			break;
+
+		case VFD_BNXT:
+#ifdef BNXT_SUPPORT
+			retval = vfd_bnxt_ping_vfs(port_id, vf);
+#endif
+			break;
+			
+		default:
+			bleat_printf( 0, "ping_vfs: unknown device type: %u, port: %u", port_id, dev_type);
+			break;		
+	}
+			
+	
+	if (retval < 0) {
+		bleat_printf( 0, "ping_vfs: failed, port %u, vf %d", port_id, vf);
+	}
+}
 
 
 /*

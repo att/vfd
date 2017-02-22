@@ -12,7 +12,7 @@
 
 // ------------- prototypes ----------------------------------------------
 
-int vfd_bnxt_ping_vfs(uint8_t port, uint16_t vf);
+int vfd_bnxt_ping_vfs(uint8_t port, int16_t vf);
 int vfd_bnxt_set_vf_mac_anti_spoof(uint8_t port, uint16_t vf_id, uint8_t on); 
 int vfd_bnxt_set_vf_vlan_anti_spoof(uint8_t port, uint16_t vf_id, uint8_t on);
 int vfd_bnxt_set_tx_loopback(uint8_t port, uint8_t on);

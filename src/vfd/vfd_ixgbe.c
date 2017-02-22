@@ -3,11 +3,26 @@
 
 
 int  
-vfd_ixgbe_ping_vfs( __attribute__((__unused__)) uint8_t port_id,  __attribute__((__unused__)) uint16_t vf_id)
+vfd_ixgbe_ping_vfs( __attribute__((__unused__)) uint8_t port_id,  __attribute__((__unused__)) int16_t vf_id)
 {
-	
+	int diag = 0;
+	int i;
 	bleat_printf( 0, "rte_pmd_ixgbe_ping_vfs not implemented");
 	
+	int vf_num = get_num_vfs( port_id );
+	if (vf_id == -1)  // ping every VF
+	{
+		for (i = 0; i < vf_num; i++)
+		{
+			//diag = rte_pmd_ixgbe_ping_vfs(port_id, i);
+			if (diag < 0) 
+				bleat_printf( 0, "vfd_ixgbe_ping_vfs failed: port_pi=%d, vf_id=%d) failed rc=%d", port_id, i, diag );
+		}
+	}
+	else  // only specified
+	{
+		//diag = rte_pmd_ixgbe_ping_vfs(port_id, vf_id);
+	}
 	return 0;
 }
 
