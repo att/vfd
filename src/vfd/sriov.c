@@ -790,7 +790,23 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 	vf_pci_addr.devid = (new_ari >> 3) & 0x1f;
 	vf_pci_addr.function = new_ari & 0x7;
 
+#ifdef BNXT_SUPPORT
+	struct rte_eth_stats stats;
+	uint32_t	rx_pkts = 0;
+	uint32_t	tx_pkts = 0;
+	uint64_t	rx_octets = 0;
+	uint64_t	tx_octets = 0;
+	int rc;
 
+	rc = rte_pmd_bnxt_get_vf_stats(port_id, vf, &stats);
+	if (!rc) {
+		rx_pkts = stats.ipackets;
+		tx_pkts = stats.opackets;
+		tx_octets = stats.obytes;
+		rx_octets = stats.ibytes;
+	}
+
+#else
 	uint32_t	rx_pkts = port_pci_reg_read(port_id, IXGBE_PVFGPRC(vf));
 	uint64_t	rx_ol = port_pci_reg_read(port_id, IXGBE_PVFGORC_LSB(vf));
 	uint64_t	rx_oh = port_pci_reg_read(port_id, IXGBE_PVFGORC_MSB(vf));
@@ -800,6 +816,7 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 	uint64_t	tx_ol = port_pci_reg_read(port_id, IXGBE_PVFGOTC_LSB(vf));
 	uint64_t	tx_oh = port_pci_reg_read(port_id, IXGBE_PVFGOTC_MSB(vf));
 	uint64_t	tx_octets = (tx_oh << 32) |	tx_ol;		// 36 bit only counter
+#endif
 
 
 	char status[5];
