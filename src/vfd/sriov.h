@@ -153,7 +153,7 @@ static const struct rte_eth_conf port_conf_default = {
 		.header_split   = 0, /**< Header Split disabled */
 		.hw_ip_checksum = 1, /**< IP checksum offload disabled */
 		.hw_vlan_filter = 0, /**< VLAN filtering disabled */
-		.hw_vlan_strip  = 0, /**< VLAN strip enabled. */
+		.hw_vlan_strip  = 1, /**< VLAN strip enabled. */
 		.hw_vlan_extend = 0, /**< Extended VLAN disabled. */
 		.hw_strip_crc   = 1, /**< CRC stripped by hardware */
 		},

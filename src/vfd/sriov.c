@@ -989,10 +989,10 @@ lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param)
 void
 vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param) {
 
-	struct rte_pmd_ixgbe_mb_event_param p = *(struct rte_pmd_ixgbe_mb_event_param*) param;
-  uint16_t vf = p.vfid;
-	uint16_t mbox_type = p.msg_type;
-	uint32_t *msgbuf = (uint32_t *) p.msg;
+	struct rte_pmd_ixgbe_mb_event_param *p = (struct rte_pmd_ixgbe_mb_event_param*) param;
+  uint16_t vf = p->vfid;
+	uint16_t mbox_type = p->msg_type;
+	uint32_t *msgbuf = (uint32_t *) p->msg;
 
 	struct ether_addr *new_mac;
 
@@ -1001,18 +1001,18 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 		case IXGBE_VF_RESET:
 			bleat_printf( 1, "reset event received: port=%d", port_id );
 
-			p.retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_ACK;				/* noop & ack */
+			p->retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_ACK;				/* noop & ack */
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
-				type, port_id, vf, p.retval, "IXGBE_VF_RESET");
+				type, port_id, vf, p->retval, "IXGBE_VF_RESET");
 
 			add_refresh_queue(port_id, vf);
 			break;
 
 		case IXGBE_VF_SET_MAC_ADDR:
 			bleat_printf( 1, "setmac event received: port=%d", port_id );
-			p.retval = RTE_PMD_IXGBE_MB_EVENT_PROCEED;    						// do what's needed
+			p->retval = RTE_PMD_IXGBE_MB_EVENT_PROCEED;    						// do what's needed
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
-				type, port_id, vf, p.retval, "IXGBE_VF_SET_MAC_ADDR");
+				type, port_id, vf, p->retval, "IXGBE_VF_SET_MAC_ADDR");
 
 			new_mac = (struct ether_addr *) (&msgbuf[1]);
 
@@ -1031,9 +1031,9 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 
 		case IXGBE_VF_SET_MULTICAST:
 			bleat_printf( 1, "set multicast event received: port=%d", port_id );
-			p.retval = RTE_PMD_IXGBE_MB_EVENT_PROCEED;    /* do what's needed */
+			p->retval = RTE_PMD_IXGBE_MB_EVENT_PROCEED;    /* do what's needed */
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
-				type, port_id, vf, p.retval, "IXGBE_VF_SET_MULTICAST");
+				type, port_id, vf, p->retval, "IXGBE_VF_SET_MULTICAST");
 
 			new_mac = (struct ether_addr *) (&msgbuf[1]);
 
@@ -1055,10 +1055,10 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			if( valid_vlan( port_id, vf, (int) msgbuf[1] )) {
 				bleat_printf( 1, "vlan set event approved: port=%d vf=%d vlan=%d (responding noop-ack)", port_id, vf, (int) msgbuf[1] );
 				//*((int*) param) = RTE_ETH_MB_EVENT_PROCEED;
-				p.retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_ACK;     // good rc to VM while not changing anything
+				p->retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_ACK;     // good rc to VM while not changing anything
 			} else {
 				bleat_printf( 1, "vlan set event rejected; vlan not not configured: port=%d vf=%d vlan=%d (responding noop-ack)", port_id, vf, (int) msgbuf[1] );
-				p.retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     // VM should see failure
+				p->retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     // VM should see failure
 			}
 
 			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
@@ -1071,10 +1071,10 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			bleat_printf( 1, "set lpe event received %d %d", port_id, (int) msgbuf[1]  );
 			if( valid_mtu( port_id, (int) msgbuf[1] ) ) {
 				bleat_printf( 1, "mtu set event approved: port=%d vf=%d mtu=%d", port_id, vf, (int) msgbuf[1]  );
-				p.retval = RTE_PMD_IXGBE_MB_EVENT_PROCEED;
+				p->retval = RTE_PMD_IXGBE_MB_EVENT_PROCEED;
 			} else {
 				bleat_printf( 1, "mtu set event rejected: port=%d vf=%d mtu=%d", port_id, vf, (int) msgbuf[1] );
-				p.retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     /* noop & nack */
+				p->retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     /* noop & nack */
 			}
 
 			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
@@ -1082,8 +1082,8 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 
 		case IXGBE_VF_SET_MACVLAN:
 			bleat_printf( 1, "set macvlan event received: port=%d (responding nop+nak)", port_id );
-			p.retval =  RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;    /* noop & nack */
-			bleat_printf( 3, "type: %d, port: %d, vf: %d, out: %d, _T: %s ", type, port_id, vf, p.retval, "IXGBE_VF_SET_MACVLAN");
+			p->retval =  RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;    /* noop & nack */
+			bleat_printf( 3, "type: %d, port: %d, vf: %d, out: %d, _T: %s ", type, port_id, vf, p->retval, "IXGBE_VF_SET_MACVLAN");
 			bleat_printf( 3, "setting mac_vlan = %d", msgbuf[1] );
 
 			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
@@ -1091,30 +1091,30 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 
 		case IXGBE_VF_API_NEGOTIATE:
 			bleat_printf( 1, "set negotiate event received: port=%d (responding proceed)", port_id );
-			p.retval =  RTE_PMD_IXGBE_MB_EVENT_PROCEED;   /* do what's needed */
-			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p.retval, "IXGBE_VF_API_NEGOTIATE");
+			p->retval =  RTE_PMD_IXGBE_MB_EVENT_PROCEED;   /* do what's needed */
+			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p->retval, "IXGBE_VF_API_NEGOTIATE");
 			
 			restore_vf_setings(port_id, vf);		// this must happen now, do NOT queue it. if not immediate guest-guest may hang
 			break;
 
 		case IXGBE_VF_GET_QUEUES:
 			bleat_printf( 1, "get queues  event received: port=%d (responding proceed)", port_id );
-			p.retval =  RTE_PMD_IXGBE_MB_EVENT_PROCEED;   /* do what's needed */
-			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p.retval, "IXGBE_VF_GET_QUEUES");
+			p->retval =  RTE_PMD_IXGBE_MB_EVENT_PROCEED;   /* do what's needed */
+			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p->retval, "IXGBE_VF_GET_QUEUES");
 
 			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
 			break;
 
 		default:
 			bleat_printf( 1, "unknown  event request received: port=%d (responding nop+nak)", port_id );
-			p.retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     /* noop & nack */
-			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, MBOX_TYPE: %d", type, port_id, vf, p.retval, mbox_type);
+			p->retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     /* noop & nack */
+			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, MBOX_TYPE: %d", type, port_id, vf, p->retval, mbox_type);
 
 			restore_vf_setings(port_id, vf);		// refresh all of our configuration back onto the NIC
 			break;
 	}
 
-	bleat_printf( 3, "callback type: %d, Port: %d, VF: %d, OUT: %d, _T: %d", type, port_id, vf, p.retval, mbox_type);
+	bleat_printf( 3, "callback type: %d, Port: %d, VF: %d, OUT: %d, _T: %d", type, port_id, vf, p->retval, mbox_type);
 }
 
 
