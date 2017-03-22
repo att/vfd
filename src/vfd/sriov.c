@@ -1091,6 +1091,17 @@ bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *
 		case HWRM_STAT_CTX_ALLOC:
 		case HWRM_STAT_CTX_FREE:
 		case HWRM_STAT_CTX_CLR_STATS:
+
+		case HWRM_CFA_L2_FILTER_ALLOC:
+		case HWRM_CFA_L2_FILTER_FREE:
+		case HWRM_CFA_L2_SET_RX_MASK:
+		case HWRM_CFA_L2_FILTER_CFG:
+
+		case HWRM_CFA_TUNNEL_FILTER_ALLOC:
+		case HWRM_CFA_TUNNEL_FILTER_FREE:
+		case HWRM_TUNNEL_DST_PORT_QUERY:
+		case HWRM_TUNNEL_DST_PORT_ALLOC:
+		case HWRM_TUNNEL_DST_PORT_FREE:
 			p->retval = RTE_PMD_BNXT_MB_EVENT_PROCEED;
 			add_refresh = true;
 			break;
@@ -1115,18 +1126,9 @@ bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *
 		case HWRM_QUEUE_PRI2COS_CFG:
 		case HWRM_QUEUE_COS2BW_CFG:
 		case HWRM_PORT_LPBK_QSTATS:
-		case HWRM_CFA_L2_FILTER_ALLOC:
-		case HWRM_CFA_L2_FILTER_FREE:
-		case HWRM_CFA_L2_FILTER_CFG:
-		case HWRM_CFA_L2_SET_RX_MASK:
-		case HWRM_CFA_TUNNEL_FILTER_ALLOC:
-		case HWRM_CFA_TUNNEL_FILTER_FREE:
 		case HWRM_CFA_NTUPLE_FILTER_ALLOC:
 		case HWRM_CFA_NTUPLE_FILTER_FREE:
 		case HWRM_CFA_NTUPLE_FILTER_CFG:
-		case HWRM_TUNNEL_DST_PORT_QUERY:
-		case HWRM_TUNNEL_DST_PORT_ALLOC:
-		case HWRM_TUNNEL_DST_PORT_FREE:
 		case HWRM_FW_RESET:
 		case HWRM_FW_QSTATUS:
 		case HWRM_EXEC_FWD_RESP:
