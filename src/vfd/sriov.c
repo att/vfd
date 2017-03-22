@@ -26,6 +26,8 @@
 				11 Feb 2017 - Changes to prevent packet loss which was occuring when the drop
 					enable bit was set for VF queues. Fixed alignment on show output to handle
 					wider fields.
+				21 Mar 2017 - Ensure that looback is set on a port when reset/negotiate callbacks
+					are dirven.
 
 	useful doc:
 				 http://www.intel.com/content/dam/doc/design-guide/82599-sr-iov-driver-companion-guide.pdf
@@ -1077,6 +1079,8 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 				p->retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     /* noop & nack */
 			}
 
+			restore_vf_setings(port_id, vf);
+			tx_set_loopback( port_id, suss_loopback( port_id ) );		// enable loopback if set (could be reset if link was down)
 			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
 			break;
 
@@ -1094,7 +1098,8 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			p->retval =  RTE_PMD_IXGBE_MB_EVENT_PROCEED;   /* do what's needed */
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p->retval, "IXGBE_VF_API_NEGOTIATE");
 			
-			restore_vf_setings(port_id, vf);		// this must happen now, do NOT queue it. if not immediate guest-guest may hang
+			restore_vf_setings(port_id, vf);							// these must happen now, do NOT queue it. if not immediate guest-guest may hang
+			tx_set_loopback( port_id, suss_loopback( port_id ) );		// enable loopback if set (could be reset if link goes down)
 			break;
 
 		case IXGBE_VF_GET_QUEUES:

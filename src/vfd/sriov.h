@@ -10,6 +10,8 @@
 
 	Mods:		2016 18 Nov - Reorganised to group defs, structs, globals and protos 
 					rather than to have them scattered.
+				22 Mar 2017 - Set the jumbo frame flag in the default dev config.
+					Fix comment in same initialisation.
 */
 
 #ifndef _SRIOV_H_
@@ -149,9 +151,9 @@ typedef uint16_t streamid_t;
 static const struct rte_eth_conf port_conf_default = {
 	.rxmode = {
 		.max_rx_pkt_len = 9000,
-		.jumbo_frame 		= 0,
+		.jumbo_frame 	= 1,		// required to allow mtu > 1500
 		.header_split   = 0, /**< Header Split disabled */
-		.hw_ip_checksum = 1, /**< IP checksum offload disabled */
+		.hw_ip_checksum = 1,		// enable hw to do the checksum
 		.hw_vlan_filter = 0, /**< VLAN filtering disabled */
 		.hw_vlan_strip  = 1, /**< VLAN strip enabled. */
 		.hw_vlan_extend = 0, /**< Extended VLAN disabled. */
@@ -412,6 +414,7 @@ void restore_vf_setings(uint8_t port_id, int vf);
 int valid_mtu( int port, int mtu );
 int valid_vlan( int port, int vfid, int vlan );
 int get_vf_setting( int portid, int vf, int what );
+int suss_loopback( int port );
 
 void add_refresh_queue(u_int8_t port_id, uint16_t vf_id);
 void process_refresh_queue(void);

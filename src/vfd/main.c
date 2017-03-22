@@ -341,6 +341,20 @@ int valid_vlan( int port, int vfid, int vlan ) {
 }
 
 /*
+	Looks up the loopback flag for the indicated port and returns 1 if it is set; 0 
+	otherwise.
+*/
+int suss_loopback( int port ) {
+	struct sriov_port_s *p;
+
+	if( (p = suss_port( port )) != NULL ) {
+		return !!(p->flags & PF_LOOPBACK);
+	}
+
+	return 0;
+}
+
+/*
 	Return true if the mtu value is valid for the port given.
 */
 int valid_mtu( int port, int mtu ) {
