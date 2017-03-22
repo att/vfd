@@ -1,25 +1,27 @@
 {
-     "comments": [
-            "sample conf file, fill the pciids",
-            "cp vfd.cfg.sample vfd.cfg",
-            "initctl start vfd",
-            "default_mtu is used if mtu is omitted from a pciid object."
-         ],
+        "comment": "sample config",
+        "log_dir": "/var/log/vfd",
+        "log_keep": 9,
+        "log_level": 4,
+        "init_log_level": 2,
+        "config_dir": "/var/lib/vfd/config",
+        "fifo": "/var/lib/vfd/request",
+        "cpu_mask": "0x01",
+        "dpdk_log_level": 2,
+        "dpdk_init_log_level": 8,
+        "default_mtu": 1500,
 
-         "fifo": "/var/lib/vfd/request",
-         "log_dir": "/var/log/vfd",
-         "log_keep": 60,
-         "init_log_level": 2,
-         "log_level": 2,
-         "config_dir": "/var/lib/vfd/config",
-         "cpu_mask": "0x01",
-         "dpdk_log_level": 2,
-         "dpdk_init_log_level": 8,
-         "default_mtu": <value>,
-
-         "pciids": [
-             { "id": "<pciid1>" },
-             { "id": "<pciid2>", "mtu": <value> },
-             ....
-         ]
+        "pciids": [{
+                "id": "<pfid>",
+                "vfs_count": <no of vfs to create>,
+                "pf_driver": "igb_uio",
+                "vf_driver": "vfio-pci",
+                "mtu": 1500
+        }, {
+                "id": "<pfid>",
+                "vfs_count": <no of vfs to create>,
+                "pf_driver": "igb_uio",
+                "vf_driver": "vfio-pci",
+                "mtu": 1500
+        }]
 }
