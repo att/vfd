@@ -412,6 +412,7 @@ void restore_vf_setings(uint8_t port_id, int vf);
 int valid_mtu( int port, int mtu );
 int valid_vlan( int port, int vfid, int vlan );
 int get_vf_setting( int portid, int vf, int what );
+int suss_loopback( int port );
 
 void add_refresh_queue(u_int8_t port_id, uint16_t vf_id);
 void process_refresh_queue(void);
