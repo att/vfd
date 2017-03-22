@@ -890,13 +890,16 @@ dump_vlvf_entry(portid_t port_id)
 	If hw_strip_crc is false, the default will be overridden.
 */
 int
-port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_pool, int hw_strip_crc )
+port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_pool, int hw_strip_crc, sriov_port_t *pf )
 {
 	struct rte_eth_conf port_conf = port_conf_default;
 	const uint16_t rx_rings = 1;
 	const uint16_t tx_rings = 1;
 	int retval;
 	uint16_t q;
+
+	port_conf.rxmode.max_rx_pkt_len = pf->mtu;
+	port_conf.rxmode.jumbo_frame = pf->mtu > 1500;
 
 	if (port >= rte_eth_dev_count()) {
 		bleat_printf( 0, "CRI: abort: port >= rte_eth_dev_count");

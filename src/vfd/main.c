@@ -1298,10 +1298,9 @@ main(int argc, char **argv)
 				}
 
 				if( g_parms->rflags & RF_ENABLE_QOS ) {
-					//state = dcb_port_init(portid, mbuf_pool);
 					state = dcb_port_init( &running_config->ports[pfidx], mbuf_pool );
 				} else {
-					state = port_init(portid, mbuf_pool, g_parms->pciids[portid].hw_strip_crc );
+					state = port_init(portid, mbuf_pool, g_parms->pciids[portid].hw_strip_crc, &running_config->ports[pfidx] );
 				}
 
 				if( state != 0 ) {
