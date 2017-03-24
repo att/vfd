@@ -67,13 +67,13 @@
 #include <rte_ethdev.h>
 #include <rte_string_fns.h>
 #include <rte_spinlock.h>
-#include <rte_pmd_ixgbe.h>
-
-//#include "../lib/dpdk/drivers/net/ixgbe/base/ixgbe_mbx.h"
-// requires -I $(RTE_SDK)
-#include <drivers/net/ixgbe/base/ixgbe_mbx.h>
 
 #include <vfdlib.h>
+
+#include "vfd_bnxt.h"
+#include "vfd_ixgbe.h"
+#include "vfd_i40e.h"
+
 
 // ---------------------------------------------------------------------------------------
 #define SET_ON				1		// on/off parm constants
@@ -105,6 +105,10 @@
 
 #define RTE_PORT_ALL            (~(portid_t)0x0)
 #define IXGBE_RXDCTL_VME        0x40000000 /* VLAN mode enable */
+
+#define VFD_NIANTIC	0x10fb
+#define VFD_FVL25		0x158b
+#define VFD_BNXT		0x16d7
 
 #define TOGGLE(i) ((i+ 1) & 1)
 //#define TV_TO_US(tv) ((tv)->tv_sec * 1000000 + (tv)->tv_usec)
@@ -151,7 +155,7 @@ typedef uint16_t streamid_t;
 static const struct rte_eth_conf port_conf_default = {
 	.rxmode = {
 		.max_rx_pkt_len = 9000,
-		.jumbo_frame 	= 1,		// required to allow mtu > 1500
+		.jumbo_frame 		= ENABLED,
 		.header_split   = 0, /**< Header Split disabled */
 		.hw_ip_checksum = 1,		// enable hw to do the checksum
 		.hw_vlan_filter = 0, /**< VLAN filtering disabled */
@@ -159,6 +163,10 @@ static const struct rte_eth_conf port_conf_default = {
 		.hw_vlan_extend = 0, /**< Extended VLAN disabled. */
 		.hw_strip_crc   = 1, /**< CRC stripped by hardware */
 		},
+		.txmode = {
+			//.hw_vlan_insert_pvid = 1,
+      .mq_mode = ETH_MQ_TX_NONE,
+	},
 	.intr_conf = {
 		.lsc = ENABLED, 		// < lsc interrupt feature enabled
 	},
@@ -203,6 +211,7 @@ struct vf_s
   int     num_macs;
   int     vlans[MAX_VF_VLANS];
   char    macs[MAX_VF_MACS][18];
+	int     rx_q_ready;
 
 	uid_t	owner;					// user id which 'owns' the VF (owner of the config file from stat())
 	char*	start_cb;				// user commands driven just after initialisation and just before termination
@@ -238,6 +247,10 @@ typedef struct sriov_port_s
 	tc_class_t*	tc_config[MAX_TCS];		// configuration information (max/min lsp/gsp) for the TC	(set from config)
 	int*		vftc_qshares;			// queue percentages arranged by vf/tc (computed with each add/del of a vf)
 	uint8_t		tc2bwg[MAX_TCS];		// maps each TC to a bandwidth group (set from config info)
+	
+	// will keep PCI First VF offset and Stride here
+	uint16_t vf_offset;
+	uint16_t vf_stride;
 } sriov_port_t;
 
 /*
@@ -346,9 +359,6 @@ struct pstat st;
 struct timeval startTime;
 struct timeval endTime;
 
-// will keep PCI First VF offset and Stride here
-uint16_t vf_offfset;
-uint16_t vf_stride;
 
 uint32_t spoffed[MAX_PORTS]; 		// # of spoffed packets per PF
 
@@ -383,7 +393,8 @@ void nic_stats_clear(portid_t port_id);
 int nic_stats_display(uint8_t port_id, char * buff, int blen);
 int vf_stats_display(uint8_t port_id, uint32_t pf_ari, int vf, char * buff, int bsize);
 int port_xstats_display(uint8_t port_id, char * buff, int bsize);
-int dump_vlvf_entry(portid_t port_id);
+int dump_all_vlans(portid_t port_id);
+void ping_vfs(portid_t port_id, int vf);
 
 int port_init(uint8_t port, struct rte_mempool *mbuf_pool, int hw_strip_crc, sriov_port_t *pf );
 void tx_set_loopback(portid_t port_id, u_int8_t on);
@@ -407,7 +418,8 @@ int cmp_vfs (const void * a, const void * b);
 void disable_default_pool(portid_t port_id);
 
 void lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
-void vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
+//void ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
+//void bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
 void restore_vf_setings(uint8_t port_id, int vf);
 
 // callback validation support
@@ -424,6 +436,9 @@ int vfd_update_nic( parms_t* parms, sriov_conf_t* conf );
 int vfd_init_fifo( parms_t* parms );
 int is_valid_mac_str( char* mac );
 char*  gen_stats( sriov_conf_t* conf, int pf_only, int pf );
+int get_nic_type(portid_t port_id);
+int get_max_qpp( uint32_t port_id );
+int get_num_vfs( uint32_t port_id );
 
 //------- queue support -------------------------
 void set_pfrx_drop(portid_t port_id, int state );

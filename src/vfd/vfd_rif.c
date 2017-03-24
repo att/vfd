@@ -512,7 +512,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	
 			for( j = i+1; j < vfc->nvlans; j++ ) {
 				if( vfc->vlans[i] == vfc->vlans[j] ) {					// dup check
-					snprintf( mbuf, sizeof( mbuf ), "dupliate vlan in list: %d", vfc->vlans[i] );
+					snprintf( mbuf, sizeof( mbuf ), "duplicate vlan in list: %d", vfc->vlans[i] );
 					bleat_printf( 1, "vf not added: %s", mbuf );
 					if( reason ) {
 						*reason = strdup( mbuf );
@@ -622,7 +622,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 
 	vf->allow_untagged = 0;					// for now these cannot be set by the config file data
 	vf->vlan_anti_spoof = 1;
-	vf->mac_anti_spoof = 1;
+	vf->mac_anti_spoof = vfc->antispoof_mac;
 
 	vf->rate = vfc->rate;
 	

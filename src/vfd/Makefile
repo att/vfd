@@ -2,7 +2,7 @@
 #
 # Mnemonic:	Makefile
 # Abstract:	Builds vfd and related components
-#			CAUTION: this imports dpdk make things and behavour is thus somewhat
+#			CAUTION: this imports dpdk make things and behaviour is thus somewhat
 #					non-standard/unpredictable at times.
 # Author:	Alex Zelezniak
 # Date:		February 2016
@@ -41,7 +41,7 @@ VFD_VERSION = $(shell junk=$$( (git log -n 1 2>/dev/null || echo Commit non-git-
 
 # all source are stored in SRCS-y	(again, for the dpdk mk file)
 #SRCS-y := main.c sriov.c /usr/local/lib/libconfig.a
-SRCS-y := main.c sriov.c qos.c vfd_rif.c vfd_dcb.c $(libvfd) $(libjsmn)
+SRCS-y := main.c sriov.c qos.c vfd_rif.c vfd_dcb.c vfd_i40e.c vfd_ixgbe.c vfd_bnxt.c $(libvfd) $(libjsmn)
 
 CFLAGS += $(WERROR_FLAGS) -I $(PWD)/../lib/ -I $(RTE_SDK)
 #-lconfig
@@ -54,8 +54,11 @@ endif
 
 EXTRA_CFLAGS += -O3 -g -Wfatal-errors -DVFD_VERSION='"$(VFD_VERSION)"'
 
-include $(RTE_SDK)/mk/rte.extapp.mk
+ifneq ($(BNXT_SUPPORT),)
+EXTRA_CFLAGS += -DBNXT_SUPPORT
+endif
 
+include $(RTE_SDK)/mk/rte.extapp.mk
 
 
 clean: 
