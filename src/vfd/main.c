@@ -52,6 +52,7 @@
 							on constantly causes packet loss on the NIC.  Change the hardware CRC strip
 							setting to true. Add ability to turn off hardware crc stripping via the main
 							parm file.
+				23 Feb 2017 - Allow multiple VLAN IDs with strip == true.
 */
 
 
@@ -337,6 +338,20 @@ int valid_vlan( int port, int vfid, int vlan ) {
 	}
 
 	bleat_printf( 1, "valid_vlan: vlan not valid for port/vfid %d/%d: %d", port, vfid, vlan );
+	return 0;
+}
+
+/*
+	Looks up the loopback flag for the indicated port and returns 1 if it is set; 0 
+	otherwise.
+*/
+int suss_loopback( int port ) {
+	struct sriov_port_s *p;
+
+	if( (p = suss_port( port )) != NULL ) {
+		return !!(p->flags & PF_LOOPBACK);
+	}
+
 	return 0;
 }
 
@@ -628,11 +643,16 @@ cmp_vfs (const void * a, const void * b)
 }
 
 /*
-	Set up the insert and strip charastics on the NIC. The interface should ensure that
-	the right parameter combinations are set and reject an add request if not, but
-	we are a bit parinoid and will help to enforce things here too.  If one VLAN is in
-	the list, then we allow strip_stag to control what we do. If multiple VLANs are in
-	the list, then we don't strip nor insert.
+	2017/03/23 - We now allow strip/insert when there are multiple VLAN IDs:
+		If strip == true and one ID is supplied, that ID will stripped on Rx and 
+		inserted on Tx.
+
+		If strip == true and more than one ID supplied, the outer (s) tag will be
+		stripped on Rx, and the ID from the packet descriptor will be inserted on Tx.
+	
+		IF strip == false, no stripping will take place, and insertion will be based
+		on the packet descriptor if it exists (this is default behavour when insert
+		setting is clear).
 
 	Returns 0 on failure; 1 on success.
 */
@@ -654,9 +674,9 @@ static int vfd_set_ins_strip( struct sriov_port_s *port, struct vf_s *vf ) {
 			tx_vlan_insert_set_on_vf( port->rte_port_number, vf->num, 0 );					// no strip, so no insert
 		}
 	} else {
-		bleat_printf( 2, "%s vf: %d vlan list contains %d entries; strip is on/insert on using tx descriptor", port->name, vf->num, vf->num_vlans );
-		rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, 1 );					// if more than one vlan in the list force strip to be on
-		tx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, 0 );					// and set insert to id 0 which make use TX descriptor value to insert
+		bleat_printf( 2, "%s vf: %d vlan list contains %d entries; strip set to %d; insert turned off", port->name, vf->num, vf->num_vlans, vf->strip_stag );
+		rx_vlan_strip_set_on_vf( port->rte_port_number, vf->num, vf->strip_stag );		// strip is variable
+		tx_vlan_insert_set_on_vf( port->rte_port_number, vf->num, 0 );					// but insert must always be clear so that packet descriptor is used
 	}
 
 	return 1;
@@ -1293,10 +1313,9 @@ main(int argc, char **argv)
 				}
 
 				if( g_parms->rflags & RF_ENABLE_QOS ) {
-					//state = dcb_port_init(portid, mbuf_pool);
 					state = dcb_port_init( &running_config->ports[pfidx], mbuf_pool );
 				} else {
-					state = port_init(portid, mbuf_pool, g_parms->pciids[portid].hw_strip_crc );
+					state = port_init(portid, mbuf_pool, g_parms->pciids[portid].hw_strip_crc, &running_config->ports[pfidx] );
 				}
 
 				if( state != 0 ) {

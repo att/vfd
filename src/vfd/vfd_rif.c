@@ -11,6 +11,8 @@
 				06 Jan 2017 : Incorporate DJ's fix for link mode.
 				30 Jan 2017 : Fix vfid check to detect pars error.
 				14 Feb 2017 : Correct bug in del range check on vf number.
+				21 Feb 2017 : Prevent empty vlan id list from being accepted.
+				23 Mar 2017 : Allow multiple VLAN IDs when strip == true.
 */
 
 
@@ -460,9 +462,23 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		return 0;
 	}
 
+	/*
+	We now allow multiple VLAN IDs when stripping.  Strip is set (1) and insert is cleared (0) which 
+	causes strip on Rx and the tag indicated in the packet descriptor to be inserted on Tx.
 
 	if( vfc->strip_stag  &&  vfc->nvlans > 1 ) {		// one vlan is allowed when stripping
 		snprintf( mbuf, sizeof( mbuf ), "conflicting options: strip_stag may not be supplied with a list of vlan ids" );
+		bleat_printf( 1, "vf not added: %s", mbuf );
+		if( reason ) {
+			*reason = strdup( mbuf );
+		}
+		free_config( vfc );
+		return 0;
+	}
+	*/
+
+	if( vfc->nvlans <= 0 ) {							// must have at least one VLAN defined or bad things happen on the NIC
+		snprintf( mbuf, sizeof( mbuf ), "vlan id list may not be empty" );
 		bleat_printf( 1, "vf not added: %s", mbuf );
 		if( reason ) {
 			*reason = strdup( mbuf );

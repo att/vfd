@@ -190,7 +190,7 @@ extern parms_t* read_parms( char* fname ) {
 		}
 
 		if( jw_missing( jblob, "default_mtu" ) ) {			// could be an old install using deprecated mtu, so look for that and default if neither is there
-			def_mtu = jw_missing( jblob, "mtu" ) ? 9000 : (int) jw_value( jblob, "mtu" );
+			def_mtu = jw_missing( jblob, "mtu" ) ? 9420 : (int) jw_value( jblob, "mtu" );
 		} else {
  		 	def_mtu = (int) jw_value( jblob, "default_mtu" );
 		}
@@ -337,6 +337,10 @@ extern parms_t* read_parms( char* fname ) {
 								}
 							}
 						}
+					}
+
+					if(  parms->pciids[i].mtu > 9420 ) {
+						 parms->pciids[i].mtu = 9420;		// niantic has issues with packets > 9.5K when loopback is enabled, so cap here
 					}
 				}
 			} else {

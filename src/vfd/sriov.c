@@ -26,8 +26,9 @@
 				11 Feb 2017 - Changes to prevent packet loss which was occuring when the drop
 					enable bit was set for VF queues. Fixed alignment on show output to handle
 					wider fields.
-				
 				17 Feb 2017 - Changes to accommodate support of i40e and bnxt NICs
+				21 Mar 2017 - Ensure that looback is set on a port when reset/negotiate callbacks
+					are dirven.
 
 	useful doc:
 				 http://www.intel.com/content/dam/doc/design-guide/82599-sr-iov-driver-companion-guide.pdf
@@ -1207,13 +1208,16 @@ dump_all_vlans(portid_t port_id)
 	If hw_strip_crc is false, the default will be overridden.
 */
 int
-port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_pool, int hw_strip_crc )
+port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_pool, int hw_strip_crc, sriov_port_t *pf )
 {
 	struct rte_eth_conf port_conf = port_conf_default;
 	const uint16_t rx_rings = 1;
 	const uint16_t tx_rings = 1;
 	int retval;
 	uint16_t q;
+
+	port_conf.rxmode.max_rx_pkt_len = pf->mtu;
+	port_conf.rxmode.jumbo_frame = pf->mtu > 1500;
 
 	if (port >= rte_eth_dev_count()) {
 		bleat_printf( 0, "CRI: abort: port >= rte_eth_dev_count");
@@ -1335,8 +1339,6 @@ lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param)
   // notify every VF about link status change
   ping_vfs(port_id, -1);
 }
-
-
 
 
 void
