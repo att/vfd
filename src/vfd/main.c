@@ -53,6 +53,8 @@
 							setting to true. Add ability to turn off hardware crc stripping via the main
 							parm file.
 				23 Feb 2017 - Allow multiple VLAN IDs with strip == true.
+				24 Feb 2017 - Corrected bug causing signal triggered termination when running attached
+							to the tty and the window is resized.
 */
 
 
@@ -917,7 +919,6 @@ static void sig_int( int sig ) {
 	if( terminated ) {					// ignore concurrent signals
 		return;
 	}
-	terminated = 1;
 
 	switch( sig ) {
 		case SIGABRT:
@@ -925,11 +926,19 @@ static void sig_int( int sig ) {
 		case SIGSEGV:
 				bleat_printf( 0, "signal caught (aborting): %d", sig );
 				close_ports();				// must attempt to do this else we potentially crash the machine
-				abort( );
+				abort( );					// to get core; not safe to just set term flag and end normally
+				break;
+
+		case SIGUSR1:						// for these we just ignore and go on
+		case SIGUSR2:
+		case SIGALRM:
+				bleat_printf( 0, "signal caught (ignored): %d", sig );
 				break;
 
 		default:
+				terminated = 1;
 				bleat_printf( 0, "signal caught (terminating): %d", sig );
+				break;
 	}
 
 	return;
@@ -953,7 +962,7 @@ static void set_signals( void ) {
 	struct sigaction sa;
 	int	sig_list[] = { SIGQUIT, SIGILL, SIGABRT, SIGFPE, SIGSEGV, SIGPIPE,				// list of signals we trap
        				SIGALRM, SIGTERM, SIGUSR1 , SIGUSR2, SIGBUS, SIGPROF, SIGSYS,
-					SIGTRAP, SIGURG, SIGVTALRM, SIGXCPU, SIGXFSZ, SIGIO, SIGWINCH };
+					SIGTRAP, SIGURG, SIGVTALRM, SIGXCPU, SIGXFSZ, SIGIO };
 
 	int i;
 	int nele;		// number of elements in the list
