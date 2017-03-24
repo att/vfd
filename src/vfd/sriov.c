@@ -355,6 +355,10 @@ tx_set_loopback(portid_t port_id, u_int8_t on)
 	of the port/vf pair.
 */
 int get_split_ctlreg( portid_t port_id, uint16_t vf_id ) {
+#ifdef BNXT_SUPPORT
+	bleat_printf( 0, "NOT reading split ctlreg on port=%d vf=%d", port_id, vf_id );
+	return 0;
+#else
 	uint32_t reg_off = 0x01014; 	// split receive control regs (pg598)
 	int queue;						// the first queue for the vf (TODO: expand this to accept a queue 0-max_qpp)
 
@@ -367,6 +371,7 @@ int get_split_ctlreg( portid_t port_id, uint16_t vf_id ) {
 	reg_off += 0x40 * queue;		// step to the right spot for the given queue
 
 	return (int) port_pci_reg_read( port_id, reg_off );
+#endif
 }
 
 /*
@@ -377,7 +382,10 @@ int get_split_ctlreg( portid_t port_id, uint16_t vf_id ) {
 	for the queue if it is set.
 */
 void set_split_erop( portid_t port_id, uint16_t vf_id, int state ) {
-
+#ifdef BNXT_SUPPORT
+	bleat_printf( 0, "NOT setting split receive drop on port=%d vf=%d to on/off=%d", port_id, vf_id, state );
+	return;
+#else
 	uint32_t reg_off = 0x01014; 							// split receive control regs (pg598)
 	uint32_t reg_value;
 	uint32_t qpvf;					// number of queues per vf
@@ -404,6 +412,7 @@ void set_split_erop( portid_t port_id, uint16_t vf_id, int state ) {
 		port_pci_reg_write( port_id, reg_off, reg_value );
 		reg_off += 0x40;
 	}
+#endif
 }
 
 /*
@@ -438,6 +447,12 @@ static void set_rx_drop(portid_t port_id, uint16_t vf_id, int state )
 */
 extern void set_pfrx_drop(portid_t port_id, int state )
 {
+#ifdef BNXT_SUPPORT
+	//Dummy reading to avoid compilation error.
+	get_num_vfs( port_id );	// PF queue starts just past last possible vf
+	bleat_printf( 0, "NOT setting pfrx_drop on port=%d state=%d", port_id, !!state );
+	return;
+#else
 	uint16_t qstart;			// point where the queue starts (1 past the last VF)
 	int          i;
 	uint32_t reg_off;
@@ -463,6 +478,7 @@ extern void set_pfrx_drop(portid_t port_id, int state )
 		reg_value = IXGBE_QDE_WRITE | (i << IXGBE_QDE_IDX_SHIFT) | (!!state);
 		port_pci_reg_write( port_id, reg_off, reg_value );
 	}
+#endif
 }
 
 
@@ -478,9 +494,12 @@ extern void set_pfrx_drop(portid_t port_id, int state )
 */
 void set_queue_drop( portid_t port_id, int state ) {
 	int		result = 0;
-
 	
 	bleat_printf( 0, "WARN: something is calling set_queue drop which may not be expected\n" );
+#ifdef BNXT_SUPPORT
+	bleat_printf( 0, "NOT setting queue drop for port %d on all queues to: on/off=%d", port_id, !!state );
+	return;
+#endif
 	bleat_printf( 2, "setting queue drop for port %d on all queues to: on/off=%d", port_id, !!state );
 #ifdef BNXT_SUPPORT
 	if (strcmp(rte_eth_devices[port_id].driver->pci_drv.driver.name, "net_bnxt") == 0)
@@ -515,20 +534,22 @@ void set_queue_drop( portid_t port_id, int state ) {
 	Check to see if the NIC tx/rx queues are enabled for the pf/vf pair.
 	Returns 1 if the queues are enabled.
 */
+
 int
 is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter )
 {
-	int queue;						// queue to set (0-max-queues)
-	uint32_t reg_off;				// control register address
-	uint32_t ctrl;					// value read from nic register
-	uint32_t queues_per_pool = 8;	// maximum number of queues that could be assigned to a pool (based on total VFs configured)
-
+	uint32_t reg_off = 0;				// control register address
+	uint32_t ctrl = 0;					// value read from nic register
 	struct rte_eth_dev *pf_dev;
 	struct rte_eth_dev_info dev_info;
 
 	rte_eth_dev_info_get( port_id, &dev_info );
  	pf_dev = &rte_eth_devices[port_id];
-
+#ifdef BNXT_SUPPORT
+	return 0;	//rx_on_g[vf_id];
+#else
+	int queue;						// queue to set (0-max-queues)
+	uint32_t queues_per_pool = 8;	// maximum number of queues that could be assigned to a pool (based on total VFs configured)
 	reg_off = 0x01028;							// default to 'low' range (receive descriptor control reg (pg527/597))
 	queues_per_pool = get_max_qpp( port_id );	// set the max possible queues per pool; controls layout at offset
 	queue = vf_id * queues_per_pool;			// compute the offset which is based on the max/pool
@@ -550,15 +571,16 @@ is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter )
 	if( ctrl & 0x2000000) {
   		bleat_printf( 3, "first queue active: offset=0x%08X, port=%d vfid_id=%d, q=%d ctrl=0x%08X)", reg_off, port_id, vf_id, queue, ctrl);
 		return 1;
-	} else {
-		if( mcounter != NULL ) {
-			if( (*mcounter % 100 ) == 0 ) {
-  				bleat_printf( 4, "is_queue_en: still pending: first queue not active: bar=0x%08X, port=%d vfid_id=%d, ctrl=0x%08x q/pool=%d", reg_off, port_id, vf_id, ctrl, (int) RTE_ETH_DEV_SRIOV(pf_dev).nb_q_per_pool);
-			}
-			(*mcounter)++;
-		}
-		return 0;
 	}
+#endif
+
+	if( mcounter != NULL ) {
+		if( (*mcounter % 100 ) == 0 ) {
+  			bleat_printf( 4, "is_queue_en: still pending: first queue not active: bar=0x%08X, port=%d vfid_id=%d, ctrl=0x%08x q/pool=%d", reg_off, port_id, vf_id, ctrl, (int) RTE_ETH_DEV_SRIOV(pf_dev).nb_q_per_pool);
+		}
+		(*mcounter)++;
+	}
+	return 0;
 }
 
 /*
@@ -569,6 +591,10 @@ is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter )
 void
 disable_default_pool(portid_t port_id)
 {
+#ifdef BNXT_SUPPORT
+	bleat_printf( 0, "NOT disabling default pool on port=%d\n", port_id);
+	return;
+#endif
 	uint32_t ctrl = port_pci_reg_read(port_id, IXGBE_VT_CTL);
 	ctrl |= IXGBE_VT_CTL_DIS_DEFPL;
 	bleat_printf( 3, "disabling default pool bar=0x%08X, port=%d ctrl=0x%08x ", IXGBE_VT_CTL, port_id, ctrl);
@@ -736,7 +762,11 @@ nic_stats_display(uint8_t port_id, char * buff, int bsize)
 	rte_eth_link_get_nowait(port_id, &link);
 	rte_eth_stats_get(port_id, &stats);
 
+#ifdef BNXT_SUPPORT
+	spoffed[port_id] = 0;
+#else
 	spoffed[port_id] += port_pci_reg_read(port_id, 0x08780);
+#endif
 
 
 	char status[5];
@@ -804,6 +834,10 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 		tx_pkts = stats.opackets;
 		tx_octets = stats.obytes;
 		rx_octets = stats.ibytes;
+		//if(rx_pkts_g[vf] != rx_pkts) {
+			//rx_on_g[vf] = 1;
+			//rx_pkts_g[vf] = rx_pkts;
+		//}
 	}
 
 #else
@@ -820,8 +854,17 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 
 
 	char status[5];
+#ifdef BNXT_SUPPORT
+	struct rte_eth_link link;
+	rte_eth_link_get_nowait(port_id, &link);
+
+	//if (!rx_on_g[vf])
+	//In our case the VF link always follows PF link by default.
+	if(!link.link_status)
+#else
 	int mcounter = 0;
 	if(!is_rx_queue_on(port_id, vf, &mcounter ))
+#endif
 		stpcpy(status, "DOWN");
 	else
 	    stpcpy(status, "UP  ");
@@ -908,6 +951,12 @@ port_xstats_display(uint8_t port_id, char * buff, int bsize)
 int
 dump_vlvf_entry(portid_t port_id)
 {
+#ifdef BNXT_SUPPORT
+	do {
+		port_id = port_id;
+	} while (0);
+	return 0;
+#else
 	uint32_t res;
 	uint32_t ix;
 	uint32_t count = 0;
@@ -923,6 +972,7 @@ dump_vlvf_entry(portid_t port_id)
 	}
 
 	return count;
+#endif
 }
 
 
@@ -1102,6 +1152,7 @@ bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *
 		case HWRM_TUNNEL_DST_PORT_QUERY:
 		case HWRM_TUNNEL_DST_PORT_ALLOC:
 		case HWRM_TUNNEL_DST_PORT_FREE:
+		//case 0xc8:
 			p->retval = RTE_PMD_BNXT_MB_EVENT_PROCEED;
 			add_refresh = true;
 			break;
