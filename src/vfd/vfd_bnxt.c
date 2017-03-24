@@ -7,6 +7,11 @@
 int  
 vfd_bnxt_ping_vfs(uint8_t port_id, int16_t vf_id)
 {
+		/* TODO */
+	bleat_printf( 0, "vfd_bnxt_ping_vfs(): not implemented for port=%d, vf=%d, qstart=%d ", port_id, vf_id );
+	return 0;
+	
+	/*
 	int diag = 0;
 	int i;
 	int vf_num = get_num_vfs( port_id );
@@ -30,8 +35,8 @@ vfd_bnxt_ping_vfs(uint8_t port_id, int16_t vf_id)
 	} else {
 		bleat_printf( 3, "vfd_bnxt_ping_vfs successful: port_id=%d, vf_id=%d", port_id, vf_id);
 	}
-	
 	return diag;
+	*/
 }
 
 
@@ -52,14 +57,19 @@ vfd_bnxt_set_vf_mac_anti_spoof(uint8_t port_id, uint16_t vf_id, uint8_t on)
 int 
 vfd_bnxt_set_vf_vlan_anti_spoof(uint8_t port_id, uint16_t vf_id, uint8_t on)
 {
+	bleat_printf( 0, "vfd_bnxt_set_vf_vlan_anti_spoof(): not implemented for port=%d, vf=%d, qstart=%d, on/off=%d", port_id, vf_id, !!on );
+	return 0;
+	
+	/*
 	int diag = rte_pmd_bnxt_set_vf_vlan_anti_spoof(port_id, vf_id, on);
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_bnxt_set_vf_vlan_anti_spoof failed: port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, on, diag );
 	} else {
 		bleat_printf( 3, "rte_pmd_bnxt_set_vf_vlan_anti_spoof successful: port_id=%d, vf=%d on=%d", port_id, vf_id, on);
 	}
-	
+
 	return diag;	
+	*/
 }
 
 
@@ -80,6 +90,10 @@ vfd_bnxt_set_tx_loopback(uint8_t port_id, uint8_t on)
 int 
 vfd_bnxt_set_vf_unicast_promisc(uint8_t port_id, uint16_t vf_id, uint8_t on)
 {
+	bleat_printf( 0, "vfd_bnxt_set_vf_unicast_promisc(): not implemented for port=%d, vf=%d, qstart=%d, on/off=%d", port_id, vf_id, !!on );
+	return 0;
+	
+	/*
 	int diag = rte_pmd_bnxt_set_vf_unicast_promisc(port_id, vf_id, on);
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_bnxt_set_vf_unicast_promisc failed: port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, on, diag );
@@ -88,12 +102,17 @@ vfd_bnxt_set_vf_unicast_promisc(uint8_t port_id, uint16_t vf_id, uint8_t on)
 	}
 	
 	return diag;
+	*/
 }
 
 
 int 
 vfd_bnxt_set_vf_multicast_promisc(uint8_t port_id, uint16_t vf_id, uint8_t on)
 {
+	bleat_printf( 0, "vfd_bnxt_set_vf_multicast_promisc(): not implemented for port=%d, vf=%d, qstart=%d, on/off=%d", port_id, vf_id, !!on );
+	return 0;
+	
+	/*
 	int diag = rte_pmd_bnxt_set_vf_multicast_promisc(port_id, vf_id, on);
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_bnxt_set_vf_multicast_promisc failed: port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, on, diag );
@@ -102,6 +121,7 @@ vfd_bnxt_set_vf_multicast_promisc(uint8_t port_id, uint16_t vf_id, uint8_t on)
 	}
 	
 	return diag;
+	*/
 }
 
 
@@ -150,6 +170,10 @@ vfd_bnxt_set_vf_vlan_insert(uint8_t port_id, uint16_t vf_id, uint16_t vlan_id)
 int 
 vfd_bnxt_set_vf_broadcast(uint8_t port_id, uint16_t vf_id, uint8_t on)
 {
+	
+	bleat_printf( 0, "vfd_bnxt_set_vf_broadcast(): not implemented for port=%d, vf=%d, on/off=%d", port_id, vf_id, !!on );
+	return 0;
+	/*
 	int diag = rte_pmd_bnxt_set_vf_broadcast(port_id, vf_id, on);
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_bnxt_set_vf_broadcas failed: port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, on, diag );
@@ -158,12 +182,18 @@ vfd_bnxt_set_vf_broadcast(uint8_t port_id, uint16_t vf_id, uint8_t on)
 	}
 	
 	return diag;	
+	*/
 }
 
 
 int 
 vfd_bnxt_set_vf_vlan_tag(uint8_t port_id, uint16_t vf_id, uint8_t on)
 {
+
+	bleat_printf( 0, "vfd_bnxt_set_vf_vlan_tag(): not implemented for port=%d, vf=%d, on/off=%d", port_id, vf_id, !!on );
+	return 0;
+
+/*	
 	int diag = rte_pmd_bnxt_set_vf_vlan_tag(port_id, vf_id, on);
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_bnxt_set_vf_vlan_tag failed: port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, on, diag );
@@ -172,12 +202,16 @@ vfd_bnxt_set_vf_vlan_tag(uint8_t port_id, uint16_t vf_id, uint8_t on)
 	}
 	
 	return diag;		
+*/
 }
 
 
 int 
 vfd_bnxt_set_vf_vlan_filter(uint8_t port_id, uint16_t vlan_id, uint64_t vf_mask, uint8_t on)
 {
+	bleat_printf( 0, "vfd_bnxt_set_vf_vlan_filter(): not implemented for port=%d, vf=%d, vlan_id=%d, on/off=%d", port_id, vlan_id, vf_mask, !!on );
+	return 0;
+	/*
 	int diag = rte_pmd_bnxt_set_vf_vlan_filter(port_id, vlan_id, vf_mask, on);
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_bnxt_set_vf_vlan_filter failed: port_pi=%d, vlan_id=%d) failed rc=%d", port_id, vlan_id, diag );
@@ -186,12 +220,17 @@ vfd_bnxt_set_vf_vlan_filter(uint8_t port_id, uint16_t vlan_id, uint64_t vf_mask,
 	}
 	
 	return diag;		
+	*/
 }
 
 
 int 
-vfd_bnxt_get_vf_stats(uint8_t port_id, uint16_t vf_id, struct rte_eth_stats *stats)
+vfd_bnxt_get_vf_stats(uint8_t port_id, uint16_t vf_id, __attribute__((__unused__)) struct rte_eth_stats *stats)
 {
+	bleat_printf( 0, "vfd_bnxt_get_vf_stats(): not implemented for port=%d, vf=%d, vf_id=%d", port_id, vf_id );
+	return 0;
+	
+	/*
 	int diag = rte_pmd_bnxt_get_vf_stats(port_id, vf_id, stats);
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_bnxt_set_vf_stats failed: port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, diag );
@@ -199,13 +238,17 @@ vfd_bnxt_get_vf_stats(uint8_t port_id, uint16_t vf_id, struct rte_eth_stats *sta
 		bleat_printf( 3, "rte_pmd_bnxt_set_vf_stats successful: port_id=%d, vf=%d on=%d", port_id, vf_id);
 	}
 	
-	return diag;			
+	return diag;	
+*/	
 }
 
 
 int 
 vfd_bnxt_reset_vf_stats(uint8_t port_id, uint16_t vf_id)
 {
+	bleat_printf( 0, "vfd_bnxt_reset_vf_stats(): not implemented for port=%d, vf=%d, vf_id=%d", port_id, vf_id );
+	return 0;
+	/*
 	int diag = rte_pmd_bnxt_reset_vf_stats(port_id, vf_id);
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_bnxt_reset_vf_stats failed: port_pi=%d, vf_id=%d) failed rc=%d", port_id, vf_id, diag );
@@ -214,6 +257,7 @@ vfd_bnxt_reset_vf_stats(uint8_t port_id, uint16_t vf_id)
 	}
 	
 	return diag;
+	*/
 }
 
 
@@ -289,7 +333,7 @@ vfd_bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 }
 
 int 
-vfd_bntx_set_all_queues_drop_en(uint8_t port_id, uint8_t on)
+vfd_bnxt_set_all_queues_drop_en(uint8_t port_id, uint8_t on)
 {
 	bleat_printf( 3, "vfd_bntx_set_all_queues_drop_en not implemented: port_id=%d, on=%d", port_id, on);
 	/* TODO */

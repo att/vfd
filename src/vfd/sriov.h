@@ -65,23 +65,13 @@
 #include <rte_ethdev.h>
 #include <rte_string_fns.h>
 #include <rte_spinlock.h>
-#include <rte_pmd_ixgbe.h>
-#ifdef BNXT_SUPPORT
-#include <rte_pmd_bnxt.h>
-#endif
-
-//#include "../lib/dpdk/drivers/net/ixgbe/base/ixgbe_mbx.h"
-// requires -I $(RTE_SDK)
-#include <drivers/net/ixgbe/base/ixgbe_mbx.h>
-#ifdef BNXT_SUPPORT
-#include <drivers/net/bnxt/hsi_struct_def_dpdk.h>
-#endif
 
 #include <vfdlib.h>
 
+#include "vfd_bnxt.h"
 #include "vfd_ixgbe.h"
 #include "vfd_i40e.h"
-#include "vfd_bnxt.h"
+
 
 // ---------------------------------------------------------------------------------------
 #define SET_ON				1		// on/off parm constants
@@ -163,14 +153,18 @@ typedef uint16_t streamid_t;
 static const struct rte_eth_conf port_conf_default = {
 	.rxmode = {
 		.max_rx_pkt_len = 9000,
-		.jumbo_frame 		= 0,
+		.jumbo_frame 		= ENABLED,
 		.header_split   = 0, /**< Header Split disabled */
 		.hw_ip_checksum = 1, /**< IP checksum offload disabled */
 		.hw_vlan_filter = 0, /**< VLAN filtering disabled */
-		.hw_vlan_strip  = 0, /**< VLAN strip enabled. */
+		.hw_vlan_strip  = 1, /**< VLAN strip enabled. */
 		.hw_vlan_extend = 0, /**< Extended VLAN disabled. */
 		.hw_strip_crc   = 1, /**< CRC stripped by hardware */
 		},
+		.txmode = {
+			//.hw_vlan_insert_pvid = 1,
+      .mq_mode = ETH_MQ_TX_NONE,
+	},
 	.intr_conf = {
 		.lsc = ENABLED, 		// < lsc interrupt feature enabled
 	},
@@ -215,6 +209,7 @@ struct vf_s
   int     num_macs;
   int     vlans[MAX_VF_VLANS];
   char    macs[MAX_VF_MACS][18];
+	int     rx_q_ready;
 
 	uid_t	owner;					// user id which 'owns' the VF (owner of the config file from stat())
 	char*	start_cb;				// user commands driven just after initialisation and just before termination
@@ -252,7 +247,7 @@ typedef struct sriov_port_s
 	uint8_t		tc2bwg[MAX_TCS];		// maps each TC to a bandwidth group (set from config info)
 	
 	// will keep PCI First VF offset and Stride here
-	uint16_t vf_offfset;
+	uint16_t vf_offset;
 	uint16_t vf_stride;
 } sriov_port_t;
 

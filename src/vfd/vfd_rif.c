@@ -460,6 +460,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		return 0;
 	}
 
+
 	if( vfc->strip_stag  &&  vfc->nvlans > 1 ) {		// one vlan is allowed when stripping
 		snprintf( mbuf, sizeof( mbuf ), "conflicting options: strip_stag may not be supplied with a list of vlan ids" );
 		bleat_printf( 1, "vf not added: %s", mbuf );
@@ -495,7 +496,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	
 			for( j = i+1; j < vfc->nvlans; j++ ) {
 				if( vfc->vlans[i] == vfc->vlans[j] ) {					// dup check
-					snprintf( mbuf, sizeof( mbuf ), "dupliate vlan in list: %d", vfc->vlans[i] );
+					snprintf( mbuf, sizeof( mbuf ), "duplicate vlan in list: %d", vfc->vlans[i] );
 					bleat_printf( 1, "vf not added: %s", mbuf );
 					if( reason ) {
 						*reason = strdup( mbuf );

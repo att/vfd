@@ -654,9 +654,9 @@ static int vfd_set_ins_strip( struct sriov_port_s *port, struct vf_s *vf ) {
 			tx_vlan_insert_set_on_vf( port->rte_port_number, vf->num, 0 );					// no strip, so no insert
 		}
 	} else {
-		bleat_printf( 2, "%s vf: %d vlan list contains %d entries; strip/insert turned off", port->name, vf->num, vf->num_vlans );
-		rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, 0 );					// if more than one vlan in the list force strip to be off
-		tx_vlan_insert_set_on_vf( port->rte_port_number, vf->num, 0 );					// and set insert to id 0
+		bleat_printf( 2, "%s vf: %d vlan list contains %d entries; strip is on/insert on using tx descriptor", port->name, vf->num, vf->num_vlans );
+		rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, 1 );					// if more than one vlan in the list force strip to be on
+		tx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, 0 );					// and set insert to id 0 which make use TX descriptor value to insert
 	}
 
 	return 1;
@@ -714,10 +714,12 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 		if( port->last_updated == ADDED ) {								// updated since last call, reconfigure
 			if( parms->forreal ) {
 				bleat_printf( 1, "port updated: %s/%s",  port->name, port->pciid );
-				rte_eth_promiscuous_enable(port->rte_port_number);
-				rte_eth_allmulticast_enable(port->rte_port_number);
+				//AZrte_eth_promiscuous_enable(port->rte_port_number);
+				//AZrte_eth_allmulticast_enable(port->rte_port_number);
 	
-				ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
+				//AZret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
+				// set above for Niantic ?
+				ret = 0; //AZ
 				if (ret < 0)
 					bleat_printf( 0, "ERR: bad unicast hash table parameter, return code = %d", ret);
 	
@@ -764,6 +766,8 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 						vf->stop_cb = NULL;
 					}
 
+					//set_vf_rx_vlan(port->rte_port_number, 0, vf_mask, 0);		// remove vlan id 0 do we need it here for i40e?
+					
 					for(v = 0; v < vf->num_vlans; ++v) {
 						int vlan = vf->vlans[v];
 						bleat_printf( 2, "delete vlan: %s vf=%d vlan=%d", port->pciid, vf->num, vlan );
@@ -811,7 +815,8 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 				if( vf->num >= 0 ) {
 					if( parms->forreal ) {
 						bleat_printf( 2, "%s vf: %d set anti-spoof %d", port->name, vf->num, vf->vlan_anti_spoof );
-						set_vf_vlan_anti_spoofing(port->rte_port_number, vf->num, vf->vlan_anti_spoof);
+						//set_vf_vlan_anti_spoofing(port->rte_port_number, vf->num, vf->vlan_anti_spoof);
+						set_vf_vlan_anti_spoofing(port->rte_port_number, vf->num, 0);
 	
 						bleat_printf( 2, "%s vf: %d set mac-anti-spoof %d", port->name, vf->num, vf->mac_anti_spoof );
 						set_vf_mac_anti_spoofing(port->rte_port_number, vf->num, vf->mac_anti_spoof);
@@ -849,9 +854,9 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 			
 					// az says: figure out if we have to update it every time we change VLANS/MACS
 					// 			or once when update ports config
-					rte_eth_promiscuous_enable(port->rte_port_number);
-					rte_eth_allmulticast_enable(port->rte_port_number);
-					ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);			
+					//rte_eth_promiscuous_enable(port->rte_port_number);
+					//rte_eth_allmulticast_enable(port->rte_port_number);
+					//AZret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);			
 			
 					// don't accept untagged frames
 					set_vf_allow_untagged(port->rte_port_number, vf->num, !on);
@@ -995,6 +1000,16 @@ restore_vf_setings(uint8_t port_id, int vf_id) {
 		dump_sriov_config(running_config);
 	}
 
+	// looks like i40e will accept untagged packets by initialisation or after VF reset
+	// here we make sure if VF will be started without config we drop all the packets
+	bleat_printf( 2, "drop any packets for not configured VF: %d vf %d", port_id, vf_id );
+	set_vf_allow_untagged(port_id, vf_id, 0);
+	
+	// for i40e we have to set rx vlan filter to 0 to drop packets on not initialised VF
+	// if VF config exist proper VLAN id will be set later
+	if (get_nic_type(port_id) == VFD_FVL25) 
+		set_vf_rx_vlan(port_id, 0, VFN2MASK(vf_id), 1 );  // this will drop any VLAN for i40e
+	
 	bleat_printf( 3, "restore settings begins" );
 	for (i = 0; i < running_config->num_ports; ++i){
 		struct sriov_port_s *port = &running_config->ports[i];
@@ -1006,8 +1021,6 @@ restore_vf_setings(uint8_t port_id, int vf_id) {
 				struct vf_s *vf = &port->vfs[y];
 
 				if(vf_id == vf->num){
-					//uint32_t vf_mask = VFN2MASK(vf->num);
-
 					matched++;															// for bleat message at end
 					vf->last_updated = RESET;											// flag for update_nic()
 					if( vfd_update_nic( g_parms, running_config ) != 0 ) {				// now that dpdk is initialised run the list and 'activate' everything
@@ -1316,12 +1329,12 @@ main(int argc, char **argv)
 			rte_eal_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, 0x174);
 			
 			struct sriov_port_s *port = &running_config->ports[portid];
-			port->vf_offfset = pci_control_r & 0x0ffff;
-			port->vf_stride = pci_control_r >> 16;
+			port->vf_offset = pci_control_r & 0x0ffff;
+			port->vf_stride = pci_control_r >> 16;	
 	  }
+		
 		bleat_printf( 2, "port initialisation complete" );
 
-	
 		set_signals();												// register signal handlers
 
 		gettimeofday(&st.startTime, NULL);

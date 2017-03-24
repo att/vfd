@@ -1,11 +1,10 @@
 
-#ifndef VFD_IXGBE_H
-#define VFD_IXGBE_H
+#ifndef _VFD_IXGBE_H
+#define _VFD_IXGBE_H
 
 
 #include <rte_pmd_ixgbe.h>
-
-#include "sriov.h"
+#include <drivers/net/ixgbe/base/ixgbe_mbx.h>
 
 
 // ------------- prototypes ----------------------------------------------
@@ -20,7 +19,7 @@ int vfd_ixgbe_set_vf_mac_addr(uint8_t port, uint16_t vf_id, struct ether_addr *m
 int vfd_ixgbe_set_vf_vlan_stripq(uint8_t port, uint16_t vf, uint8_t on);
 int vfd_ixgbe_set_vf_vlan_insert(uint8_t port, uint16_t vf_id, uint16_t vlan_id);
 int vfd_ixgbe_set_vf_broadcast(uint8_t port, uint16_t vf_id, uint8_t on);
-int vfd_ixgbe_set_vf_vlan_tag(uint8_t port, uint16_t vf_id, uint8_t on);
+int vfd_ixgbe_allow_untagged(uint8_t port, uint16_t vf_id, uint8_t on);
 int vfd_ixgbe_set_vf_vlan_filter(uint8_t port, uint16_t vlan_id, uint64_t vf_mask, uint8_t on);
 int vfd_ixgbe_get_vf_stats(uint8_t port, uint16_t vf_id, struct rte_eth_stats *stats);
 int vfd_ixgbe_reset_vf_stats(uint8_t port, uint16_t vf_id);

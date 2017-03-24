@@ -2,11 +2,11 @@
 #ifndef VFD_BNXT_H
 #define VFD_BNXT_H
 
+#include "sriov.h"
+
 #ifdef BNXT_SUPPORT
 #include <drivers/net/bnxt/hsi_struct_def_dpdk.h>
 #endif
-
-#include "sriov.h"
 
 
 

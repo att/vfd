@@ -179,7 +179,6 @@ set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk)
 			break;	
 	}
 
-	//diag = rte_eth_set_vf_rate_limit(port_id, vf, rate, q_msk);
 	if (diag != 0) {
 		bleat_printf( 0, "set_vf_rate: unable to set value %u: (%d) %s", rate, diag, strerror( -diag ) );
 	}
@@ -371,16 +370,16 @@ set_vf_allow_untagged(portid_t port_id, uint16_t vf_id, int on)
 	uint dev_type = get_nic_type(port_id);
 	switch (dev_type) {
 		case VFD_NIANTIC:
-			ret = vfd_ixgbe_set_vf_vlan_tag(port_id, vf_id, on);
+			ret = vfd_ixgbe_allow_untagged(port_id, vf_id, on);
 			break;
 			
 		case VFD_FVL25:		
-			ret = vfd_i40e_set_vf_vlan_tag(port_id, vf_id, on);
+			ret = vfd_i40e_allow_untagged(port_id, vf_id, on);
 			break;
 
 		case VFD_BNXT:
 #ifdef BNXT_SUPPORT			
-			ret = vfd_bnxt_set_vf_vlan_tag(port_id, vf_id, on);
+			ret = vfd_bnxt_allow_untagged(port_id, vf_id, on);
 #endif
 			break;
 			
@@ -685,7 +684,7 @@ extern void set_pfrx_drop(portid_t port_id, int state )
 
 		case VFD_BNXT:
 #ifdef BNXT_SUPPORT
-			vfd_ibnxt_set_pfrx_drop( port_id, state ); 				// not implemented TODO
+			//vfd_bnxt_set_pfrx_drop( port_id, state ); 				// not implemented TODO
 #endif
 			break;
 			
@@ -906,8 +905,8 @@ process_refresh_queue(void)
 
 	while(1) {
 
-		//usleep(200000);
-		usleep(5000000);
+		usleep(200000);
+		//usleep(5000000);
 		struct rq_entry *refresh_item;
 
 		rte_spinlock_lock(&rte_refresh_q_lock);
@@ -1042,9 +1041,13 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 
 	uint32_t new_ari;
 	struct rte_pci_addr vf_pci_addr;
+	
+	bleat_printf( 5, "vf_stats_display: pf=%d, vf=%d", port_id, vf);
 
 	struct sriov_port_s *port = &running_config->ports[port_id];	
-	new_ari = pf_ari + port->vf_offfset + (vf * port->vf_stride);
+	new_ari = pf_ari + port->vf_offset + (vf * port->vf_stride);
+
+	bleat_printf( 5, "vf_stats_display: offset=%d, stride=%d", port->vf_offset, port->vf_stride);
 
 	vf_pci_addr.domain = 0;
 	vf_pci_addr.bus = (new_ari >> 8) & 0xff;
@@ -1088,7 +1091,7 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 
 	return 	snprintf(buff, bsize, "%2s %6d    %04X:%02X:%02X.%01X %6s %30"PRIu64" %15"PRIu64" %47"PRIu64" %15"PRIu64"\n",
 				"vf", vf, vf_pci_addr.domain, vf_pci_addr.bus, vf_pci_addr.devid, vf_pci_addr.function, status,
-				stats.ipackets, stats.ibytes, stats.ipackets, stats.obytes);
+				stats.ipackets, stats.ibytes, stats.opackets, stats.obytes);
 }
 
 
@@ -1239,7 +1242,7 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 			break;
 			
 		case VFD_FVL25:		
-			retval = rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vfd_ixgbe_vf_msb_event_callback, NULL);
+			retval = rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vfd_i40e_vf_msb_event_callback, NULL);
 			break;
 
 		case VFD_BNXT:
@@ -1284,7 +1287,16 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 		return 1;
 	}
 
-
+	/*
+	if (get_nic_type(port) == VFD_FVL25) {
+		int i;
+		for(i = 0; i < 32; i++) {		
+			rte_pmd_i40e_set_vf_vlan_filter(port, 0, VFN2MASK(i), 0); 
+			printf("%d\n", i);
+		}
+	}
+	*/
+	
 	// Display the port MAC address.
 	struct ether_addr addr;
 	rte_eth_macaddr_get(port, &addr);
