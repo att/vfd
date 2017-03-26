@@ -311,15 +311,15 @@ vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 			set_vf_allow_untagged(port_id, vf, 0);
 			
 			p->retval = RTE_PMD_I40E_MB_EVENT_PROCEED;				/* noop & ack */
-			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
-				type, port_id, vf, p->retval, "I40E_VIRTCHNL_OP_RESET_VF");
+			bleat_printf( 3, "Port: %d, VF: %d, OUT: %d, _T: %s ",
+				port_id, vf, p->retval, "I40E_VIRTCHNL_OP_RESET_VF");
 			break;
 
 		case I40E_VIRTCHNL_OP_ADD_ETHER_ADDRESS:
 			bleat_printf( 1, "setmac event received: port=%d", port_id );
 			p->retval = RTE_PMD_I40E_MB_EVENT_PROCEED;    						// do what's needed
-			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
-				type, port_id, vf, p->retval, "I40E_VIRTCHNL_OP_ADD_ETHER_ADDRESS");
+			bleat_printf( 3, "Port: %d, VF: %d, OUT: %d, _T: %s ",
+				port_id, vf, p->retval, "I40E_VIRTCHNL_OP_ADD_ETHER_ADDRESS");
 
 			new_mac = (struct ether_addr *) (&msgbuf[1]);
 
@@ -350,8 +350,8 @@ vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 		case I40E_VIRTCHNL_OP_DEL_ETHER_ADDRESS:
 			bleat_printf( 1, "setmac event received: port=%d", port_id );
 			p->retval = RTE_PMD_I40E_MB_EVENT_PROCEED;    						// do what's needed
-			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
-				type, port_id, vf, p->retval, "I40E_VIRTCHNL_OP_DEL_ETHER_ADDRESS");
+			bleat_printf( 3, "Port: %d, VF: %d, OUT: %d, _T: %s ",
+				port_id, vf, p->retval, "I40E_VIRTCHNL_OP_DEL_ETHER_ADDRESS");
 
 			new_mac = (struct ether_addr *) (&msgbuf[1]);
 
