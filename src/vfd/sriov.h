@@ -351,8 +351,8 @@ struct timeval startTime;
 struct timeval endTime;
 
 // will keep PCI First VF offset and Stride here
-uint16_t vf_offfset;
-uint16_t vf_stride;
+uint16_t vf_offfset[MAX_PORTS];
+uint16_t vf_stride[MAX_PORTS];
 
 uint32_t spoffed[MAX_PORTS]; 		// # of spoffed packets per PF
 

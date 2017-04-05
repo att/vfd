@@ -1264,6 +1264,7 @@ main(int argc, char **argv)
 			char pciid[25];
 			struct rte_eth_dev_info dev_info;
 			int	pfidx;							// port index in our array if we find it; -1 otherwise.
+			struct rte_eth_dev *pf_dev;
 
 			pfidx = -1;																// default to PF not in our config list
 			rte_eth_dev_info_get(portid, &dev_info);
@@ -1314,31 +1315,32 @@ main(int argc, char **argv)
 				port2config_map[portid] = -1;					// we must not allow an interrupt to map (we shouldn't get interrupts, but be parinoid)
 				bleat_printf( 0, "pf %d (%s) is NOT in vfd config file and was not initialised", portid, pciid );
 			}
-	  	}
-		bleat_printf( 2, "port initialisation complete" );
 
-		// read PCI config to get VM offset and stride
-		struct rte_eth_dev *pf_dev = &rte_eth_devices[0];
+			bleat_printf( 2, "port %d initialisation complete", portid );
 
-		// Find the SR-IOV extended capability structure
-		do {
-			rte_eal_pci_read_config(pf_dev->pci_dev, &pci_control_r, 32, cfg_offset);
-			bleat_printf(4, "Header: %08x (%04x)", pci_control_r, cfg_offset);
-			if ((pci_control_r & 0xffff) == 0x0010)
-				break;
-			cfg_offset = pci_control_r >> 20;
-			if (cfg_offset == 0)
-				break;
-		} while(1);
+			// read PCI config to get VM offset and stride
+			pf_dev = &rte_eth_devices[portid];
 
-		if (cfg_offset == 0) {
-			bleat_printf(0, "Unable to locate SR-IOV configuration");
-			rte_exit( EXIT_FAILURE, "initialisation failure, see log(s) in: %s\n", g_parms->log_dir );
-			exit ( 1 );
+			// Find the SR-IOV extended capability structure
+			do {
+				rte_eal_pci_read_config(pf_dev->pci_dev, &pci_control_r, 32, cfg_offset);
+				bleat_printf(4, "Header: %08x (%04x)", pci_control_r, cfg_offset);
+				if ((pci_control_r & 0xffff) == 0x0010)
+					break;
+				cfg_offset = (pci_control_r >> 20) & ~3;
+				if (cfg_offset == 0)
+					break;
+			} while(1);
+
+			if (cfg_offset == 0) {
+				bleat_printf(0, "Unable to locate SR-IOV configuration");
+				rte_exit( EXIT_FAILURE, "initialisation failure, see log(s) in: %s\n", g_parms->log_dir );
+				exit ( 1 );
+			}
+			rte_eal_pci_read_config(pf_dev->pci_dev, &pci_control_r, 32, cfg_offset + 20);
+			vf_offfset[portid] = pci_control_r & 0xffff;
+			vf_stride[portid] = pci_control_r >> 16;
 		}
-		rte_eal_pci_read_config(pf_dev->pci_dev, &pci_control_r, 32, cfg_offset + 20);
-		vf_offfset = pci_control_r & 0x0ffff;
-		vf_stride = pci_control_r >> 16;
 	
 		set_signals();												// register signal handlers
 
