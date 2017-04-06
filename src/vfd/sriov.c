@@ -28,6 +28,7 @@
 					wider fields.
 				21 Mar 2017 - Ensure that looback is set on a port when reset/negotiate callbacks
 					are dirven.
+				06 Apr 2017 - Add set flowcontrol function, add mtu/jumbo confirmation msg to log.
 
 	useful doc:
 				 http://www.intel.com/content/dam/doc/design-guide/82599-sr-iov-driver-companion-guide.pdf
@@ -899,12 +900,14 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 	uint16_t q;
 
 	port_conf.rxmode.max_rx_pkt_len = pf->mtu;
-	port_conf.rxmode.jumbo_frame = pf->mtu > 1500;
+	port_conf.rxmode.jumbo_frame = pf->mtu >= 1500;
 
 	if (port >= rte_eth_dev_count()) {
 		bleat_printf( 0, "CRI: abort: port >= rte_eth_dev_count");
 		return 1;
 	}
+
+	bleat_printf( 2, "port %d max_mtu=%d jumbo=%d", (int) port, (int) port_conf.rxmode.max_rx_pkt_len, (int) port_conf.rxmode.jumbo_frame );
 
 	if( !hw_strip_crc ) {
 		bleat_printf( 2, "hardware crc stripping is now disabled for port %d", port );
@@ -961,6 +964,46 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 	rte_eth_promiscuous_enable(port);
 
 	return 0;
+}
+
+/*
+	EXPERIMANTAL --
+	Set the flow control config when not in qos.
+
+	Force should be set when calling during initialisation and not running in qos mode.
+	It causes us to track that we are allowed to reset the flag if called without
+	force on renegotiate callbacks.
+*/
+extern void set_fcc( portid_t pf, int force ) {
+	static int allowed = 0;			// allows to safely call for reset
+
+	uint32_t val;
+	uint32_t cval = 0;				// current value read from nic
+	uint32_t offset;
+	uint32_t mask;
+
+	if( force ) {
+		allowed = 1;
+	} else {
+		if( ! allowed ) {
+			return;
+		}
+	}
+
+	offset = 0x03d00;		// FCCFG.TFCE=10b
+	mask = 0xffffffe7;
+	cval = port_pci_reg_read( pf, offset );
+	val = 1 << 3;												// 01b (bits 3,4)  flow control on when not in dcb (match ixgbe driver)
+	port_pci_reg_write( pf, offset, (cval & mask) | val );		// flip on our bits, and set
+	bleat_printf( 1, "tfce %08x & %08x | %08x = %08x", cval, mask, val, (cval & mask) | val );
+
+	// priority flow control enable should be set only when in dcb mode
+	offset = 0x04294;    	// MFLCN.RPFCE=1b RFCE=0b
+	val = 0x0a;				// match the ixgbe driver setting
+	mask =0xfffffff0;
+	cval = port_pci_reg_read( pf, offset );
+	port_pci_reg_write( pf, offset, (cval & mask) | val );		// flip on our bits, and set
+	bleat_printf( 1, "mflcn %08x & %08x | %08x = %08x", cval, mask, val, (cval & mask) | val );
 }
 
 
@@ -1083,6 +1126,7 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			}
 
 			restore_vf_setings(port_id, vf);
+			set_fcc( port_id, 0 );									// reset flow-control if allowed
 			tx_set_loopback( port_id, suss_loopback( port_id ) );		// enable loopback if set (could be reset if link was down)
 			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
 			break;
@@ -1101,6 +1145,7 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			p->retval =  RTE_PMD_IXGBE_MB_EVENT_PROCEED;   /* do what's needed */
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p->retval, "IXGBE_VF_API_NEGOTIATE");
 			
+			set_fcc( port_id, 0 );									// reset flow-control if allowed
 			restore_vf_setings(port_id, vf);							// these must happen now, do NOT queue it. if not immediate guest-guest may hang
 			tx_set_loopback( port_id, suss_loopback( port_id ) );		// enable loopback if set (could be reset if link goes down)
 			break;
