@@ -425,6 +425,11 @@ int vfd_init_fifo( parms_t* parms );
 int is_valid_mac_str( char* mac );
 char*  gen_stats( sriov_conf_t* conf, int pf_only, int pf );
 
+//-- testing --
+extern void set_fcc( portid_t pf, int force );
+extern void set_fd_off( portid_t port_id );
+extern void set_rx_pbsize( portid_t port_id );
+
 //------- queue support -------------------------
 void set_pfrx_drop(portid_t port_id, int state );
 

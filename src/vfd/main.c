@@ -861,6 +861,8 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 				gen_port_qshares( port );									// compute and save in the port struct
 				qos_set_credits( port->rte_port_number, port->mtu, port->vftc_qshares, TC_4PERQ_MODE );	// push out to nic
 				//qos_set_credits( port->rte_port_number, port->mtu, pp, TC_4PERQ_MODE );	// push out to nic
+			} else {
+				set_fcc( port->rte_port_number, !!(g_parms->rflags & RF_OVERRIDE_FC) );		// if override is set, then force our setting for fc onto nic
 			}
 
 			if( vf->num >= 0 ) {
@@ -1128,13 +1130,15 @@ main(int argc, char **argv)
 	int		enable_qos = 0;				// off by default enable_qos in config should be used to set on
 	int		state;
 	int 	j;
+	int		override_fc = 1;			// enable flow control override (-F turns off)
 
   const char * main_help =
 		"\n"
-		"Usage: vfd [-f] [-n] [-p parm-file] [-v level] [-q]\n"
+		"Usage: vfd [-f] [-F] [-n] [-p parm-file] [-v level] [-q]\n"
 		"Usage: vfd -?\n"
 		"  Options:\n"
 		"\t -f        keep in 'foreground'\n"
+		"\t -F        disable flow control override\n"
 		"\t -n        no-nic actions executed\n"
 		"\t -p <file> parmm file (/etc/vfd/vfd.cfg)\n"
 		"\t -q        enable dcb qos (use config file parm as general rule)\n"
@@ -1152,10 +1156,14 @@ main(int argc, char **argv)
 	log_file = (char *) malloc( sizeof( char ) * BUF_1K );
 
   // Parse command line options
-  while ( (opt = getopt(argc, argv, "?qfhnqv:p:s:")) != -1)
+  while ( (opt = getopt(argc, argv, "?qfFhnqv:p:s:")) != -1)
   {
     switch (opt)
     {
+		case 'F':
+			override_fc = 0;					// disable our override of flow control
+			break;
+			
 		case 'f':
 			run_asynch = 0;
 			break;
@@ -1181,6 +1189,7 @@ main(int argc, char **argv)
 		case 'h':
 		case '?':
 			printf( "\nVFd %s\n", version );
+			printf( "(17406)\n" );
 			printf("%s\n", main_help);
 			exit( 0 );
 			break;
@@ -1202,6 +1211,11 @@ main(int argc, char **argv)
 	if( enable_qos ) {							// command line flag overrides the config to force qos on
 		g_parms->rflags |= RF_ENABLE_QOS;
 	}
+
+	if( override_fc ) {
+		g_parms->rflags |= RF_OVERRIDE_FC;
+	}
+
 	g_parms->forreal = forreal;
 
 	if( (running_config = (sriov_conf_t *) malloc( sizeof( *running_config ) )) == NULL ) {
