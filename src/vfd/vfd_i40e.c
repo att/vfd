@@ -12,7 +12,7 @@ vfd_i40e_ping_vfs(uint8_t port_id, int16_t vf_id)
 	{
 		for (i = 0; i < vf_num; i++)
 		{
-			diag = rte_pmd_i40e_ping_vfs(port_id, i);
+			//diag = rte_pmd_i40e_ping_vfs(port_id, i);
 			if (diag < 0) 
 				bleat_printf( 0, "rte_pmd_i40e_ping_vfs failed: (port_pi=%d, vf_id=%d) failed rc=%d", port_id, i, diag );
 		}

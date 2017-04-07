@@ -22,7 +22,6 @@
 #include <signal.h>
 #include <errno.h>
 #include <getopt.h>
-#include <curses.h>
 
 //#include <pthread.h>
 
@@ -138,9 +137,6 @@ unsigned int itvl_idx = 0;
 
 #define ntohs_u(A) ((((u_short)(A) & 0xff00) >> 8) | \
 (((u_short)(A) & 0x00ff) << 8))
-
-
-WINDOW * mainwin;   // ncurses window
 
 
 int print_ips = 1;

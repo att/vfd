@@ -837,8 +837,8 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 				if( vf->num >= 0 ) {
 					if( parms->forreal ) {
 						bleat_printf( 2, "%s vf: %d set anti-spoof %d", port->name, vf->num, vf->vlan_anti_spoof );
-						//set_vf_vlan_anti_spoofing(port->rte_port_number, vf->num, vf->vlan_anti_spoof);
-						set_vf_vlan_anti_spoofing(port->rte_port_number, vf->num, 0);
+						set_vf_vlan_anti_spoofing(port->rte_port_number, vf->num, vf->vlan_anti_spoof);
+						//set_vf_vlan_anti_spoofing(port->rte_port_number, vf->num, 0);
 	
 						bleat_printf( 2, "%s vf: %d set mac-anti-spoof %d", port->name, vf->num, vf->mac_anti_spoof );
 						set_vf_mac_anti_spoofing(port->rte_port_number, vf->num, vf->mac_anti_spoof);
@@ -1257,11 +1257,11 @@ main(int argc, char **argv)
 		uint32_t pci_control_r;
 
 		bleat_printf( 1, "starting rte initialisation" );
-		rte_set_log_type(RTE_LOGTYPE_PMD && RTE_LOGTYPE_PORT, 0);
+		rte_openlog_stream(stderr);
+		rte_log_set_level(g_parms->dpdk_init_log_level, ~RTE_LOGTYPE_PMD && ~RTE_LOGTYPE_PORT);
+	
+		bleat_printf( 2, "log level = %d, log type = %d", rte_log_cur_msg_loglevel (), rte_log_cur_msg_logtype());
 		
-		bleat_printf( 2, "log level = %d, log type = %d", rte_get_log_level(), rte_log_cur_msg_logtype());
-		rte_set_log_level( g_parms->dpdk_init_log_level );
-
 		n_ports = rte_eth_dev_count();
 		if( n_ports > MAX_PORTS ) {
 			bleat_printf( 0, "WARN: hardware reports %d ports which exceeds max supported ports (%d); processing only %d ports", n_ports, MAX_PORTS, MAX_PORTS );
@@ -1289,7 +1289,14 @@ main(int argc, char **argv)
 		bleat_printf( 1, "refresh queue management thread created" );
 	
 		bleat_printf( 1, "creating memory pool" ); 									// Creates a new mempool in memory to hold the mbufs.
+		printf("socket_id = %d\n", rte_socket_id());
+		printf("NUM_MBUFS = %d\n", NUM_MBUFS);
+		printf("n_ports = %d\n", n_ports);
+		printf("MBUF_CACHE_SIZE = %d\n", MBUF_CACHE_SIZE);
+		printf("RTE_MBUF_DEFAULT_BUF_SIZE = %d\n", RTE_MBUF_DEFAULT_BUF_SIZE);
+		
 		mbuf_pool = rte_pktmbuf_pool_create("sriovctl", NUM_MBUFS * n_ports, MBUF_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
+		//mbuf_pool = rte_pktmbuf_pool_create("sriovctl", NUM_MBUFS * n_ports, MBUF_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
 		if (mbuf_pool == NULL) {
 			bleat_printf( 0, "CRI: abort: mbfuf pool creation failed" );
 			rte_exit(EXIT_FAILURE, "Cannot create mbuf pool\n");
@@ -1394,7 +1401,7 @@ main(int argc, char **argv)
 	bleat_printf( 1, "initialisation complete, setting bleat level to %d; starting to loop", g_parms->log_level );
 	bleat_set_lvl( g_parms->log_level );					// initialisation finished, set log level to running level
 	if( forreal ) {
-		rte_set_log_level( g_parms->dpdk_log_level );
+		rte_log_set_level(g_parms->dpdk_init_log_level, RTE_LOGTYPE_PMD && RTE_LOGTYPE_PORT);
 	}
 
 	free( parm_file );			// now it's safe to free the parm file

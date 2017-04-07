@@ -12,14 +12,14 @@ vfd_ixgbe_ping_vfs( __attribute__((__unused__)) uint8_t port_id,  __attribute__(
 	{
 		for (i = 0; i < vf_num; i++)
 		{
-			diag = rte_pmd_ixgbe_ping_vfs(port_id, i);
+			diag = rte_pmd_ixgbe_ping_vf(port_id, i);
 			if (diag < 0) 
 				bleat_printf( 0, "vfd_ixgbe_ping_vfs failed: (port_pi=%d, vf_id=%d) failed rc=%d", port_id, i, diag );
 		}
 	}
 	else  // only specified
 	{
-		diag = rte_pmd_ixgbe_ping_vfs(port_id, vf_id);
+		diag = rte_pmd_ixgbe_ping_vf(port_id, vf_id);
 	}
 	
 	if (diag < 0) {

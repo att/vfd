@@ -205,13 +205,16 @@ static inline int port_init(uint8_t port, struct rte_mempool *mbuf_pool)
 	uint16_t q;
   struct rte_eth_dev_info dev_info;
   
+		printf("------------------------------------------------------- 1 --------------------------------------------------------------\n");
+  
+	
 	if (port >= rte_eth_dev_count())
 	{
 			traceLog(TRACE_ERROR, "port >= rte_eth_dev_count\n");
    		exit(EXIT_FAILURE);
 	}
   
-  
+
   rte_eth_dev_info_get(port, &dev_info);
 
   
@@ -227,6 +230,7 @@ static inline int port_init(uint8_t port, struct rte_mempool *mbuf_pool)
    		exit(EXIT_FAILURE);
 	}
 	
+	printf("------------------------------------------------------- 3 --------------------------------------------------------------\n");
 
   rte_eth_dev_callback_register(port, RTE_ETH_EVENT_INTR_LSC, lsi_event_callback, NULL);
 
@@ -405,7 +409,7 @@ inline void gotpacket(struct rte_mbuf  *mb, int __attribute__((__unused__)) port
 
   printf("Driver Name: %s, Index %d, Pkts rx: %lu, ", dev_info.driver_name, dev_info.if_index, st.pcount);
   
-  printf("PCI: %04X:%02X:%02X.%01X, Max VF's: %d, Numa: %d\n\n", dev_info.pci_dev->addr.domain, dev_info.pci_dev->addr.bus , dev_info.pci_dev->addr.devid , dev_info.pci_dev->addr.function, dev_info.max_vfs, dev_info.pci_dev->numa_node);
+  printf("PCI: %04X:%02X:%02X.%01X, Max VF's: %d\n\n", dev_info.pci_dev->addr.domain, dev_info.pci_dev->addr.bus , dev_info.pci_dev->addr.devid , dev_info.pci_dev->addr.function, dev_info.max_vfs);
 
     
   //printf("Ether type: %04X\n", eth_type);
@@ -515,7 +519,6 @@ void print_port_stats(struct rte_eth_stats et_stats)
   printf( "tx bytes:\t" "%02" PRIx64 "\n", et_stats.obytes);
   printf( "rx error:\t" "%02" PRIx64 "\n", et_stats.ierrors);
   printf( "tx error:\t" "%02" PRIx64 "\n", et_stats.oerrors);
-  printf("rx mcast:\t" "%02" PRIx64 "\n", et_stats.imcasts);
 	printf("\n");
 }
 
@@ -656,11 +659,16 @@ int main(int argc, char **argv)
   gw_mac_l = strdup("00:00:5e:00:01:00");
   
 
-	int i;
+	//int i;
 
 //	for( i = 0; i < argc; i++)
 //		printf("ARGV[%d] = %s\n", i, argv[i]);
 
+	int ret = rte_eal_init(argc, argv);
+	if (ret < 0)
+		rte_exit(EXIT_FAILURE, "Invalid EAL arguments\n");
+	argc -= ret;
+	argv += ret;
 
   // Parse command line options
   while ( (opt = getopt(argc, argv, "htkSCiv:c:m:l:s:k:y:b:")) != -1)
@@ -732,13 +740,13 @@ int main(int argc, char **argv)
   }
 
 
-
+/*
   argc -= optind;
   argv += optind;
   optind = 0;
-
-
-	argc = 13;
+*/
+/*
+	argc = 14;
 	
 	char **cli_argv = (char**)malloc(argc * sizeof(char*));
 
@@ -768,6 +776,7 @@ int main(int argc, char **argv)
   sprintf(cli_argv[11], "--log-level");
   //sprintf(cli_argv[12], "%d", traceLevel);
   sprintf(cli_argv[12], "%d", 8);
+	sprintf(cli_argv[13], "%s", "--no-huge");
   
  // sprintf(cli_argv[13], "-w");
  // sprintf(cli_argv[14], "%s", pciid_r);
@@ -780,14 +789,19 @@ int main(int argc, char **argv)
 	//rte_set_log_level(RTE_LOG_WARNING);
   
 	//if(!debug) daemonize();
-    
+    */
 			
 	// init EAL 
-	int ret = rte_eal_init(argc, cli_argv);
+	//int ret = rte_eal_init(argc, cli_argv);
+	
+	/*
+	int ret = rte_eal_init(argc, argv);
 
 		
 	if (ret < 0)
 		rte_exit(EXIT_FAILURE, "Error with EAL initialization\n");
+	
+	*/
 	
 	rte_set_log_type(RTE_LOGTYPE_PMD && RTE_LOGTYPE_PORT, 0);
 	
@@ -808,42 +822,25 @@ int main(int argc, char **argv)
   
   nb_ports = 1;
  
-  const struct rte_memzone *mz;
-
-  mz = rte_memzone_reserve(IF_PORT_INFO, sizeof(struct ifrate_s), rte_socket_id(), 0);
-	if (mz == NULL)
-		rte_exit(EXIT_FAILURE, "Cannot reserve memory zone for port information\n");
-  memset(mz->addr, 0, sizeof(struct ifrate_s));
-  
-
-  ifrate_stats = mz->addr; 
-  
-  printf("%p\t\n", (void *)ifrate_stats);
-
-
-  
-
-  strcpy(ifrate_stats->port_stats[0].name, "mon1");
-  strcpy(ifrate_stats->port_stats[1].name, "mon2");
-
   
   static struct ether_addr  gw1;
  
   ether_aton_r(gw_mac_l, &gw1);
-  ifrate_stats->port_stats[0].gw_addr = gw1;
 
-  
-  ifrate_stats->transmit = transmit;
 
 	// Creates a new mempool in memory to hold the mbufs.
-	mbuf_pool = rte_pktmbuf_pool_create(pciid_l, NUM_MBUFS * nb_ports,
+	mbuf_pool = rte_pktmbuf_pool_create("ifrate", NUM_MBUFS * nb_ports,
                       MBUF_CACHE_SIZE,
                       0, 
                       RTE_MBUF_DEFAULT_BUF_SIZE,
                       rte_socket_id());
-
+	
+		   printf("------------------------------------------------------ 22 -------------------------------------------------------------------\n");
+			 
 	if (mbuf_pool == NULL)
 		rte_exit(EXIT_FAILURE, "Cannot create mbuf pool\n");
+	
+		   printf("------------------------------------------------------ 23 -------------------------------------------------------------------\n");
 
 	/* Initialize all ports. */
   u_int16_t portid;
@@ -852,6 +849,7 @@ int main(int argc, char **argv)
 			rte_exit(EXIT_FAILURE, "Cannot init port %"PRIu8 "\n", portid);
    
 
+	   printf("------------------------------------------------------ 2 -------------------------------------------------------------------\n");
    
    
   int port = 0; 
@@ -872,7 +870,7 @@ int main(int argc, char **argv)
 
   printf("Driver Name: %s, Index %d, Pkts rx: %lu, ", dev_info.driver_name, dev_info.if_index, st.pcount);
   
-  printf("PCI: %04X:%02X:%02X.%01X, Max VF's: %d, Numa: %d\n\n", dev_info.pci_dev->addr.domain, dev_info.pci_dev->addr.bus , dev_info.pci_dev->addr.devid , dev_info.pci_dev->addr.function, dev_info.max_vfs, dev_info.pci_dev->numa_node);
+  printf("PCI: %04X:%02X:%02X.%01X, Max VF's: %d\n\n", dev_info.pci_dev->addr.domain, dev_info.pci_dev->addr.bus , dev_info.pci_dev->addr.devid , dev_info.pci_dev->addr.function, dev_info.max_vfs);
 
   
 
