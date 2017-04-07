@@ -837,8 +837,7 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 				if( vf->num >= 0 ) {
 					if( parms->forreal ) {
 						bleat_printf( 2, "%s vf: %d set anti-spoof %d", port->name, vf->num, vf->vlan_anti_spoof );
-						//set_vf_vlan_anti_spoofing(port->rte_port_number, vf->num, vf->vlan_anti_spoof);
-						set_vf_vlan_anti_spoofing(port->rte_port_number, vf->num, 0);
+						set_vf_vlan_anti_spoofing(port->rte_port_number, vf->num, vf->vlan_anti_spoof);
 	
 						bleat_printf( 2, "%s vf: %d set mac-anti-spoof %d", port->name, vf->num, vf->mac_anti_spoof );
 						set_vf_mac_anti_spoofing(port->rte_port_number, vf->num, vf->mac_anti_spoof);
@@ -1257,10 +1256,12 @@ main(int argc, char **argv)
 		uint32_t pci_control_r;
 
 		bleat_printf( 1, "starting rte initialisation" );
-		rte_set_log_type(RTE_LOGTYPE_PMD && RTE_LOGTYPE_PORT, 0);
 		
-		bleat_printf( 2, "log level = %d, log type = %d", rte_get_log_level(), rte_log_cur_msg_logtype());
-		rte_set_log_level( g_parms->dpdk_init_log_level );
+		rte_openlog_stream(stderr);
+		rte_log_set_level(g_parms->dpdk_init_log_level, ~RTE_LOGTYPE_PMD && ~RTE_LOGTYPE_PORT);
+
+		bleat_printf( 2, "log level = %d, log type = %d", rte_log_cur_msg_loglevel (), rte_log_cur_msg_logtype());
+		
 
 		n_ports = rte_eth_dev_count();
 		if( n_ports > MAX_PORTS ) {
@@ -1394,7 +1395,7 @@ main(int argc, char **argv)
 	bleat_printf( 1, "initialisation complete, setting bleat level to %d; starting to loop", g_parms->log_level );
 	bleat_set_lvl( g_parms->log_level );					// initialisation finished, set log level to running level
 	if( forreal ) {
-		rte_set_log_level( g_parms->dpdk_log_level );
+		rte_log_set_level(g_parms->dpdk_init_log_level, RTE_LOGTYPE_PMD && RTE_LOGTYPE_PORT);
 	}
 
 	free( parm_file );			// now it's safe to free the parm file
