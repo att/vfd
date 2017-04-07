@@ -813,7 +813,7 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 	struct rte_pci_addr vf_pci_addr;
 
 
-	new_ari = pf_ari + vf_offfset + (vf * vf_stride);
+	new_ari = pf_ari + vf_offfset[port_id] + (vf * vf_stride[port_id]);
 
 	vf_pci_addr.domain = 0;
 	vf_pci_addr.bus = (new_ari >> 8) & 0xff;
