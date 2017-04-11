@@ -546,7 +546,11 @@ is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter )
 	rte_eth_dev_info_get( port_id, &dev_info );
  	pf_dev = &rte_eth_devices[port_id];
 #ifdef BNXT_SUPPORT
-	return 0;	//rx_on_g[vf_id];
+	int queues = rte_pmd_bnxt_get_vf_rx_status(port_id, vf_id);
+	if (queues > 0) {
+		bleat_printf( 3, "%d queues active: port=%d vfid_id=%d)", queues, port_id, vf_id);
+		return 1;
+	}
 #else
 	int queue;						// queue to set (0-max-queues)
 	uint32_t queues_per_pool = 8;	// maximum number of queues that could be assigned to a pool (based on total VFs configured)
@@ -855,12 +859,7 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 
 	char status[5];
 #ifdef BNXT_SUPPORT
-	struct rte_eth_link link;
-	rte_eth_link_get_nowait(port_id, &link);
-
-	//if (!rx_on_g[vf])
-	//In our case the VF link always follows PF link by default.
-	if(!link.link_status)
+	if (rte_pmd_bnxt_get_vf_rx_status(port_id, vf) <= 0)
 #else
 	int mcounter = 0;
 	if(!is_rx_queue_on(port_id, vf, &mcounter ))
@@ -1098,19 +1097,39 @@ bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *
 	uint16_t vf = p->vf_id;
 	uint16_t mbox_type = rte_le_to_cpu_16(req_base->req_type);
 	bool add_refresh = false;
+	bool restore = false;
 
 	/* check & process VF to PF mailbox message */
 	switch (mbox_type) {
-		/* Allow */
-		case HWRM_VER_GET:
+		/* Allow and trigger a refresh */
 		case HWRM_FUNC_VF_CFG:
 		case HWRM_FUNC_RESET:
+		case HWRM_VNIC_PLCMODES_CFG:
+		case HWRM_CFA_L2_SET_RX_MASK:
+		case HWRM_TUNNEL_DST_PORT_ALLOC:
+		case HWRM_TUNNEL_DST_PORT_FREE:
+		case HWRM_VNIC_CFG:
+		case HWRM_VNIC_TPA_CFG:
+		case HWRM_VNIC_RSS_CFG:
+		case HWRM_CFA_L2_FILTER_ALLOC:
+		case HWRM_CFA_L2_FILTER_FREE:
+		case HWRM_VNIC_ALLOC:
+		case HWRM_VNIC_FREE:
+		case HWRM_VNIC_RSS_COS_LB_CTX_ALLOC:
+		case HWRM_VNIC_RSS_COS_LB_CTX_FREE:
+		case HWRM_CFA_L2_FILTER_CFG:
+		case HWRM_CFA_TUNNEL_FILTER_ALLOC:
+		case HWRM_CFA_TUNNEL_FILTER_FREE:
+		case HWRM_TUNNEL_DST_PORT_QUERY:
+			add_refresh = true;
+		/* Allow */
+		case HWRM_VER_GET:
+		case HWRM_FUNC_DRV_RGTR:
+		case HWRM_FUNC_DRV_UNRGTR:
 		case HWRM_FUNC_QCAPS:
 		case HWRM_FUNC_QCFG:
 		case HWRM_FUNC_QSTATS:
 		case HWRM_FUNC_CLR_STATS:
-		case HWRM_FUNC_DRV_UNRGTR:
-		case HWRM_FUNC_DRV_RGTR:
 		case HWRM_FUNC_DRV_QVER:
 		case HWRM_PORT_PHY_QCFG:
 		case HWRM_PORT_MAC_QCFG:
@@ -1119,16 +1138,6 @@ bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *
 		case HWRM_QUEUE_PFCENABLE_QCFG:
 		case HWRM_QUEUE_PRI2COS_QCFG:
 		case HWRM_QUEUE_COS2BW_QCFG:
-		case HWRM_VNIC_ALLOC:
-		case HWRM_VNIC_FREE:
-		case HWRM_VNIC_CFG:
-		case HWRM_VNIC_QCFG:
-		case HWRM_VNIC_TPA_CFG:
-		case HWRM_VNIC_RSS_CFG:
-		case HWRM_VNIC_RSS_QCFG:
-		case HWRM_VNIC_PLCMODES_CFG:
-		case HWRM_VNIC_PLCMODES_QCFG:
-		case HWRM_VNIC_QCAPS:
 		case HWRM_RING_ALLOC:
 		case HWRM_RING_FREE:
 		case HWRM_RING_CMPL_RING_QAGGINT_PARAMS:
@@ -1136,25 +1145,15 @@ bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *
 		case HWRM_RING_RESET:
 		case HWRM_RING_GRP_ALLOC:
 		case HWRM_RING_GRP_FREE:
-		case HWRM_VNIC_RSS_COS_LB_CTX_ALLOC:
-		case HWRM_VNIC_RSS_COS_LB_CTX_FREE:
+		case HWRM_VNIC_QCFG:
+		case HWRM_VNIC_RSS_QCFG:
+		case HWRM_VNIC_PLCMODES_QCFG:
+		case HWRM_VNIC_QCAPS:
 		case HWRM_STAT_CTX_ALLOC:
 		case HWRM_STAT_CTX_FREE:
 		case HWRM_STAT_CTX_CLR_STATS:
-
-		case HWRM_CFA_L2_FILTER_ALLOC:
-		case HWRM_CFA_L2_FILTER_FREE:
-		case HWRM_CFA_L2_SET_RX_MASK:
-		case HWRM_CFA_L2_FILTER_CFG:
-
-		case HWRM_CFA_TUNNEL_FILTER_ALLOC:
-		case HWRM_CFA_TUNNEL_FILTER_FREE:
-		case HWRM_TUNNEL_DST_PORT_QUERY:
-		case HWRM_TUNNEL_DST_PORT_ALLOC:
-		case HWRM_TUNNEL_DST_PORT_FREE:
 		//case 0xc8:
 			p->retval = RTE_PMD_BNXT_MB_EVENT_PROCEED;
-			add_refresh = true;
 			break;
 
 		/* Disallowed */
@@ -1218,7 +1217,7 @@ bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *
 
 	if (add_refresh)
 		add_refresh_queue(port_id, vf);		// schedule a complete refresh when the queue goes hot
-	else
+	if (restore)
 		restore_vf_setings(port_id, vf);	// refresh all of our configuration back onto the NIC
 
 	bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %d",
