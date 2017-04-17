@@ -250,7 +250,7 @@ static struct sriov_port_s *suss_port( int portid ) {
 /*
 	Given a port and vfid, find the vf block and return a pointer to it.
 */
-static struct vf_s *suss_vf( int port, int vfid ) {
+struct vf_s *suss_vf( int port, int vfid ) {
 	struct sriov_port_s *p;
 	int		i;
 
