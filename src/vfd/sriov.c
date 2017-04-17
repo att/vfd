@@ -356,9 +356,11 @@ tx_set_loopback(portid_t port_id, u_int8_t on)
 */
 int get_split_ctlreg( portid_t port_id, uint16_t vf_id ) {
 #ifdef BNXT_SUPPORT
-	bleat_printf( 0, "NOT reading split ctlreg on port=%d vf=%d", port_id, vf_id );
-	return 0;
-#else
+	if (strcmp(rte_eth_devices[port_id].driver->pci_drv.driver.name, "net_bnxt") == 0) {
+		bleat_printf( 0, "NOT reading split ctlreg on port=%d vf=%d", port_id, vf_id );
+		return 0;
+	}
+#endif
 	uint32_t reg_off = 0x01014; 	// split receive control regs (pg598)
 	int queue;						// the first queue for the vf (TODO: expand this to accept a queue 0-max_qpp)
 
@@ -371,7 +373,6 @@ int get_split_ctlreg( portid_t port_id, uint16_t vf_id ) {
 	reg_off += 0x40 * queue;		// step to the right spot for the given queue
 
 	return (int) port_pci_reg_read( port_id, reg_off );
-#endif
 }
 
 /*
@@ -383,9 +384,11 @@ int get_split_ctlreg( portid_t port_id, uint16_t vf_id ) {
 */
 void set_split_erop( portid_t port_id, uint16_t vf_id, int state ) {
 #ifdef BNXT_SUPPORT
-	bleat_printf( 0, "NOT setting split receive drop on port=%d vf=%d to on/off=%d", port_id, vf_id, state );
-	return;
-#else
+	if (strcmp(rte_eth_devices[port_id].driver->pci_drv.driver.name, "net_bnxt") == 0) {
+		bleat_printf( 0, "NOT setting split receive drop on port=%d vf=%d to on/off=%d", port_id, vf_id, state );
+		return;
+	}
+#endif
 	uint32_t reg_off = 0x01014; 							// split receive control regs (pg598)
 	uint32_t reg_value;
 	uint32_t qpvf;					// number of queues per vf
@@ -412,7 +415,6 @@ void set_split_erop( portid_t port_id, uint16_t vf_id, int state ) {
 		port_pci_reg_write( port_id, reg_off, reg_value );
 		reg_off += 0x40;
 	}
-#endif
 }
 
 /*
@@ -448,11 +450,13 @@ static void set_rx_drop(portid_t port_id, uint16_t vf_id, int state )
 extern void set_pfrx_drop(portid_t port_id, int state )
 {
 #ifdef BNXT_SUPPORT
-	//Dummy reading to avoid compilation error.
-	get_num_vfs( port_id );	// PF queue starts just past last possible vf
-	bleat_printf( 0, "NOT setting pfrx_drop on port=%d state=%d", port_id, !!state );
-	return;
-#else
+	if (strcmp(rte_eth_devices[port_id].driver->pci_drv.driver.name, "net_bnxt") == 0) {
+		//Dummy reading to avoid compilation error.
+		get_num_vfs( port_id );	// PF queue starts just past last possible vf
+		bleat_printf( 0, "NOT setting pfrx_drop on port=%d state=%d", port_id, !!state );
+		return;
+	}
+#endif
 	uint16_t qstart;			// point where the queue starts (1 past the last VF)
 	int          i;
 	uint32_t reg_off;
@@ -478,7 +482,6 @@ extern void set_pfrx_drop(portid_t port_id, int state )
 		reg_value = IXGBE_QDE_WRITE | (i << IXGBE_QDE_IDX_SHIFT) | (!!state);
 		port_pci_reg_write( port_id, reg_off, reg_value );
 	}
-#endif
 }
 
 
@@ -497,8 +500,10 @@ void set_queue_drop( portid_t port_id, int state ) {
 	
 	bleat_printf( 0, "WARN: something is calling set_queue drop which may not be expected\n" );
 #ifdef BNXT_SUPPORT
-	bleat_printf( 0, "NOT setting queue drop for port %d on all queues to: on/off=%d", port_id, !!state );
-	return;
+	if (strcmp(rte_eth_devices[port_id].driver->pci_drv.driver.name, "net_bnxt") == 0) {
+		bleat_printf( 0, "NOT setting queue drop for port %d on all queues to: on/off=%d", port_id, !!state );
+		return;
+	}
 #endif
 	bleat_printf( 2, "setting queue drop for port %d on all queues to: on/off=%d", port_id, !!state );
 #ifdef BNXT_SUPPORT
@@ -546,37 +551,41 @@ is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter )
 	rte_eth_dev_info_get( port_id, &dev_info );
  	pf_dev = &rte_eth_devices[port_id];
 #ifdef BNXT_SUPPORT
-	int queues = rte_pmd_bnxt_get_vf_rx_status(port_id, vf_id);
-	if (queues > 0) {
-		bleat_printf( 3, "%d queues active: port=%d vfid_id=%d)", queues, port_id, vf_id);
-		return 1;
-	}
-#else
-	int queue;						// queue to set (0-max-queues)
-	uint32_t queues_per_pool = 8;	// maximum number of queues that could be assigned to a pool (based on total VFs configured)
-	reg_off = 0x01028;							// default to 'low' range (receive descriptor control reg (pg527/597))
-	queues_per_pool = get_max_qpp( port_id );	// set the max possible queues per pool; controls layout at offset
-	queue = vf_id * queues_per_pool;			// compute the offset which is based on the max/pool
-	if( queue > 127 ) {
-		bleat_printf( 2, "warn: can't check rx_queue_on q out of range: port=%d q=%d vfid_id=%d", port_id, queue, vf_id );
-		return 0;								// error -- vf is out of range for the number of queues/pool
-	} else {
-		if( queue > 63 ) {
-			reg_off = 0x0D028;					// must use the 'high' area
-			queue -= 64;						// this now becomes the offset into the dcb space
+	if (strcmp(rte_eth_devices[port_id].driver->pci_drv.driver.name, "net_bnxt") == 0) {
+		int queues = rte_pmd_bnxt_get_vf_rx_status(port_id, vf_id);
+		if (queues > 0) {
+			bleat_printf( 3, "%d queues active: port=%d vfid_id=%d)", queues, port_id, vf_id);
+			return 1;
 		}
 	}
-
-	reg_off += queue * 0x40;					// each block of info is x40 wide (per datasheet)
-
-	ctrl = port_pci_reg_read(port_id, reg_off);
-	bleat_printf( 5, "is_queue_en: offset=0x%08X, port=%d q=%d vfid_id=%d, ctrl=0x%08X)", reg_off, port_id, queue, vf_id, ctrl);
-
-	if( ctrl & 0x2000000) {
-  		bleat_printf( 3, "first queue active: offset=0x%08X, port=%d vfid_id=%d, q=%d ctrl=0x%08X)", reg_off, port_id, vf_id, queue, ctrl);
-		return 1;
-	}
+	else
 #endif
+	{
+		int queue;						// queue to set (0-max-queues)
+		uint32_t queues_per_pool = 8;	// maximum number of queues that could be assigned to a pool (based on total VFs configured)
+		reg_off = 0x01028;							// default to 'low' range (receive descriptor control reg (pg527/597))
+		queues_per_pool = get_max_qpp( port_id );	// set the max possible queues per pool; controls layout at offset
+		queue = vf_id * queues_per_pool;			// compute the offset which is based on the max/pool
+		if( queue > 127 ) {
+			bleat_printf( 2, "warn: can't check rx_queue_on q out of range: port=%d q=%d vfid_id=%d", port_id, queue, vf_id );
+			return 0;								// error -- vf is out of range for the number of queues/pool
+		} else {
+			if( queue > 63 ) {
+				reg_off = 0x0D028;					// must use the 'high' area
+				queue -= 64;						// this now becomes the offset into the dcb space
+			}
+		}
+
+		reg_off += queue * 0x40;					// each block of info is x40 wide (per datasheet)
+
+		ctrl = port_pci_reg_read(port_id, reg_off);
+		bleat_printf( 5, "is_queue_en: offset=0x%08X, port=%d q=%d vfid_id=%d, ctrl=0x%08X)", reg_off, port_id, queue, vf_id, ctrl);
+
+		if( ctrl & 0x2000000) {
+  			bleat_printf( 3, "first queue active: offset=0x%08X, port=%d vfid_id=%d, q=%d ctrl=0x%08X)", reg_off, port_id, vf_id, queue, ctrl);
+			return 1;
+		}
+	}
 
 	if( mcounter != NULL ) {
 		if( (*mcounter % 100 ) == 0 ) {
@@ -596,8 +605,10 @@ void
 disable_default_pool(portid_t port_id)
 {
 #ifdef BNXT_SUPPORT
-	bleat_printf( 0, "NOT disabling default pool on port=%d\n", port_id);
-	return;
+	if (strcmp(rte_eth_devices[port_id].driver->pci_drv.driver.name, "net_bnxt") == 0) {
+		bleat_printf( 0, "NOT disabling default pool on port=%d\n", port_id);
+		return;
+	}
 #endif
 	uint32_t ctrl = port_pci_reg_read(port_id, IXGBE_VT_CTL);
 	ctrl |= IXGBE_VT_CTL_DIS_DEFPL;
@@ -767,10 +778,13 @@ nic_stats_display(uint8_t port_id, char * buff, int bsize)
 	rte_eth_stats_get(port_id, &stats);
 
 #ifdef BNXT_SUPPORT
-	spoffed[port_id] = 0;
-#else
-	spoffed[port_id] += port_pci_reg_read(port_id, 0x08780);
+	if (strcmp(rte_eth_devices[port_id].driver->pci_drv.driver.name, "net_bnxt") == 0) {
+		if (rte_pmd_bnxt_get_tx_drop_count(port_id, &spoffed[port_id]))
+			spoffed[port_id] = UINT64_MAX;
+	}
+	else
 #endif
+		spoffed[port_id] += port_pci_reg_read(port_id, 0x08780);
 
 
 	char status[5];
@@ -780,7 +794,7 @@ nic_stats_display(uint8_t port_id, char * buff, int bsize)
 		stpcpy(status, "UP  ");
 
 		//" %6s %6"PRIu16" %6"PRIu16" %15"PRIu64" %15"PRIu64" %15"PRIu64" %15"PRIu64" %15"PRIu64" %15"PRIu64" %15"PRIu64" %15"PRIu32" %lld\n",
-	return snprintf( buff, bsize, " %6s  %6d %6d %15lld %15lld %15lld %15lld %15lld %15lld %15d %15lld\n",
+	return snprintf( buff, bsize, " %6s  %6d %6d %15lld %15lld %15lld %15lld %15lld %15lld %15d %15"PRIu64"\n",
 		status,
 		(int) link.link_speed,
 		(int) link.link_duplex,
@@ -791,7 +805,7 @@ nic_stats_display(uint8_t port_id, char * buff, int bsize)
 		(long long) stats.opackets,
 		(long long) stats.obytes,
 		(int) stats.oerrors,
-		(long long) spoffed[port_id]
+		spoffed[port_id]
 	);
 }
 
@@ -806,6 +820,13 @@ int
 vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsize)
 {
 	uint32_t vf;
+	uint32_t	rx_pkts = 0;
+	uint32_t	tx_pkts = 0;
+	uint64_t	rx_octets = 0;
+	uint64_t	tx_octets = 0;
+#ifdef BNXT_SUPPORT
+	bool is_bnxt = (strcmp(rte_eth_devices[port_id].driver->pci_drv.driver.name, "net_bnxt") == 0);
+#endif
 
 	if( ivf < 0 || ivf > 31 ) {
 		return -1;
@@ -825,52 +846,66 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 	vf_pci_addr.function = new_ari & 0x7;
 
 #ifdef BNXT_SUPPORT
-	struct rte_eth_stats stats;
-	uint32_t	rx_pkts = 0;
-	uint32_t	tx_pkts = 0;
-	uint64_t	rx_octets = 0;
-	uint64_t	tx_octets = 0;
-	int rc;
+	uint64_t	tx_errors = 0;
+	uint64_t	vf_spoffed = 0;
+	if (is_bnxt) {
+		struct rte_eth_stats stats;
 
-	rc = rte_pmd_bnxt_get_vf_stats(port_id, vf, &stats);
-	if (!rc) {
-		rx_pkts = stats.ipackets;
-		tx_pkts = stats.opackets;
-		tx_octets = stats.obytes;
-		rx_octets = stats.ibytes;
-		//if(rx_pkts_g[vf] != rx_pkts) {
-			//rx_on_g[vf] = 1;
-			//rx_pkts_g[vf] = rx_pkts;
-		//}
+		if (rte_pmd_bnxt_get_tx_drop_count(port_id, &vf_spoffed))
+			vf_spoffed = UINT64_MAX;
+		if (!rte_pmd_bnxt_get_vf_stats(port_id, vf, &stats)) {
+			rx_pkts = stats.ipackets;
+			tx_pkts = stats.opackets;
+			tx_octets = stats.obytes;
+			rx_octets = stats.ibytes;
+			tx_errors = stats.oerrors;
+			//if(rx_pkts_g[vf] != rx_pkts) {
+				//rx_on_g[vf] = 1;
+				//rx_pkts_g[vf] = rx_pkts;
+			//}
+		}
 	}
-
-#else
-	uint32_t	rx_pkts = port_pci_reg_read(port_id, IXGBE_PVFGPRC(vf));
-	uint64_t	rx_ol = port_pci_reg_read(port_id, IXGBE_PVFGORC_LSB(vf));
-	uint64_t	rx_oh = port_pci_reg_read(port_id, IXGBE_PVFGORC_MSB(vf));
-	uint64_t	rx_octets = (rx_oh << 32) |	rx_ol;		// 36 bit only counter
-
-	uint32_t	tx_pkts = port_pci_reg_read(port_id, IXGBE_PVFGPTC(vf));
-	uint64_t	tx_ol = port_pci_reg_read(port_id, IXGBE_PVFGOTC_LSB(vf));
-	uint64_t	tx_oh = port_pci_reg_read(port_id, IXGBE_PVFGOTC_MSB(vf));
-	uint64_t	tx_octets = (tx_oh << 32) |	tx_ol;		// 36 bit only counter
+	else
 #endif
+	{
+		rx_pkts = port_pci_reg_read(port_id, IXGBE_PVFGPRC(vf));
+		uint64_t	rx_ol = port_pci_reg_read(port_id, IXGBE_PVFGORC_LSB(vf));
+		uint64_t	rx_oh = port_pci_reg_read(port_id, IXGBE_PVFGORC_MSB(vf));
+		rx_octets = (rx_oh << 32) |	rx_ol;		// 36 bit only counter
 
+		tx_pkts = port_pci_reg_read(port_id, IXGBE_PVFGPTC(vf));
+		uint64_t	tx_ol = port_pci_reg_read(port_id, IXGBE_PVFGOTC_LSB(vf));
+		uint64_t	tx_oh = port_pci_reg_read(port_id, IXGBE_PVFGOTC_MSB(vf));
+		tx_octets = (tx_oh << 32) |	tx_ol;		// 36 bit only counter
+	}
 
 	char status[5];
 #ifdef BNXT_SUPPORT
-	if (rte_pmd_bnxt_get_vf_rx_status(port_id, vf) <= 0)
-#else
-	int mcounter = 0;
-	if(!is_rx_queue_on(port_id, vf, &mcounter ))
-#endif
-		stpcpy(status, "DOWN");
+	if (is_bnxt) {
+		if (rte_pmd_bnxt_get_vf_rx_status(port_id, vf) <= 0)
+	    		stpcpy(status, "UP  ");
+		else
+			stpcpy(status, "DOWN");
+	}
 	else
-	    stpcpy(status, "UP  ");
+#endif
+	{
+		int mcounter = 0;
+		if(!is_rx_queue_on(port_id, vf, &mcounter ))
+			stpcpy(status, "DOWN");
+		else
+			stpcpy(status, "UP  ");
+	}
 
+#ifdef BNXT_SUPPORT
+	return 	snprintf(buff, bsize, "%2s %6d    %04X:%02X:%02X.%01X %6s %30"PRIu32" %15"PRIu64" %47"PRIu32" %15"PRIu64" %15"PRIu64" %15"PRIu64"\n",
+				"vf", vf, vf_pci_addr.domain, vf_pci_addr.bus, vf_pci_addr.devid, vf_pci_addr.function, status,
+				rx_pkts, rx_octets, tx_pkts, tx_octets, tx_errors, vf_spoffed);
+#else
 	return 	snprintf(buff, bsize, "%2s %6d    %04X:%02X:%02X.%01X %6s %30"PRIu32" %15"PRIu64" %47"PRIu32" %15"PRIu64"\n",
 				"vf", vf, vf_pci_addr.domain, vf_pci_addr.bus, vf_pci_addr.devid, vf_pci_addr.function, status,
 				rx_pkts, rx_octets, tx_pkts, tx_octets);
+#endif
 }
 
 
@@ -951,11 +986,10 @@ int
 dump_vlvf_entry(portid_t port_id)
 {
 #ifdef BNXT_SUPPORT
-	do {
-		port_id = port_id;
-	} while (0);
-	return 0;
-#else
+	if (strcmp(rte_eth_devices[port_id].driver->pci_drv.driver.name, "net_bnxt") == 0) {
+		return 0;
+	}
+#endif
 	uint32_t res;
 	uint32_t ix;
 	uint32_t count = 0;
@@ -971,7 +1005,6 @@ dump_vlvf_entry(portid_t port_id)
 	}
 
 	return count;
-#endif
 }
 
 
@@ -1089,6 +1122,28 @@ lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param)
 	the message type.
 */
 #ifdef BNXT_SUPPORT
+static bool verify_mac_address(uint8_t port_id, uint16_t vf, void *mac)
+{
+	struct vf_s *vf_cfg = suss_vf(port_id, vf);
+	struct ether_addr mac_addr;
+	int i;
+
+	if (vf_cfg == NULL)
+		return false;
+
+	/* TODO: This assumes that MAC anti-spoof isn't strict when there's no MACs configured */
+	if (vf_cfg->num_macs == 0)
+		return true;
+
+	for (i=0; i<vf_cfg->num_macs; i++) {
+		ether_aton_r(vf_cfg->macs[i], &mac_addr);
+		if (memcmp(&mac_addr, mac, sizeof(mac_addr)) == 0)
+			return true;
+	}
+
+	return false;
+}
+
 void
 bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param)
 {
@@ -1103,15 +1158,41 @@ bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *
 	switch (mbox_type) {
 		/* Allow and trigger a refresh */
 		case HWRM_FUNC_VF_CFG:
+		{
+			struct hwrm_func_vf_cfg_input *vcfg = p->msg;
+
+			if (vcfg->enables & rte_cpu_to_le_32(HWRM_FUNC_VF_CFG_INPUT_ENABLES_DFLT_MAC_ADDR)) {
+				if (verify_mac_address(port_id, vf, vcfg->dflt_mac_addr))
+					p->retval = RTE_PMD_BNXT_MB_EVENT_PROCEED;
+				else
+					p->retval = RTE_PMD_BNXT_MB_EVENT_NOOP_NACK;
+			}
+			else {
+				p->retval = RTE_PMD_BNXT_MB_EVENT_PROCEED;
+			}
+			add_refresh = true;
+			break;
+		}
+		case HWRM_CFA_L2_FILTER_ALLOC:
+		{
+			struct hwrm_cfa_l2_filter_alloc_input *l2a = p->msg;
+
+			if (verify_mac_address(port_id, vf, l2a->l2_addr))
+				p->retval = RTE_PMD_BNXT_MB_EVENT_PROCEED;
+			else
+				p->retval = RTE_PMD_BNXT_MB_EVENT_NOOP_NACK;
+			add_refresh = true;
+			break;
+		}
+
+		case HWRM_VNIC_CFG:
 		case HWRM_FUNC_RESET:
 		case HWRM_VNIC_PLCMODES_CFG:
 		case HWRM_CFA_L2_SET_RX_MASK:
 		case HWRM_TUNNEL_DST_PORT_ALLOC:
 		case HWRM_TUNNEL_DST_PORT_FREE:
-		case HWRM_VNIC_CFG:
 		case HWRM_VNIC_TPA_CFG:
 		case HWRM_VNIC_RSS_CFG:
-		case HWRM_CFA_L2_FILTER_ALLOC:
 		case HWRM_CFA_L2_FILTER_FREE:
 		case HWRM_VNIC_ALLOC:
 		case HWRM_VNIC_FREE:
