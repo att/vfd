@@ -883,9 +883,9 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 #ifdef BNXT_SUPPORT
 	if (is_bnxt) {
 		if (rte_pmd_bnxt_get_vf_rx_status(port_id, vf) <= 0)
-	    		stpcpy(status, "UP  ");
-		else
 			stpcpy(status, "DOWN");
+		else
+	    		stpcpy(status, "UP  ");
 	}
 	else
 #endif
