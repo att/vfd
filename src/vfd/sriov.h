@@ -354,7 +354,7 @@ struct timeval endTime;
 uint16_t vf_offfset[MAX_PORTS];
 uint16_t vf_stride[MAX_PORTS];
 
-uint32_t spoffed[MAX_PORTS]; 		// # of spoffed packets per PF
+uint64_t spoffed[MAX_PORTS]; 		// # of spoffed packets per PF
 
 struct rq_entry *rq_list;			// reset queue list of VMs we are waiting on queue ready bits for
 
@@ -419,6 +419,7 @@ void restore_vf_setings(uint8_t port_id, int vf);
 int valid_mtu( int port, int mtu );
 int valid_vlan( int port, int vfid, int vlan );
 int get_vf_setting( int portid, int vf, int what );
+struct vf_s *suss_vf( int port, int vfid );
 
 void add_refresh_queue(u_int8_t port_id, uint16_t vf_id);
 void process_refresh_queue(void);
