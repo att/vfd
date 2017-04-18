@@ -1122,6 +1122,7 @@ lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param)
 	the message type.
 */
 #ifdef BNXT_SUPPORT
+#if 0
 static bool verify_mac_address(uint8_t port_id, uint16_t vf, void *mac)
 {
 	struct vf_s *vf_cfg = suss_vf(port_id, vf);
@@ -1143,6 +1144,7 @@ static bool verify_mac_address(uint8_t port_id, uint16_t vf, void *mac)
 
 	return false;
 }
+#endif
 
 void
 bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param)
@@ -1158,6 +1160,7 @@ bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *
 	switch (mbox_type) {
 		/* Allow and trigger a refresh */
 		case HWRM_FUNC_VF_CFG:
+#if 0
 		{
 			struct hwrm_func_vf_cfg_input *vcfg = p->msg;
 
@@ -1173,7 +1176,9 @@ bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *
 			add_refresh = true;
 			break;
 		}
+#endif
 		case HWRM_CFA_L2_FILTER_ALLOC:
+#if 0
 		{
 			struct hwrm_cfa_l2_filter_alloc_input *l2a = p->msg;
 
@@ -1184,6 +1189,7 @@ bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *
 			add_refresh = true;
 			break;
 		}
+#endif
 
 		case HWRM_VNIC_CFG:
 		case HWRM_FUNC_RESET:
