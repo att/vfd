@@ -851,7 +851,7 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 	if (is_bnxt) {
 		struct rte_eth_stats stats;
 
-		if (rte_pmd_bnxt_get_tx_drop_count(port_id, &vf_spoffed))
+		if (rte_pmd_bnxt_get_vf_tx_drop_count(port_id, vf, &vf_spoffed))
 			vf_spoffed = UINT64_MAX;
 		if (!rte_pmd_bnxt_get_vf_stats(port_id, vf, &stats)) {
 			rx_pkts = stats.ipackets;
