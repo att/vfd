@@ -267,7 +267,12 @@ set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  __attribute__((__
   struct ether_addr mac_addr;
   ether_aton_r(mac, &mac_addr);
 
-	diag = rte_eth_dev_mac_addr_add(port_id, &mac_addr, vf);
+#ifdef BNXT_SUPPORT
+	if (strcmp(rte_eth_devices[port_id].driver->pci_drv.driver.name, "net_bnxt") == 0)
+		diag = rte_pmd_bnxt_mac_addr_add(port_id, &mac_addr, vf);
+	else
+#endif
+		diag = rte_eth_dev_mac_addr_add(port_id, &mac_addr, vf);
 	if (diag < 0) {
 		bleat_printf( 0, "set rx mac failed: port=%d vf=%d on/off=%d mac=%s rc=%d", (int)port_id, (int)vf, on, mac, diag );
 	} else {
