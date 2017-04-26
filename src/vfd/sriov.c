@@ -267,6 +267,10 @@ set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  __attribute__((__
   struct ether_addr mac_addr;
   ether_aton_r(mac, &mac_addr);
 
+	if (!is_valid_assigned_ether_addr(&mac_addr)) {
+		bleat_printf(0, "Invalid MAC address in config file: port=%d vf=%d, mac=%s\n", (int)port_id, (int)vf, mac);
+		return;
+	}
 #ifdef BNXT_SUPPORT
 	if (strcmp(rte_eth_devices[port_id].driver->pci_drv.driver.name, "net_bnxt") == 0)
 		diag = rte_pmd_bnxt_mac_addr_add(port_id, &mac_addr, vf);
