@@ -308,8 +308,7 @@ set_vf_vlan_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 
 #ifdef BNXT_SUPPORT
 	if (strcmp(rte_eth_devices[port_id].driver->pci_drv.driver.name, "net_bnxt") == 0)
-		//diag = rte_pmd_bnxt_set_vf_vlan_anti_spoof(port_id, vf, on);
-		diag = -ENOTSUP;
+		diag = rte_pmd_bnxt_set_vf_vlan_anti_spoof(port_id, vf, on);
 	else
 #endif
 		diag = rte_pmd_ixgbe_set_vf_vlan_anti_spoof(port_id, vf, on);
