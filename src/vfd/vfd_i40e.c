@@ -103,9 +103,12 @@ vfd_i40e_set_vf_multicast_promisc(uint8_t port_id, uint16_t vf_id, uint8_t on)
 
 
 int 
-vfd_i40e_set_vf_mac_addr(uint8_t port_id, uint16_t vf_id, struct ether_addr *mac_addr)
+vfd_i40e_set_vf_mac_addr(uint8_t port_id, uint16_t vf_id,  __attribute__((__unused__)) struct ether_addr *mac_addr)
 {
-	int diag = rte_pmd_i40e_set_vf_mac_addr(port_id, vf_id, mac_addr);
+	int diag = 0;
+	//int diag = rte_pmd_i40e_set_vf_mac_addr(port_id, vf_id, mac_addr);
+	bleat_printf( 3, "rte_pmd_i40e_set_vf_mac_addr (skip setting mac address): port_id=%d, vf=%d", port_id, vf_id);
+		
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_i40e_set_vf_mac_addr failed: (port_pi=%d, vf_id=%d) failed rc=%d", port_id, vf_id, diag );
 	} else {
@@ -149,9 +152,9 @@ vfd_i40e_set_vf_broadcast(uint8_t port_id, uint16_t vf_id, uint8_t on)
 {
 	int diag = rte_pmd_i40e_set_vf_broadcast(port_id, vf_id, on);
 	if (diag < 0) {
-		bleat_printf( 0, "rte_pmd_i40e_set_vf_broadcas failed: (port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, on, diag );
+		bleat_printf( 0, "rte_pmd_i40e_set_vf_broadcast failed: (port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, on, diag );
 	} else {
-		bleat_printf( 3, "rte_pmd_i40e_set_vf_broadcas successful: port_id=%d, vf=%d on=%d", port_id, vf_id, on);
+		bleat_printf( 3, "rte_pmd_i40e_set_vf_broadcast successful: port_id=%d, vf=%d on=%d", port_id, vf_id, on);
 	}
 	
 	return diag;	
@@ -192,10 +195,16 @@ vfd_i40e_get_vf_stats(uint8_t port_id, uint16_t vf_id, struct rte_eth_stats *sta
 {
 	int diag = rte_pmd_i40e_get_vf_stats(port_id, vf_id, stats);
 	if (diag < 0) {
-		bleat_printf( 0, "rte_pmd_i40e_set_vf_stats failed: (port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, diag );
+		bleat_printf( 0, "rte_pmd_i40e_set_vf_stats failed: (port_pi=%d, vf_id=%d) failed rc=%d", port_id, vf_id, diag );
 	} else {
-		bleat_printf( 3, "rte_pmd_i40e_set_vf_stats successful: (port_id=%d, vf=%d on=%d)", port_id, vf_id);
+		bleat_printf( 3, "rte_pmd_i40e_set_vf_stats successful: (port_id=%d, vf=%d)", port_id, vf_id);
 	}
+	
+	
+	
+	//printf("dropped: stats->oerrors: %15"PRIu64"\n", port_pci_reg_read(port_id, 0x00344000));
+	
+	//printf("dropped: stats->oerrors: %d\n", port_pci_reg_read(port_id, 0x00074000));
 	
 	return diag;			
 }
@@ -289,6 +298,16 @@ vfd_i40e_set_all_queues_drop_en(uint8_t port_id, uint8_t on)
 	I40E_VIRTCHNL_OP_RESET_VF
 
 */
+
+struct i40e_virtchnl_promisc_info {
+	u16 vsi_id;
+	u16 flags;
+};
+
+#define I40E_FLAG_VF_UNICAST_PROMISC	0x00000001
+#define I40E_FLAG_VF_MULTICAST_PROMISC	0x00000002
+
+
 void
 vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param) {
 
@@ -298,6 +317,8 @@ vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 	uint32_t *msgbuf = (uint32_t *) p->msg;
 	struct ether_addr *new_mac;
 	
+	//AZprintf("------------------- MBOX port: %d, vf: %d, configured: %d box_type: %d-------------------\n", port_id, vf, running_config->ports[port_id].vfs[vf].num_vlans, mbox_type );
+			
 
 	/* check & process VF to PF mailbox message */
 	switch (mbox_type) {
@@ -310,7 +331,8 @@ vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 			
 			set_vf_allow_untagged(port_id, vf, 0);
 			
-			p->retval = RTE_PMD_I40E_MB_EVENT_PROCEED;				/* noop & ack */
+			p->retval = RTE_PMD_I40E_MB_EVENT_PROCEED;
+			
 			bleat_printf( 3, "Port: %d, VF: %d, OUT: %d, _T: %s ",
 				port_id, vf, p->retval, "I40E_VIRTCHNL_OP_RESET_VF");
 			break;
@@ -349,7 +371,7 @@ vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 
 		case I40E_VIRTCHNL_OP_DEL_ETHER_ADDRESS:
 			bleat_printf( 1, "setmac event received: port=%d", port_id );
-			p->retval = RTE_PMD_I40E_MB_EVENT_PROCEED;    						// do what's needed
+			p->retval = RTE_PMD_I40E_MB_EVENT_PROCEED;    						// do what's needed			
 			bleat_printf( 3, "Port: %d, VF: %d, OUT: %d, _T: %s ",
 				port_id, vf, p->retval, "I40E_VIRTCHNL_OP_DEL_ETHER_ADDRESS");
 
@@ -389,7 +411,7 @@ vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 				p->retval = RTE_PMD_I40E_MB_EVENT_PROCEED;     // good rc to VM while not changing anything
 			} else {
 				bleat_printf( 1, "vlan set event rejected; vlan not not configured: port=%d vf=%d vlan=%d (responding noop-ack)", port_id, vf, (int) msgbuf[1] );
-				p->retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     // VM should see failure
+				p->retval = RTE_PMD_I40E_MB_EVENT_NOOP_NACK;     // VM should see failure
 			}
 			break;
 			
@@ -403,7 +425,7 @@ vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 				p->retval = RTE_PMD_I40E_MB_EVENT_PROCEED;     // good rc to VM while not changing anything
 			} else {
 				bleat_printf( 1, "vlan delete event rejected; vlan not not configured: port=%d vf=%d vlan=%d (responding noop-ack)", port_id, vf, (int) msgbuf[1] );
-				p->retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     // VM should see failure
+				p->retval = RTE_PMD_I40E_MB_EVENT_NOOP_NACK;     // VM should see failure
 			}
 			break;			
 			
@@ -441,11 +463,15 @@ vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 			rte_spinlock_lock( &running_config->update_lock );
 			running_config->ports[port_id].vfs[vf].rx_q_ready = 1;		// set queue ready flag on
 			rte_spinlock_unlock( &running_config->update_lock );			
-			//restore_vf_setings(port_id, vf);							// restore VF settings when queues are enabled
 			
 			add_refresh_queue(port_id, vf);
+					
+			// return NACK when VF isnt configured
+			if (running_config->ports[port_id].vfs[vf].num_vlans < 1) 
+				p->retval = RTE_PMD_I40E_MB_EVENT_NOOP_NACK;
+			else
+				p->retval = RTE_PMD_I40E_MB_EVENT_PROCEED;
 			
-			p->retval = RTE_PMD_I40E_MB_EVENT_PROCEED;
 			break;
 		case I40E_VIRTCHNL_OP_DISABLE_QUEUES:
 			bleat_printf(3, "Port: %d, VF: %d, _T: %s", port_id, vf, "I40E_VIRTCHNL_OP_DISABLE_QUEUES");
@@ -457,7 +483,40 @@ vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 			break;
 		case I40E_VIRTCHNL_OP_CONFIG_PROMISCUOUS_MODE:
 			bleat_printf(3, "Port: %d, VF: %d, _T: %s", port_id, vf, "I40E_VIRTCHNL_OP_CONFIG_PROMISCUOUS_MODE");
-			p->retval = RTE_PMD_I40E_MB_EVENT_PROCEED;
+								
+			// return allowed promisc modes based on specified in config
+			struct i40e_virtchnl_promisc_info *promisc = (struct i40e_virtchnl_promisc_info *)p->msg;
+						
+			if (running_config->ports[port_id].vfs[vf].allow_un_ucast) {
+				promisc->flags &= I40E_FLAG_VF_UNICAST_PROMISC;
+				bleat_printf(3, "Port: %d, VF: %d, _T: %s", port_id, vf, "UCAST PROM ENABLE");
+			} else {
+				promisc->flags &= ~I40E_FLAG_VF_UNICAST_PROMISC;
+				bleat_printf(3, "Port: %d, VF: %d, _T: %s", port_id, vf, "UCAST PROM DISABLE");
+			}
+			
+			if (running_config->ports[port_id].vfs[vf].allow_mcast) {
+				promisc->flags &= I40E_FLAG_VF_MULTICAST_PROMISC;
+				bleat_printf(3, "Port: %d, VF: %d, _T: %s", port_id, vf, "MCAST PROM ENABLE");
+			} else {
+				promisc->flags &= ~I40E_FLAG_VF_MULTICAST_PROMISC;
+				bleat_printf(3, "Port: %d, VF: %d, _T: %s", port_id, vf, "MCAST PROM DISABLE");
+			}
+			
+			
+			
+			bleat_printf(3, "Port: %d, VF: %d, _T: %s PCI: %s, PORT # %d", port_id, vf, "-----------------", running_config->ports[port_id].pciid, running_config->ports[port_id].rte_port_number);
+
+			add_refresh_queue(port_id, vf);
+			
+			// return NACK when VF isn't configured
+			if (running_config->ports[port_id].vfs[vf].num_vlans < 1) {
+				p->retval = RTE_PMD_I40E_MB_EVENT_NOOP_NACK;
+				bleat_printf(3, "Port: %d, VF: %d, _T: %s", port_id, vf, "PROM VF NOT CONFIGURED");
+			} else {
+				p->retval = RTE_PMD_I40E_MB_EVENT_PROCEED;
+			}
+
 			break;
 		case I40E_VIRTCHNL_OP_GET_STATS:
 			p->retval = RTE_PMD_I40E_MB_EVENT_PROCEED; 		// VF's driver is getting stats every 2 sec
@@ -489,7 +548,7 @@ vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 			
 		default:
 			bleat_printf( 1, "unknown  event request received: port=%d (responding nop+nak)", port_id );
-			p->retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     /* noop & nack */
+			p->retval = RTE_PMD_I40E_MB_EVENT_NOOP_NACK;     /* noop & nack */
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, MBOX_TYPE: %d", type, port_id, vf, p->retval, mbox_type);
 			break;
 	}

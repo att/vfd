@@ -435,7 +435,8 @@ static int dummy_rte_eal_init( int argc, char** argv ) {
 static int vfd_eal_init( parms_t* parms ) {
 	int		argc;					// argc/v parms we dummy up
 	char** argv;
-	int		argc_idx = 12;			// insertion index into argc (initial value depends on static parms below)
+	//int		argc_idx = 12;			// insertion index into argc (initial value depends on static parms below)  --no-huge
+	int		argc_idx = 11;			// insertion index into argc (initial value depends on static parms below)  without --no-huge
 	int		i;
 	char	wbuf[128];				// scratch buffer
 	int		count;
@@ -477,7 +478,7 @@ static int vfd_eal_init( parms_t* parms ) {
 		}
 	}
 	if( parms->cpu_mask == NULL ) {
-			parms->cpu_mask = strdup( "0x04" );
+			parms->cpu_mask = strdup( "0x01" );
 	} else {
 		if( *(parms->cpu_mask+1) != 'x' ) {														// not something like 0xff
 			snprintf( wbuf, sizeof( wbuf ), "0x%02x", atoi( parms->cpu_mask ) );				// assume integer as a string given; cvt to hex
@@ -491,9 +492,12 @@ static int vfd_eal_init( parms_t* parms ) {
 
 	argv[3] = strdup( "-n" );
 	argv[4] = strdup( "4" );
-		
-	argv[5] = strdup( "-m" );
-	argv[6] = strdup( "50" );					// MiB of memory
+
+	//argv[5] = strdup( "-m" );
+	//argv[6] = strdup( "50" );					// MiB of memory
+	
+	argv[5] = strdup( "--socket-mem" );
+	argv[6] = strdup( "64,64" );					// MiB of memory
 	
 	argv[7] = strdup( "--file-prefix" );
 	argv[8] = strdup( "vfd" );					// dpdk creates some kind of lock file, this is used for that
@@ -502,7 +506,8 @@ static int vfd_eal_init( parms_t* parms ) {
 	snprintf( wbuf, sizeof( wbuf ), "%d", parms->dpdk_init_log_level );
 	argv[10] = strdup( wbuf );
 	
-	argv[11] = strdup( "--no-huge" );
+	//argv[11] = strdup( "--no-huge" );
+
 
 	for( i = 0; i < parms->npciids && argc_idx < argc - 1; i++ ) {			// add in the -w pciid values to the list
 		argv[argc_idx++] = strdup( "-w" );
@@ -515,6 +520,7 @@ static int vfd_eal_init( parms_t* parms ) {
 		bleat_printf( 1, "invoking real rte initialisation argc=%d", argc );
 		i = rte_eal_init( argc, argv ); 			// http://dpdk.org/doc/api/rte__eal_8h.html
 		bleat_printf( 1, "initialisation returned %d", i );
+		rte_eal_devargs_dump(stdout);
 	} else {
 		bleat_printf( 1, "rte initialisation skipped (no harm mode)" );
 		i = 1;
@@ -718,7 +724,7 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 	}
 
 	rte_spinlock_lock( &running_config->update_lock );
-
+	
 	for (i = 0; i < conf->num_ports; ++i){							// run each port we know about
 		int ret;
 		struct sriov_port_s* port;
@@ -788,7 +794,9 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 						vf->stop_cb = NULL;
 					}
 
-					//set_vf_rx_vlan(port->rte_port_number, 0, vf_mask, 0);		// remove vlan id 0 do we need it here for i40e?
+
+					//AZif (get_nic_type(port->rte_port_number) == VFD_NIANTIC)
+					//	set_vf_rx_vlan(port->rte_port_number, 0, vf_mask, 0);		// remove vlan id 0 do we need it here for i40e?
 					
 					for(v = 0; v < vf->num_vlans; ++v) {
 						int vlan = vf->vlans[v];
@@ -851,7 +859,8 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 						set_vf_allow_mcast(port->rte_port_number, vf->num, vf->allow_mcast);
 
 						bleat_printf( 2, "%s vf: %d set allow un-ucast %d", port->name, vf->num, vf->allow_un_ucast );
-						set_vf_allow_un_ucast(port->rte_port_number, vf->num, vf->allow_un_ucast);
+						set_vf_allow_un_ucast(port->rte_port_number, vf->num, vf->allow_un_ucast);					
+					
 					} else {
 						bleat_printf( 1, "update vf skipping setup for spoofing, bcast, mcast, etc; forreal is off: %s vf=%d", port->pciid, vf->num );
 					}
@@ -1028,15 +1037,8 @@ restore_vf_setings(uint8_t port_id, int vf_id) {
 		dump_sriov_config(running_config);
 	}
 
-	// looks like i40e will accept untagged packets by initialisation or after VF reset
-	// here we make sure if VF will be started without config we drop all the packets
-	bleat_printf( 2, "drop any packets for not configured VF: %d vf %d", port_id, vf_id );
-	set_vf_allow_untagged(port_id, vf_id, 0);
-	
-	// for i40e we have to set rx vlan filter to 0 to drop packets on not initialised VF
-	// if VF config exist proper VLAN id will be set later
-	if (get_nic_type(port_id) == VFD_FVL25) 
-		set_vf_rx_vlan(port_id, 0, VFN2MASK(vf_id), 1 );  // this will drop any VLAN for i40e
+	bleat_printf( 2, "drop any untagged packets for all VFs: port %d vf %d", port_id, vf_id );
+	set_vf_allow_untagged(port_id, vf_id, 0);	
 	
 	bleat_printf( 3, "restore settings begins" );
 	for (i = 0; i < running_config->num_ports; ++i){
@@ -1058,7 +1060,7 @@ restore_vf_setings(uint8_t port_id, int vf_id) {
 			}
 		}
 	}
-
+	
 	bleat_printf( 1, "restore for  port=%d vf=%d matched %d vfs in the config", port_id, vf_id, matched );
 }
 
@@ -1250,7 +1252,6 @@ main(int argc, char **argv)
 	vfd_add_ports( g_parms, running_config );			// add the pciid info from parms to the ports list (must do before dpdk init, config file adds wait til after)
 
 	if( g_parms->forreal ) {										// begin dpdk setup and device discovery
-		//int port;
 		int ret;					// returned value from some call
 		u_int16_t portid;
 		uint32_t pci_control_r;
@@ -1258,9 +1259,11 @@ main(int argc, char **argv)
 		bleat_printf( 1, "starting rte initialisation" );
 		
 		rte_openlog_stream(stderr);
-		rte_log_set_level(g_parms->dpdk_init_log_level, ~RTE_LOGTYPE_PMD && ~RTE_LOGTYPE_PORT);
+		//rte_log_set_level(~RTE_LOGTYPE_PMD && ~RTE_LOGTYPE_PORT, g_parms->dpdk_init_log_level);
+		ret = rte_log_set_level(RTE_LOGTYPE_PMD, g_parms->dpdk_init_log_level);
 
-		bleat_printf( 2, "log level = %d, log type = %d", rte_log_cur_msg_loglevel (), rte_log_cur_msg_logtype());
+
+		bleat_printf( 2, "log level = %d, log type = %d, ret = %d", rte_log_cur_msg_loglevel(), rte_log_cur_msg_logtype(), ret);
 		
 
 		n_ports = rte_eth_dev_count();
@@ -1289,8 +1292,9 @@ main(int argc, char **argv)
 		}
 		bleat_printf( 1, "refresh queue management thread created" );
 	
-		bleat_printf( 1, "creating memory pool" ); 									// Creates a new mempool in memory to hold the mbufs.
+		bleat_printf( 1, "creating memory pool" ); 									// Creates a new mempool in memory to hold the mbufs.  
 		mbuf_pool = rte_pktmbuf_pool_create("sriovctl", NUM_MBUFS * n_ports, MBUF_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
+		//mbuf_pool = rte_pktmbuf_pool_create("sriovctl", NUM_MBUFS * n_ports, MBUF_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE, SOCKET_ID_ANY);
 		if (mbuf_pool == NULL) {
 			bleat_printf( 0, "CRI: abort: mbfuf pool creation failed" );
 			rte_exit(EXIT_FAILURE, "Cannot create mbuf pool\n");

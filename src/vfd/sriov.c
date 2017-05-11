@@ -412,7 +412,6 @@ set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  __attribute__((__
 	uint dev_type = get_nic_type(port_id);
 	switch (dev_type) {
 		case VFD_NIANTIC:
-			//diag = rte_eth_dev_mac_addr_add(port_id, &mac_addr, vf);
 			diag = vfd_ixgbe_set_vf_mac_addr(port_id, vf, &mac_addr);
 			break;
 			
@@ -522,7 +521,7 @@ set_vf_mac_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 			break;
 			
 		case VFD_FVL25:		
-			diag = vfd_i40e_set_vf_mac_anti_spoof(port_id, vf, on);
+			diag = vfd_i40e_set_vf_mac_anti_spoof(port_id, vf, 0);  // always set mac anti-spoof off for FVL
 			break;
 
 		case VFD_BNXT:
@@ -918,9 +917,9 @@ process_refresh_queue(void)
 			/* check if item's q is enabled, update VF and remove item from queue */
 			if(refresh_item->enabled){
 				bleat_printf( 2, "refresh item enabled: updating VF: %d", refresh_item->vf_id);
-
+ 
 				restore_vf_setings(refresh_item->port_id, refresh_item->vf_id);		// refresh all of our configuration back onto the NIC
-
+				
 				bleat_printf( 3, "refresh_queue: clearing enable queue drop for %d/%d", refresh_item->port_id, refresh_item->vf_id );
 				set_rx_drop( refresh_item->port_id, refresh_item->vf_id, SET_OFF );
 
@@ -1061,6 +1060,7 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 	switch (dev_type) {
 		case VFD_NIANTIC:
 			result = vfd_ixgbe_get_vf_stats(port_id, vf, &stats);
+			stats.oerrors = 0;
 			break;
 			
 		case VFD_FVL25:		
@@ -1074,7 +1074,7 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 			break;
 			
 		default:
-			bleat_printf( 0, "set_queue_drop: unknown device type: %u, port: %u", port_id, dev_type);
+			bleat_printf( 0, "vf_stats_display: unknown device type: %u, port: %u", port_id, dev_type);
 			break;	
 	}
 	
@@ -1089,10 +1089,17 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 		stpcpy(status, "DOWN");
 	else
 	    stpcpy(status, "UP  ");
+	
 
+	/*
 	return 	snprintf(buff, bsize, "%2s %6d    %04X:%02X:%02X.%01X %6s %30"PRIu64" %15"PRIu64" %47"PRIu64" %15"PRIu64"\n",
 				"vf", vf, vf_pci_addr.domain, vf_pci_addr.bus, vf_pci_addr.devid, vf_pci_addr.function, status,
 				stats.ipackets, stats.ibytes, stats.opackets, stats.obytes);
+	*/
+	return 	snprintf(buff, bsize, "%2s %6d    %04X:%02X:%02X.%01X %6s %30"PRIu64" %15"PRIu64" %47"PRIu64" %15"PRIu64" %15"PRIu64"\n",
+				"vf", vf, vf_pci_addr.domain, vf_pci_addr.bus, vf_pci_addr.devid, vf_pci_addr.function, status,
+				stats.ipackets, stats.ibytes, stats.opackets, stats.obytes, stats.oerrors);
+				
 }
 
 
@@ -1120,7 +1127,7 @@ port_xstats_display(uint8_t port_id, char * buff, int bsize)
 	int cnt_xstats, idx_xstat;
 	struct rte_eth_xstat_name *xstats_names;
 
-	cnt_xstats = rte_eth_xstats_get_names(port_id, NULL, 0);
+	cnt_xstats = rte_eth_xstats_get_names_v1607(port_id, NULL, 0);
 	if (cnt_xstats  < 0) {
 		bleat_printf( 0, "fail: unable to get count of xstats for port: %d", port_id);
 		return 0;
@@ -1132,7 +1139,7 @@ port_xstats_display(uint8_t port_id, char * buff, int bsize)
 		return 0;
 	}
 	
-	if (cnt_xstats != rte_eth_xstats_get_names(port_id, xstats_names, cnt_xstats)) {
+	if (cnt_xstats != rte_eth_xstats_get_names_v1607(port_id, xstats_names, cnt_xstats)) {
 		bleat_printf( 0, "fail: unable to get xstat names for port: %d", port_id);
 		free(xstats_names);
 		return 0;
@@ -1145,7 +1152,7 @@ port_xstats_display(uint8_t port_id, char * buff, int bsize)
 		return 0;
 	}
 	
-	if (cnt_xstats != rte_eth_xstats_get(port_id, xstats, cnt_xstats)) {
+	if (cnt_xstats != rte_eth_xstats_get_v22(port_id, xstats, cnt_xstats)) {
 		bleat_printf( 0, "fail: unable to get xstat for port: %d", port_id);
 		free(xstats_names);
 		free(xstats);
@@ -1267,7 +1274,8 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 	
 	// Allocate and set up 1 RX queue per Ethernet port.
 	for (q = 0; q < rx_rings; q++) {
-		retval = rte_eth_rx_queue_setup(port, q, RX_RING_SIZE, rte_eth_dev_socket_id(port), NULL, mbuf_pool);
+		//retval = rte_eth_rx_queue_setup(port, q, RX_RING_SIZE, rte_eth_dev_socket_id(port), NULL, mbuf_pool); 
+		retval = rte_eth_rx_queue_setup(port, q, RX_RING_SIZE, SOCKET_ID_ANY, NULL, mbuf_pool);
 		if (retval < 0) {
 			bleat_printf( 0, "CRI: abort: cannot setup rx queue, port %u", port);
 			return 1;
@@ -1276,7 +1284,8 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 
 	// Allocate and set up 1 TX queue per Ethernet port.
 	for (q = 0; q < tx_rings; q++) {
-		retval = rte_eth_tx_queue_setup(port, q, TX_RING_SIZE, rte_eth_dev_socket_id(port), NULL);
+		//retval = rte_eth_tx_queue_setup(port, q, TX_RING_SIZE, rte_eth_dev_socket_id(port), NULL);
+		retval = rte_eth_tx_queue_setup(port, q, TX_RING_SIZE, SOCKET_ID_ANY, NULL);
 		if (retval < 0) {
 			bleat_printf( 0, "CRI: abort: cannot setup tx queue, port %u", port);
 			return 1;
@@ -1291,15 +1300,6 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 		return 1;
 	}
 
-	/*
-	if (get_nic_type(port) == VFD_FVL25) {
-		int i;
-		for(i = 0; i < 32; i++) {		
-			rte_pmd_i40e_set_vf_vlan_filter(port, 0, VFN2MASK(i), 0); 
-			printf("%d\n", i);
-		}
-	}
-	*/
 	
 	// Display the port MAC address.
 	struct ether_addr addr;
