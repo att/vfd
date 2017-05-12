@@ -1091,11 +1091,6 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 	    stpcpy(status, "UP  ");
 	
 
-	/*
-	return 	snprintf(buff, bsize, "%2s %6d    %04X:%02X:%02X.%01X %6s %30"PRIu64" %15"PRIu64" %47"PRIu64" %15"PRIu64"\n",
-				"vf", vf, vf_pci_addr.domain, vf_pci_addr.bus, vf_pci_addr.devid, vf_pci_addr.function, status,
-				stats.ipackets, stats.ibytes, stats.opackets, stats.obytes);
-	*/
 	return 	snprintf(buff, bsize, "%2s %6d    %04X:%02X:%02X.%01X %6s %30"PRIu64" %15"PRIu64" %47"PRIu64" %15"PRIu64" %15"PRIu64"\n",
 				"vf", vf, vf_pci_addr.domain, vf_pci_addr.bus, vf_pci_addr.devid, vf_pci_addr.function, status,
 				stats.ipackets, stats.ibytes, stats.opackets, stats.obytes, stats.oerrors);
@@ -1127,7 +1122,7 @@ port_xstats_display(uint8_t port_id, char * buff, int bsize)
 	int cnt_xstats, idx_xstat;
 	struct rte_eth_xstat_name *xstats_names;
 
-	cnt_xstats = rte_eth_xstats_get_names_v1607(port_id, NULL, 0);
+	cnt_xstats = rte_eth_xstats_get_names(port_id, NULL, 0);
 	if (cnt_xstats  < 0) {
 		bleat_printf( 0, "fail: unable to get count of xstats for port: %d", port_id);
 		return 0;
@@ -1139,7 +1134,7 @@ port_xstats_display(uint8_t port_id, char * buff, int bsize)
 		return 0;
 	}
 	
-	if (cnt_xstats != rte_eth_xstats_get_names_v1607(port_id, xstats_names, cnt_xstats)) {
+	if (cnt_xstats != rte_eth_xstats_get_names(port_id, xstats_names, cnt_xstats)) {
 		bleat_printf( 0, "fail: unable to get xstat names for port: %d", port_id);
 		free(xstats_names);
 		return 0;
@@ -1152,7 +1147,7 @@ port_xstats_display(uint8_t port_id, char * buff, int bsize)
 		return 0;
 	}
 	
-	if (cnt_xstats != rte_eth_xstats_get_v22(port_id, xstats, cnt_xstats)) {
+	if (cnt_xstats != rte_eth_xstats_get(port_id, xstats, cnt_xstats)) {
 		bleat_printf( 0, "fail: unable to get xstat for port: %d", port_id);
 		free(xstats_names);
 		free(xstats);

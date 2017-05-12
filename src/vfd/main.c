@@ -1359,7 +1359,7 @@ main(int argc, char **argv)
 			// read PCI config to get VM offset and stride
 			struct rte_eth_dev_info pf_dev;
 			rte_eth_dev_info_get(portid, &pf_dev);
-			rte_eal_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, 0x174);
+			rte_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, 0x174);
 			
 			struct sriov_port_s *port = &running_config->ports[portid];
 			port->vf_offset = pci_control_r & 0x0ffff;

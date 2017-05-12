@@ -1,4 +1,3 @@
-
 #
 # Mnemonic:	Makefile
 # Abstract:	Builds vfd and related components
@@ -52,7 +51,8 @@ ifeq ($(CONFIG_RTE_TOOLCHAIN_GCC),y)
 CFLAGS_main.o += -Wno-return-type
 endif
 
-EXTRA_CFLAGS += -O3 -g -Wfatal-errors -DVFD_VERSION='"$(VFD_VERSION)"'
+EXTRA_CFLAGS += -O3 -g -Wfatal-errors #-DVFD_VERSION='"$(VFD_VERSION)"'
+
 
 ifneq ($(BNXT_SUPPORT),)
 EXTRA_CFLAGS += -DBNXT_SUPPORT
