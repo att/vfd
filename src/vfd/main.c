@@ -85,6 +85,7 @@ static parms_t *g_parms = NULL;											// dpdk callback does not allow data p
 
 
 // -- global initialisation ----
+
 const char *version = VFD_VERSION "    build: " __DATE__ " " __TIME__;
 
 // --- misc support ----------------------------------------------------------------------------------------------
@@ -1138,6 +1139,7 @@ main(int argc, char **argv)
 	int		enable_qos = 0;				// off by default enable_qos in config should be used to set on
 	int		state;
 	int 	j;
+	uint16_t	cfg_offset = 0x100;
 
   const char * main_help =
 		"\n"
@@ -1356,14 +1358,40 @@ main(int argc, char **argv)
 				bleat_printf( 0, "pf %d (%s) is NOT in vfd config file and was not initialised", portid, pciid );
 			}
 			
+			
 			// read PCI config to get VM offset and stride
 			struct rte_eth_dev_info pf_dev;
 			rte_eth_dev_info_get(portid, &pf_dev);
-			rte_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, 0x174);
+							
+			// Find the SR-IOV extended capability structure
+			
+			if (get_nic_type(portid) == VFD_BNXT){ 
+				do {
+					rte_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, cfg_offset);
+					bleat_printf(4, "Header: %08x (%04x)", pci_control_r, cfg_offset);
+					if ((pci_control_r & 0xffff) == 0x0010)
+						break;
+					cfg_offset = (pci_control_r >> 20) & ~3;
+					if (cfg_offset == 0)
+						break;
+				} while(1);
+
+				if (cfg_offset == 0) {
+					bleat_printf(0, "Unable to locate SR-IOV configuration");
+					rte_exit( EXIT_FAILURE, "initialisation failure, see log(s) in: %s\n", g_parms->log_dir );
+					exit ( 1 );
+				}
+				rte_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, cfg_offset + 20);
+			} else {
+				rte_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, 0x174);					// Intel NIC's
+			}
+			
 			
 			struct sriov_port_s *port = &running_config->ports[portid];
 			port->vf_offset = pci_control_r & 0x0ffff;
-			port->vf_stride = pci_control_r >> 16;	
+			port->vf_stride = pci_control_r >> 16;
+					
+			
 	  }
 		
 		bleat_printf( 2, "port initialisation complete" );
