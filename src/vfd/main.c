@@ -230,7 +230,7 @@ static void run_stop_cbs( sriov_conf_t* conf ) {
 	Depends on global running config so that it may be invoked by the callback
 	driver which gets no dynamic information.
 */
-static struct sriov_port_s *suss_port( int portid ) {
+struct sriov_port_s *suss_port( int portid ) {
 	int		rc_idx; 					// index into our config
 
 	if( portid < 0 || portid > running_config->num_ports ) {
@@ -254,7 +254,7 @@ static struct sriov_port_s *suss_port( int portid ) {
 /*
 	Given a port and vfid, find the vf block and return a pointer to it.
 */
-static struct vf_s *suss_vf( int port, int vfid ) {
+struct vf_s *suss_vf( int port, int vfid ) {
 	struct sriov_port_s *p;
 	int		i;
 

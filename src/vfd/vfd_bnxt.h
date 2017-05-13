@@ -5,6 +5,7 @@
 #include "sriov.h"
 
 #ifdef BNXT_SUPPORT
+#include <rte_pmd_bnxt.h>
 #include <drivers/net/bnxt/hsi_struct_def_dpdk.h>
 #endif
 
@@ -28,6 +29,8 @@ int vfd_bnxt_get_vf_stats(uint8_t port, uint16_t vf_id, struct rte_eth_stats *st
 int vfd_bnxt_reset_vf_stats(uint8_t port, uint16_t vf_id);
 
 void vfd_bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
+
+int vfd_bnxt_allow_untagged(uint8_t port, uint16_t vf_id, uint8_t on);
 
 int vfd_bnxt_set_all_queues_drop_en(uint8_t port_id, uint8_t on);
 uint32_t vfd_bnxt_get_pf_spoof_stats(uint8_t port_id);

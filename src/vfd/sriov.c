@@ -1210,7 +1210,7 @@ dump_all_vlans(portid_t port_id)
 	If hw_strip_crc is false, the default will be overridden.
 */
 int
-port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_pool, int hw_strip_crc, sriov_port_t *pf )
+port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_pool, int hw_strip_crc, __attribute__((__unused__)) sriov_port_t *pf )
 {
 	struct rte_eth_conf port_conf = port_conf_default;
 	const uint16_t rx_rings = 1;
@@ -1258,7 +1258,7 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 			break;
 			
 		default:
-			bleat_printf( 0, "set_queue_drop: unknown device type: %u, port: %u", port, dev_type);
+			bleat_printf( 0, "port_init: unknown device type: %u, port: %u", port, dev_type);
 			break;	
 	}
 	

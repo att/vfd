@@ -8,6 +8,8 @@
 # Mods:		28 Oct 2016 - Add version string based on commit
 # -------------------------------------------------------------------------------------
 
+BNXT_SUPPORT = 1
+
 #### change this if needed
 #libconf = /usr/lib/x86_64-linux-gnu/libconfig.a
 libvfd = $(PWD)/../lib/libvfd.a

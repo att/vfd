@@ -139,13 +139,26 @@ extern int dcb_port_init( sriov_port_t *pf, __attribute__((__unused__)) struct r
 	}
 
 
-	rte_eth_dev_callback_register(port, RTE_ETH_EVENT_INTR_LSC, lsi_event_callback, NULL);
+	uint dev_type = get_nic_type(port);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			retval = rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vfd_ixgbe_vf_msb_event_callback, NULL);
+			break;
+			
+		case VFD_FVL25:		
+			retval = rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vfd_i40e_vf_msb_event_callback, NULL);
+			break;
+
+		case VFD_BNXT:
 #ifdef BNXT_SUPPORT
-	if (strcmp(rte_eth_devices[port].driver->pci_drv.driver.name, "net_bnxt") == 0)
-		rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vfd_bnxt_vf_msb_event_callback, NULL);
-	else
+			retval = rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vfd_bnxt_vf_msb_event_callback, NULL);
 #endif
-		rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vfd_ixgbe_vf_msb_event_callback, NULL);
+			break;
+			
+		default:
+			bleat_printf( 0, "port_init: unknown device type: %u, port: %u", port, dev_type);
+			break;	
+	}
 
 
 	// Allocate and set up RX queues for the port.
