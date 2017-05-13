@@ -57,7 +57,7 @@ CFLAGS_main.o += -Wno-return-type
 endif
 
 
-EXTRA_CFLAGS += -O3 -g -Wfatal-errors -DVFD_VERSION='"($VFD_VERSION)"'
+EXTRA_CFLAGS += -O3 -g -Wfatal-errors #-DVFD_VERSION='"($VFD_VERSION)"'
 
 
 ifneq ($(BNXT_SUPPORT),)

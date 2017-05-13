@@ -194,12 +194,8 @@ vfd_bnxt_set_vf_vlan_filter(uint8_t port_id, uint16_t vlan_id, __attribute__((__
 
 
 int 
-vfd_bnxt_get_vf_stats(uint8_t port_id, uint16_t vf_id, __attribute__((__unused__)) struct rte_eth_stats *stats)
+vfd_bnxt_get_vf_stats(uint8_t port_id, uint16_t vf_id, struct rte_eth_stats *stats)
 {
-	bleat_printf( 0, "vfd_bnxt_get_vf_stats(): not implemented for port=%d, vf=%d, vf_id=%d", port_id, vf_id );
-	return 0;
-	
-	/*
 	int diag = rte_pmd_bnxt_get_vf_stats(port_id, vf_id, stats);
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_bnxt_set_vf_stats failed: port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, diag );
@@ -208,16 +204,13 @@ vfd_bnxt_get_vf_stats(uint8_t port_id, uint16_t vf_id, __attribute__((__unused__
 	}
 	
 	return diag;	
-*/	
+
 }
 
 
 int 
 vfd_bnxt_reset_vf_stats(uint8_t port_id, uint16_t vf_id)
 {
-	bleat_printf( 0, "vfd_bnxt_reset_vf_stats(): not implemented for port=%d, vf=%d, vf_id=%d", port_id, vf_id );
-	return 0;
-	/*
 	int diag = rte_pmd_bnxt_reset_vf_stats(port_id, vf_id);
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_bnxt_reset_vf_stats failed: port_pi=%d, vf_id=%d) failed rc=%d", port_id, vf_id, diag );
@@ -226,7 +219,7 @@ vfd_bnxt_reset_vf_stats(uint8_t port_id, uint16_t vf_id)
 	}
 	
 	return diag;
-	*/
+
 }
 
 
