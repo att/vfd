@@ -1130,13 +1130,17 @@ lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param)
 	the message type.
 */
 #ifdef BNXT_SUPPORT
-static bool verify_mac_address(uint8_t port_id, uint16_t vf, void *mac)
+static bool verify_mac_address(uint8_t port_id, uint16_t vf, void *mac, void *mask)
 {
 	struct vf_s *vf_cfg = suss_vf(port_id, vf);
 	struct ether_addr mac_addr;
 	int i;
 
 	if (vf_cfg == NULL)
+		return false;
+
+	/* Don't allow MAC masks */
+	if (mask && memcmp(mask, "\xff\xff\xff\xff\xff\xff", 6))
 		return false;
 
 	/* TODO: This assumes that MAC anti-spoof isn't strict when there's no MACs configured */
@@ -1150,6 +1154,27 @@ static bool verify_mac_address(uint8_t port_id, uint16_t vf, void *mac)
 	}
 
 	return false;
+}
+
+static void apply_rx_restrictions(uint8_t port_id, uint16_t vf, struct hwrm_cfa_l2_set_rx_mask_input *mi)
+{
+	struct vf_s *vf_cfg = suss_vf(port_id, vf);
+
+	/* Can't find the config, disallow all traffic */
+	if (vf_cfg == NULL) {
+		mi->mask &= ~(HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_MCAST |
+		    HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_ALL_MCAST |
+		    HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_BCAST |
+		    HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_PROMISCUOUS);
+		return;
+	}
+	if (!vf_cfg->allow_bcast)
+		mi->mask &= ~HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_BCAST;
+	if (!vf_cfg->allow_mcast)
+		mi->mask &= ~(HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_BCAST |
+		    HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_ALL_MCAST);
+	if (!vf_cfg->allow_un_ucast)
+		mi->mask &= ~HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_PROMISCUOUS;
 }
 
 void
@@ -1170,7 +1195,7 @@ bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *
 			struct hwrm_func_vf_cfg_input *vcfg = p->msg;
 
 			if (vcfg->enables & rte_cpu_to_le_32(HWRM_FUNC_VF_CFG_INPUT_ENABLES_DFLT_MAC_ADDR)) {
-				if (verify_mac_address(port_id, vf, vcfg->dflt_mac_addr))
+				if (verify_mac_address(port_id, vf, vcfg->dflt_mac_addr, NULL))
 					p->retval = RTE_PMD_BNXT_MB_EVENT_PROCEED;
 				else
 					p->retval = RTE_PMD_BNXT_MB_EVENT_NOOP_NACK;
@@ -1185,18 +1210,25 @@ bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *
 		{
 			struct hwrm_cfa_l2_filter_alloc_input *l2a = p->msg;
 
-			if (verify_mac_address(port_id, vf, l2a->l2_addr))
+			if (verify_mac_address(port_id, vf, l2a->l2_addr, l2a->l2_addr_mask))
 				p->retval = RTE_PMD_BNXT_MB_EVENT_PROCEED;
 			else
 				p->retval = RTE_PMD_BNXT_MB_EVENT_NOOP_NACK;
 			add_refresh = true;
 			break;
 		}
+		case HWRM_CFA_L2_SET_RX_MASK:
+		{
+			struct hwrm_cfa_l2_set_rx_mask_input *mi = p->msg;
+			apply_rx_restrictions(port_id, vf, mi);
+			add_refresh = true;
+			p->retval = RTE_PMD_BNXT_MB_EVENT_PROCEED;
+			break;
+		}
 
 		case HWRM_VNIC_CFG:
 		case HWRM_FUNC_RESET:
 		case HWRM_VNIC_PLCMODES_CFG:
-		case HWRM_CFA_L2_SET_RX_MASK:
 		case HWRM_TUNNEL_DST_PORT_ALLOC:
 		case HWRM_TUNNEL_DST_PORT_FREE:
 		case HWRM_VNIC_TPA_CFG:
