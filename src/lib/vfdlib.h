@@ -28,6 +28,7 @@
 									// flags set in parm struct related to running state
 #define RF_ENABLE_QOS	0x01		// enable qos
 #define RF_INITIALISED	0x02		// init has finished
+#define RF_OVERRIDE_FC	0x04		// override flow control in non-qos mode is enabled
 
 #define MAX_TCS			8			// max number of traffic classes supported (0 - 7)
 #define NUM_BWGS		8			// number of bandwidth groups
@@ -145,6 +146,7 @@ void ng_flow_ref( void *vf, char *buf, long len );
 extern void* rfifo_create( char* fname, int mode );
 extern void rfifo_close( void* vfifo );
 extern char* rfifo_read( void* vfifo );
+extern char* rfifo_readln( void* vfifo );
 
 
 // --------------- list ----------------------------------------------------------------------------------

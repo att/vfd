@@ -442,6 +442,11 @@ int get_nic_type(portid_t port_id);
 int get_max_qpp( uint32_t port_id );
 int get_num_vfs( uint32_t port_id );
 
+//-- testing --
+extern void set_fcc( portid_t pf, int force );
+extern void set_fd_off( portid_t port_id );
+extern void set_rx_pbsize( portid_t port_id );
+
 //------- queue support -------------------------
 void set_pfrx_drop(portid_t port_id, int state );
 

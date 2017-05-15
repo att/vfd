@@ -380,7 +380,9 @@ vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, v
 			p->retval =  RTE_PMD_IXGBE_MB_EVENT_PROCEED;   /* do what's needed */
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p->retval, "IXGBE_VF_API_NEGOTIATE");
 			
-			restore_vf_setings(port_id, vf);		// this must happen now, do NOT queue it. if not immediate guest-guest may hang
+			set_fcc( port_id, 0 );									// reset flow-control if allowed
+			restore_vf_setings(port_id, vf);							// these must happen now, do NOT queue it. if not immediate guest-guest may hang
+			tx_set_loopback( port_id, suss_loopback( port_id ) );		// enable loopback if set (could be reset if link goes down)
 			break;
 
 		case IXGBE_VF_GET_QUEUES:
