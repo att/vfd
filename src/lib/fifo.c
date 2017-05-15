@@ -4,6 +4,8 @@
 	Abstract:	Functions for dealing with our fifo.
 	Author:		E. Scott Daniels
 	Date:		04 Mar 2016
+
+	Mods:		07 Apr 2017 - Correct default mode on open/create.
 */
 
 #include <fcntl.h>
@@ -38,7 +40,7 @@ extern void* rfifo_create( char* fname, int mode ) {
 	fifo_t*	fifo = NULL;
 
 	if( mode == 0 ) {
-		mode = 0x660;
+		mode = 0660;
 	}
 
 	unlink( fname );								// hard unlink and we don't care if this fails
@@ -148,4 +150,40 @@ extern char* rfifo_read( void* vfifo ) {
 	}
 
 	return rbuf;			// shouldn't get here, but this keeps the compiler from tossing a warning.
+}
+
+/*
+	Read up until the next newline. If we don't get anyting from a
+	read() call,  assume end of data.
+*/
+extern char* rfifo_readln( void* vfifo ) {
+	fifo_t* fifo;
+	char	*rbuf;				// return buffer
+	char	*nb;				// next buffer from flow manager
+	int		len;				// actual byte count read from fifo
+	int		tlen = 0;			// total bytes put into buffer for caller
+
+	if( (fifo = (fifo_t *) vfifo) == NULL ) {
+		return NULL;
+	}
+
+	if( (rbuf = (char *) malloc( sizeof( char ) * RBUF_SIZE )) == NULL ) {
+		return NULL;
+	}
+
+	*rbuf = 0;
+	do {
+		if( (nb = ng_flow_get( fifo->flow, '\n' )) != NULL ) {
+			strcat( rbuf, nb );
+			strcat( rbuf, "\n" );
+			return rbuf;
+		}	
+
+		if( (len = read( fifo->fd, fifo->rbuf, RBUF_SIZE )) > 0 ) {		// something read
+			ng_flow_ref( fifo->flow, fifo->rbuf, len );					// register the buffer (zero copy)
+		}
+
+	} while( len > 0 );
+
+	return rbuf;
 }

@@ -52,6 +52,9 @@
 							on constantly causes packet loss on the NIC.  Change the hardware CRC strip
 							setting to true. Add ability to turn off hardware crc stripping via the main
 							parm file.
+				23 Feb 2017 - Allow multiple VLAN IDs with strip == true.
+				24 Feb 2017 - Corrected bug causing signal triggered termination when running attached
+							to the tty and the window is resized.
 */
 
 
@@ -337,6 +340,20 @@ int valid_vlan( int port, int vfid, int vlan ) {
 	}
 
 	bleat_printf( 1, "valid_vlan: vlan not valid for port/vfid %d/%d: %d", port, vfid, vlan );
+	return 0;
+}
+
+/*
+	Looks up the loopback flag for the indicated port and returns 1 if it is set; 0 
+	otherwise.
+*/
+int suss_loopback( int port ) {
+	struct sriov_port_s *p;
+
+	if( (p = suss_port( port )) != NULL ) {
+		return !!(p->flags & PF_LOOPBACK);
+	}
+
 	return 0;
 }
 
@@ -628,11 +645,16 @@ cmp_vfs (const void * a, const void * b)
 }
 
 /*
-	Set up the insert and strip charastics on the NIC. The interface should ensure that
-	the right parameter combinations are set and reject an add request if not, but
-	we are a bit parinoid and will help to enforce things here too.  If one VLAN is in
-	the list, then we allow strip_stag to control what we do. If multiple VLANs are in
-	the list, then we don't strip nor insert.
+	2017/03/23 - We now allow strip/insert when there are multiple VLAN IDs:
+		If strip == true and one ID is supplied, that ID will stripped on Rx and 
+		inserted on Tx.
+
+		If strip == true and more than one ID supplied, the outer (s) tag will be
+		stripped on Rx, and the ID from the packet descriptor will be inserted on Tx.
+	
+		IF strip == false, no stripping will take place, and insertion will be based
+		on the packet descriptor if it exists (this is default behavour when insert
+		setting is clear).
 
 	Returns 0 on failure; 1 on success.
 */
@@ -654,9 +676,9 @@ static int vfd_set_ins_strip( struct sriov_port_s *port, struct vf_s *vf ) {
 			tx_vlan_insert_set_on_vf( port->rte_port_number, vf->num, 0 );					// no strip, so no insert
 		}
 	} else {
-		bleat_printf( 2, "%s vf: %d vlan list contains %d entries; strip/insert turned off", port->name, vf->num, vf->num_vlans );
-		rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, 0 );					// if more than one vlan in the list force strip to be off
-		tx_vlan_insert_set_on_vf( port->rte_port_number, vf->num, 0 );					// and set insert to id 0
+		bleat_printf( 2, "%s vf: %d vlan list contains %d entries; strip set to %d; insert turned off", port->name, vf->num, vf->num_vlans, vf->strip_stag );
+		rx_vlan_strip_set_on_vf( port->rte_port_number, vf->num, vf->strip_stag );		// strip is variable
+		tx_vlan_insert_set_on_vf( port->rte_port_number, vf->num, 0 );					// but insert must always be clear so that packet descriptor is used
 	}
 
 	return 1;
@@ -839,6 +861,8 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 				gen_port_qshares( port );									// compute and save in the port struct
 				qos_set_credits( port->rte_port_number, port->mtu, port->vftc_qshares, TC_4PERQ_MODE );	// push out to nic
 				//qos_set_credits( port->rte_port_number, port->mtu, pp, TC_4PERQ_MODE );	// push out to nic
+			} else {
+				set_fcc( port->rte_port_number, !!(g_parms->rflags & RF_OVERRIDE_FC) );		// if override is set, then force our setting for fc onto nic
 			}
 
 			if( vf->num >= 0 ) {
@@ -897,7 +921,6 @@ static void sig_int( int sig ) {
 	if( terminated ) {					// ignore concurrent signals
 		return;
 	}
-	terminated = 1;
 
 	switch( sig ) {
 		case SIGABRT:
@@ -905,11 +928,19 @@ static void sig_int( int sig ) {
 		case SIGSEGV:
 				bleat_printf( 0, "signal caught (aborting): %d", sig );
 				close_ports();				// must attempt to do this else we potentially crash the machine
-				abort( );
+				abort( );					// to get core; not safe to just set term flag and end normally
+				break;
+
+		case SIGUSR1:						// for these we just ignore and go on
+		case SIGUSR2:
+		case SIGALRM:
+				bleat_printf( 0, "signal caught (ignored): %d", sig );
 				break;
 
 		default:
+				terminated = 1;
 				bleat_printf( 0, "signal caught (terminating): %d", sig );
+				break;
 	}
 
 	return;
@@ -933,7 +964,7 @@ static void set_signals( void ) {
 	struct sigaction sa;
 	int	sig_list[] = { SIGQUIT, SIGILL, SIGABRT, SIGFPE, SIGSEGV, SIGPIPE,				// list of signals we trap
        				SIGALRM, SIGTERM, SIGUSR1 , SIGUSR2, SIGBUS, SIGPROF, SIGSYS,
-					SIGTRAP, SIGURG, SIGVTALRM, SIGXCPU, SIGXFSZ, SIGIO, SIGWINCH };
+					SIGTRAP, SIGURG, SIGVTALRM, SIGXCPU, SIGXFSZ, SIGIO };
 
 	int i;
 	int nele;		// number of elements in the list
@@ -1100,13 +1131,15 @@ main(int argc, char **argv)
 	int		state;
 	int 	j;
 	uint16_t	cfg_offset = 0x100;
+	int		override_fc = 1;			// enable flow control override (-F turns off)
 
   const char * main_help =
 		"\n"
-		"Usage: vfd [-f] [-n] [-p parm-file] [-v level] [-q]\n"
+		"Usage: vfd [-f] [-F] [-n] [-p parm-file] [-v level] [-q]\n"
 		"Usage: vfd -?\n"
 		"  Options:\n"
 		"\t -f        keep in 'foreground'\n"
+		"\t -F        disable flow control override\n"
 		"\t -n        no-nic actions executed\n"
 		"\t -p <file> parmm file (/etc/vfd/vfd.cfg)\n"
 		"\t -q        enable dcb qos (use config file parm as general rule)\n"
@@ -1124,10 +1157,14 @@ main(int argc, char **argv)
 	log_file = (char *) malloc( sizeof( char ) * BUF_1K );
 
   // Parse command line options
-  while ( (opt = getopt(argc, argv, "?qfhnqv:p:s:")) != -1)
+  while ( (opt = getopt(argc, argv, "?qfFhnqv:p:s:")) != -1)
   {
     switch (opt)
     {
+		case 'F':
+			override_fc = 0;					// disable our override of flow control
+			break;
+			
 		case 'f':
 			run_asynch = 0;
 			break;
@@ -1153,6 +1190,7 @@ main(int argc, char **argv)
 		case 'h':
 		case '?':
 			printf( "\nVFd %s\n", version );
+			printf( "(17406)\n" );
 			printf("%s\n", main_help);
 			exit( 0 );
 			break;
@@ -1174,6 +1212,11 @@ main(int argc, char **argv)
 	if( enable_qos ) {							// command line flag overrides the config to force qos on
 		g_parms->rflags |= RF_ENABLE_QOS;
 	}
+
+	if( override_fc ) {
+		g_parms->rflags |= RF_OVERRIDE_FC;
+	}
+
 	g_parms->forreal = forreal;
 
 	if( (running_config = (sriov_conf_t *) malloc( sizeof( *running_config ) )) == NULL ) {
@@ -1286,10 +1329,9 @@ main(int argc, char **argv)
 				}
 
 				if( g_parms->rflags & RF_ENABLE_QOS ) {
-					//state = dcb_port_init(portid, mbuf_pool);
 					state = dcb_port_init( &running_config->ports[pfidx], mbuf_pool );
 				} else {
-					state = port_init(portid, mbuf_pool, g_parms->pciids[portid].hw_strip_crc );
+					state = port_init(portid, mbuf_pool, g_parms->pciids[portid].hw_strip_crc, &running_config->ports[pfidx] );
 				}
 
 				if( state != 0 ) {

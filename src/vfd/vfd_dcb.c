@@ -113,23 +113,7 @@ extern int vfd_dcb_config( sriov_port_t *pf ) {
 
 	This funciton is a complete replacement for port_init() and this should be invoked
 	when running in dcb (qos) mode instead of port_init().
-
------
-	tc_class_t*	tc_config[MAX_TCS];		// configuration information (max/min lsp/gsp) for the TC	(set from config)
-	int*		vftc_qshares;			// queue percentages arranged by vf/tc (computed with each add/del of a vf)
-	uint8_t		tc2bwg[MAX_TCS];		// maps each TC to a bandwidth group (set from config info)
-} sriov_port_t;
-
-typedef struct {
-    char* hr_name;          // human readable name used for diagnostics
-    unsigned int flags;     // TCF_ flasg constants
-    int32_t max_bw;         // percentage of link bandwidth (value 0-100) (default == 100)
-    int32_t min_bw;        // percentage of link bandwidth (value 0-100)
-} tc_class_t;
------
-
 */
-//extern int dcb_port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_pool)
 extern int dcb_port_init( sriov_port_t *pf, __attribute__((__unused__)) struct rte_mempool *mbuf_pool)
 {
 	uint8_t	port;					// real device number needed by underlying functions
@@ -143,6 +127,9 @@ extern int dcb_port_init( sriov_port_t *pf, __attribute__((__unused__)) struct r
 		bleat_printf( 0, "CRI: abort: dcb_port_init: nil pf pointer, or port >= rte_eth_dev_count" );
 		return 1;
 	}
+
+	port_conf.rxmode.max_rx_pkt_len = pf->mtu;
+	port_conf.rxmode.jumbo_frame = pf->mtu > 1500;
 
 	// Configure the Ethernet device.
 	retval = rte_eth_dev_configure(port, rx_rings, tx_rings, &port_conf);

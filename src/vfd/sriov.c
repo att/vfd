@@ -26,6 +26,9 @@
 				11 Feb 2017 - Changes to prevent packet loss which was occuring when the drop
 					enable bit was set for VF queues. Fixed alignment on show output to handle
 					wider fields.
+				21 Mar 2017 - Ensure that looback is set on a port when reset/negotiate callbacks
+					are dirven.
+				06 Apr 2017 - Add set flowcontrol function, add mtu/jumbo confirmation msg to log.
 
 	useful doc:
 				 http://www.intel.com/content/dam/doc/design-guide/82599-sr-iov-driver-companion-guide.pdf
@@ -1026,7 +1029,7 @@ dump_vlvf_entry(portid_t port_id)
 	If hw_strip_crc is false, the default will be overridden.
 */
 int
-port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_pool, int hw_strip_crc )
+port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_pool, int hw_strip_crc, sriov_port_t *pf )
 {
 	struct rte_eth_conf port_conf = port_conf_default;
 	const uint16_t rx_rings = 1;
@@ -1034,10 +1037,15 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 	int retval;
 	uint16_t q;
 
+	port_conf.rxmode.max_rx_pkt_len = pf->mtu;
+	port_conf.rxmode.jumbo_frame = pf->mtu >= 1500;
+
 	if (port >= rte_eth_dev_count()) {
 		bleat_printf( 0, "CRI: abort: port >= rte_eth_dev_count");
 		return 1;
 	}
+
+	bleat_printf( 2, "port %d max_mtu=%d jumbo=%d", (int) port, (int) port_conf.rxmode.max_rx_pkt_len, (int) port_conf.rxmode.jumbo_frame );
 
 	if( !hw_strip_crc ) {
 		bleat_printf( 2, "hardware crc stripping is now disabled for port %d", port );
@@ -1099,6 +1107,46 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 	rte_eth_promiscuous_enable(port);
 
 	return 0;
+}
+
+/*
+	EXPERIMANTAL --
+	Set the flow control config when not in qos.
+
+	Force should be set when calling during initialisation and not running in qos mode.
+	It causes us to track that we are allowed to reset the flag if called without
+	force on renegotiate callbacks.
+*/
+extern void set_fcc( portid_t pf, int force ) {
+	static int allowed = 0;			// allows to safely call for reset
+
+	uint32_t val;
+	uint32_t cval = 0;				// current value read from nic
+	uint32_t offset;
+	uint32_t mask;
+
+	if( force ) {
+		allowed = 1;
+	} else {
+		if( ! allowed ) {
+			return;
+		}
+	}
+
+	offset = 0x03d00;		// FCCFG.TFCE=10b
+	mask = 0xffffffe7;
+	cval = port_pci_reg_read( pf, offset );
+	val = 1 << 3;												// 01b (bits 3,4)  flow control on when not in dcb (match ixgbe driver)
+	port_pci_reg_write( pf, offset, (cval & mask) | val );		// flip on our bits, and set
+	bleat_printf( 1, "tfce %08x & %08x | %08x = %08x", cval, mask, val, (cval & mask) | val );
+
+	// priority flow control enable should be set only when in dcb mode
+	offset = 0x04294;    	// MFLCN.RPFCE=1b RFCE=0b
+	val = 0x0a;				// match the ixgbe driver setting
+	mask =0xfffffff0;
+	cval = port_pci_reg_read( pf, offset );
+	port_pci_reg_write( pf, offset, (cval & mask) | val );		// flip on our bits, and set
+	bleat_printf( 1, "mflcn %08x & %08x | %08x = %08x", cval, mask, val, (cval & mask) | val );
 }
 
 
@@ -1322,10 +1370,10 @@ bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *
 void
 ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param) {
 
-	struct rte_pmd_ixgbe_mb_event_param p = *(struct rte_pmd_ixgbe_mb_event_param*) param;
-  uint16_t vf = p.vfid;
-	uint16_t mbox_type = p.msg_type;
-	uint32_t *msgbuf = (uint32_t *) p.msg;
+	struct rte_pmd_ixgbe_mb_event_param *p = (struct rte_pmd_ixgbe_mb_event_param*) param;
+  uint16_t vf = p->vfid;
+	uint16_t mbox_type = p->msg_type;
+	uint32_t *msgbuf = (uint32_t *) p->msg;
 
 	struct ether_addr *new_mac;
 
@@ -1334,18 +1382,18 @@ ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void 
 		case IXGBE_VF_RESET:
 			bleat_printf( 1, "reset event received: port=%d", port_id );
 
-			p.retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_ACK;				/* noop & ack */
+			p->retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_ACK;				/* noop & ack */
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
-				type, port_id, vf, p.retval, "IXGBE_VF_RESET");
+				type, port_id, vf, p->retval, "IXGBE_VF_RESET");
 
 			add_refresh_queue(port_id, vf);
 			break;
 
 		case IXGBE_VF_SET_MAC_ADDR:
 			bleat_printf( 1, "setmac event received: port=%d", port_id );
-			p.retval = RTE_PMD_IXGBE_MB_EVENT_PROCEED;    						// do what's needed
+			p->retval = RTE_PMD_IXGBE_MB_EVENT_PROCEED;    						// do what's needed
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
-				type, port_id, vf, p.retval, "IXGBE_VF_SET_MAC_ADDR");
+				type, port_id, vf, p->retval, "IXGBE_VF_SET_MAC_ADDR");
 
 			new_mac = (struct ether_addr *) (&msgbuf[1]);
 
@@ -1364,9 +1412,9 @@ ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void 
 
 		case IXGBE_VF_SET_MULTICAST:
 			bleat_printf( 1, "set multicast event received: port=%d", port_id );
-			p.retval = RTE_PMD_IXGBE_MB_EVENT_PROCEED;    /* do what's needed */
+			p->retval = RTE_PMD_IXGBE_MB_EVENT_PROCEED;    /* do what's needed */
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
-				type, port_id, vf, p.retval, "IXGBE_VF_SET_MULTICAST");
+				type, port_id, vf, p->retval, "IXGBE_VF_SET_MULTICAST");
 
 			new_mac = (struct ether_addr *) (&msgbuf[1]);
 
@@ -1388,10 +1436,10 @@ ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void 
 			if( valid_vlan( port_id, vf, (int) msgbuf[1] )) {
 				bleat_printf( 1, "vlan set event approved: port=%d vf=%d vlan=%d (responding noop-ack)", port_id, vf, (int) msgbuf[1] );
 				//*((int*) param) = RTE_ETH_MB_EVENT_PROCEED;
-				p.retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_ACK;     // good rc to VM while not changing anything
+				p->retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_ACK;     // good rc to VM while not changing anything
 			} else {
 				bleat_printf( 1, "vlan set event rejected; vlan not not configured: port=%d vf=%d vlan=%d (responding noop-ack)", port_id, vf, (int) msgbuf[1] );
-				p.retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     // VM should see failure
+				p->retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     // VM should see failure
 			}
 
 			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
@@ -1404,19 +1452,22 @@ ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void 
 			bleat_printf( 1, "set lpe event received %d %d", port_id, (int) msgbuf[1]  );
 			if( valid_mtu( port_id, (int) msgbuf[1] ) ) {
 				bleat_printf( 1, "mtu set event approved: port=%d vf=%d mtu=%d", port_id, vf, (int) msgbuf[1]  );
-				p.retval = RTE_PMD_IXGBE_MB_EVENT_PROCEED;
+				p->retval = RTE_PMD_IXGBE_MB_EVENT_PROCEED;
 			} else {
 				bleat_printf( 1, "mtu set event rejected: port=%d vf=%d mtu=%d", port_id, vf, (int) msgbuf[1] );
-				p.retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     /* noop & nack */
+				p->retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     /* noop & nack */
 			}
 
+			restore_vf_setings(port_id, vf);
+			set_fcc( port_id, 0 );									// reset flow-control if allowed
+			tx_set_loopback( port_id, suss_loopback( port_id ) );		// enable loopback if set (could be reset if link was down)
 			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
 			break;
 
 		case IXGBE_VF_SET_MACVLAN:
 			bleat_printf( 1, "set macvlan event received: port=%d (responding nop+nak)", port_id );
-			p.retval =  RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;    /* noop & nack */
-			bleat_printf( 3, "type: %d, port: %d, vf: %d, out: %d, _T: %s ", type, port_id, vf, p.retval, "IXGBE_VF_SET_MACVLAN");
+			p->retval =  RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;    /* noop & nack */
+			bleat_printf( 3, "type: %d, port: %d, vf: %d, out: %d, _T: %s ", type, port_id, vf, p->retval, "IXGBE_VF_SET_MACVLAN");
 			bleat_printf( 3, "setting mac_vlan = %d", msgbuf[1] );
 
 			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
@@ -1424,30 +1475,32 @@ ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void 
 
 		case IXGBE_VF_API_NEGOTIATE:
 			bleat_printf( 1, "set negotiate event received: port=%d (responding proceed)", port_id );
-			p.retval =  RTE_PMD_IXGBE_MB_EVENT_PROCEED;   /* do what's needed */
-			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p.retval, "IXGBE_VF_API_NEGOTIATE");
+			p->retval =  RTE_PMD_IXGBE_MB_EVENT_PROCEED;   /* do what's needed */
+			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p->retval, "IXGBE_VF_API_NEGOTIATE");
 			
-			restore_vf_setings(port_id, vf);		// this must happen now, do NOT queue it. if not immediate guest-guest may hang
+			set_fcc( port_id, 0 );									// reset flow-control if allowed
+			restore_vf_setings(port_id, vf);							// these must happen now, do NOT queue it. if not immediate guest-guest may hang
+			tx_set_loopback( port_id, suss_loopback( port_id ) );		// enable loopback if set (could be reset if link goes down)
 			break;
 
 		case IXGBE_VF_GET_QUEUES:
 			bleat_printf( 1, "get queues  event received: port=%d (responding proceed)", port_id );
-			p.retval =  RTE_PMD_IXGBE_MB_EVENT_PROCEED;   /* do what's needed */
-			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p.retval, "IXGBE_VF_GET_QUEUES");
+			p->retval =  RTE_PMD_IXGBE_MB_EVENT_PROCEED;   /* do what's needed */
+			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p->retval, "IXGBE_VF_GET_QUEUES");
 
 			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
 			break;
 
 		default:
 			bleat_printf( 1, "unknown  event request received: port=%d (responding nop+nak)", port_id );
-			p.retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     /* noop & nack */
-			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, MBOX_TYPE: %d", type, port_id, vf, p.retval, mbox_type);
+			p->retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     /* noop & nack */
+			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, MBOX_TYPE: %d", type, port_id, vf, p->retval, mbox_type);
 
 			restore_vf_setings(port_id, vf);		// refresh all of our configuration back onto the NIC
 			break;
 	}
 
-	bleat_printf( 3, "callback type: %d, Port: %d, VF: %d, OUT: %d, _T: %d", type, port_id, vf, p.retval, mbox_type);
+	bleat_printf( 3, "callback type: %d, Port: %d, VF: %d, OUT: %d, _T: %d", type, port_id, vf, p->retval, mbox_type);
 }
 
 

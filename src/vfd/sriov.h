@@ -10,6 +10,8 @@
 
 	Mods:		2016 18 Nov - Reorganised to group defs, structs, globals and protos 
 					rather than to have them scattered.
+				22 Mar 2017 - Set the jumbo frame flag in the default dev config.
+					Fix comment in same initialisation.
 */
 
 #ifndef _SRIOV_H_
@@ -155,11 +157,11 @@ typedef uint16_t streamid_t;
 static const struct rte_eth_conf port_conf_default = {
 	.rxmode = {
 		.max_rx_pkt_len = 9000,
-		.jumbo_frame 		= 0,
+		.jumbo_frame 	= 1,		// required to allow mtu > 1500
 		.header_split   = 0, /**< Header Split disabled */
-		.hw_ip_checksum = 1, /**< IP checksum offload disabled */
+		.hw_ip_checksum = 1,		// enable hw to do the checksum
 		.hw_vlan_filter = 0, /**< VLAN filtering disabled */
-		.hw_vlan_strip  = 0, /**< VLAN strip enabled. */
+		.hw_vlan_strip  = 1, /**< VLAN strip enabled. */
 		.hw_vlan_extend = 0, /**< Extended VLAN disabled. */
 		.hw_strip_crc   = 1, /**< CRC stripped by hardware */
 		},
@@ -389,7 +391,7 @@ int vf_stats_display(uint8_t port_id, uint32_t pf_ari, int vf, char * buff, int 
 int port_xstats_display(uint8_t port_id, char * buff, int bsize);
 int dump_vlvf_entry(portid_t port_id);
 
-int port_init(uint8_t port, struct rte_mempool *mbuf_pool, int hw_strip_crc );
+int port_init(uint8_t port, struct rte_mempool *mbuf_pool, int hw_strip_crc, sriov_port_t *pf );
 void tx_set_loopback(portid_t port_id, u_int8_t on);
 
 void ether_aton_r(const char *asc, struct ether_addr * addr);
@@ -420,6 +422,7 @@ int valid_mtu( int port, int mtu );
 int valid_vlan( int port, int vfid, int vlan );
 int get_vf_setting( int portid, int vf, int what );
 struct vf_s *suss_vf( int port, int vfid );
+int suss_loopback( int port );
 
 void add_refresh_queue(u_int8_t port_id, uint16_t vf_id);
 void process_refresh_queue(void);
@@ -429,6 +432,11 @@ int vfd_update_nic( parms_t* parms, sriov_conf_t* conf );
 int vfd_init_fifo( parms_t* parms );
 int is_valid_mac_str( char* mac );
 char*  gen_stats( sriov_conf_t* conf, int pf_only, int pf );
+
+//-- testing --
+extern void set_fcc( portid_t pf, int force );
+extern void set_fd_off( portid_t port_id );
+extern void set_rx_pbsize( portid_t port_id );
 
 //------- queue support -------------------------
 void set_pfrx_drop(portid_t port_id, int state );
