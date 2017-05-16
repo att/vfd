@@ -55,6 +55,8 @@
 				23 Feb 2017 - Allow multiple VLAN IDs with strip == true.
 				24 Feb 2017 - Corrected bug causing signal triggered termination when running attached
 							to the tty and the window is resized.
+				16 May 2017 - To switch -F flag meaning: now means enable flow control rather than disable.
+							Flow control can also be enabled in the parm file.
 */
 
 
@@ -86,7 +88,7 @@ static parms_t *g_parms = NULL;											// dpdk callback does not allow data p
 
 // -- global initialisation ----
 
-const char *version = VFD_VERSION "    build: " __DATE__ " " __TIME__;
+//const char *version = VFD_VERSION "    build: " __DATE__ " " __TIME__;
 
 // --- misc support ----------------------------------------------------------------------------------------------
 
@@ -875,8 +877,6 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 				gen_port_qshares( port );									// compute and save in the port struct
 				qos_set_credits( port->rte_port_number, port->mtu, port->vftc_qshares, TC_4PERQ_MODE );	// push out to nic
 				//qos_set_credits( port->rte_port_number, port->mtu, pp, TC_4PERQ_MODE );	// push out to nic
-			} else {
-				set_fcc( port->rte_port_number, !!(g_parms->rflags & RF_OVERRIDE_FC) );		// if override is set, then force our setting for fc onto nic
 			}
 
 			if( vf->num >= 0 ) {
@@ -1141,8 +1141,10 @@ main(int argc, char **argv)
 	int		enable_qos = 0;				// off by default enable_qos in config should be used to set on
 	int		state;
 	int 	j;
+
 	uint16_t	cfg_offset = 0x100;
-	int		override_fc = 1;			// enable flow control override (-F turns off)
+	int		enable_fc = 0;				// enable flow control (-F sets)
+
 
   const char * main_help =
 		"\n"
@@ -1150,7 +1152,7 @@ main(int argc, char **argv)
 		"Usage: vfd -?\n"
 		"  Options:\n"
 		"\t -f        keep in 'foreground'\n"
-		"\t -F        disable flow control override\n"
+		"\t -F        enable flow control (might be ignored in qos mode)\n"
 		"\t -n        no-nic actions executed\n"
 		"\t -p <file> parmm file (/etc/vfd/vfd.cfg)\n"
 		"\t -q        enable dcb qos (use config file parm as general rule)\n"
@@ -1173,7 +1175,7 @@ main(int argc, char **argv)
     switch (opt)
     {
 		case 'F':
-			override_fc = 0;					// disable our override of flow control
+			enable_fc = 1;					// enable flow control (qos might ignore this)
 			break;
 			
 		case 'f':
@@ -1224,8 +1226,8 @@ main(int argc, char **argv)
 		g_parms->rflags |= RF_ENABLE_QOS;
 	}
 
-	if( override_fc ) {
-		g_parms->rflags |= RF_OVERRIDE_FC;
+	if( enable_fc ) {
+		g_parms->rflags |= RF_ENABLE_FC;
 	}
 
 	g_parms->forreal = forreal;
@@ -1346,6 +1348,7 @@ main(int argc, char **argv)
 					state = dcb_port_init( &running_config->ports[pfidx], mbuf_pool );
 				} else {
 					state = port_init(portid, mbuf_pool, g_parms->pciids[portid].hw_strip_crc, &running_config->ports[pfidx] );
+					set_fc_on( portid, !!(g_parms->rflags & RF_ENABLE_FC) );		// if override is set, then force our setting for fc onto nic
 				}
 
 				if( state != 0 ) {

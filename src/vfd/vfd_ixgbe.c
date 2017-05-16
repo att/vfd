@@ -362,8 +362,11 @@ vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, v
 				bleat_printf( 1, "mtu set event rejected: port=%d vf=%d mtu=%d", port_id, vf, (int) msgbuf[1] );
 				p->retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     /* noop & nack */
 			}
-
-			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
+			
+			restore_vf_setings(port_id, vf);
+			set_fc_on( port_id, !FORCE );							// enable flow control if allowed (force off)
+			tx_set_loopback( port_id, suss_loopback( port_id ) );	// enable loopback if set (could be reset if link was down)
+			add_refresh_queue( port_id, vf );						// schedule a complete refresh when the queue goes hot
 			break;
 
 		case IXGBE_VF_SET_MACVLAN:
@@ -380,7 +383,7 @@ vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, v
 			p->retval =  RTE_PMD_IXGBE_MB_EVENT_PROCEED;   /* do what's needed */
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p->retval, "IXGBE_VF_API_NEGOTIATE");
 			
-			set_fcc( port_id, 0 );									// reset flow-control if allowed
+			set_fc_on( port_id, !FORCE );									// enable flow control if allowed
 			restore_vf_setings(port_id, vf);							// these must happen now, do NOT queue it. if not immediate guest-guest may hang
 			tx_set_loopback( port_id, suss_loopback( port_id ) );		// enable loopback if set (could be reset if link goes down)
 			break;

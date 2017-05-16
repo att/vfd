@@ -189,6 +189,12 @@ extern parms_t* read_parms( char* fname ) {
 			}
 		}
 
+		if( jw_is_bool( jblob, "enable_flowcontrol" ) ) {
+			if( jw_value( jblob, "enable_flowcontrol" ) ) {
+				parms->rflags |= RF_ENABLE_FC;
+			}
+		}
+
 		if( jw_missing( jblob, "default_mtu" ) ) {			// could be an old install using deprecated mtu, so look for that and default if neither is there
 			def_mtu = jw_missing( jblob, "mtu" ) ? 9420 : (int) jw_value( jblob, "mtu" );
 		} else {
