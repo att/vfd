@@ -8,7 +8,6 @@
 # Mods:		28 Oct 2016 - Add version string based on commit
 # -------------------------------------------------------------------------------------
 
-BNXT_SUPPORT = 1
 
 #### change this if needed
 #libconf = /usr/lib/x86_64-linux-gnu/libconfig.a
@@ -61,9 +60,6 @@ endif
 EXTRA_CFLAGS += -O3 -g -Wfatal-errors -DVFD_VERSION='"($VFD_VERSION)"'
 
 
-ifneq ($(BNXT_SUPPORT),)
-EXTRA_CFLAGS += -DBNXT_SUPPORT
-endif
 
 include $(RTE_SDK)/mk/rte.extapp.mk
 

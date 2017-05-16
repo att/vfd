@@ -2,7 +2,6 @@
 #include "vfd_bnxt.h"
 
 
-#ifdef BNXT_SUPPORT
 
 int  
 vfd_bnxt_ping_vfs(uint8_t port_id, int16_t vf_id)
@@ -523,4 +522,3 @@ vfd_bnxt_dump_all_vlans(uint8_t port_id)
 	return 0;
 }
 
-#endif

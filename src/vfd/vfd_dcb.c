@@ -150,9 +150,7 @@ extern int dcb_port_init( sriov_port_t *pf, __attribute__((__unused__)) struct r
 			break;
 
 		case VFD_BNXT:
-#ifdef BNXT_SUPPORT
 			retval = rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vfd_bnxt_vf_msb_event_callback, NULL);
-#endif
 			break;
 			
 		default:

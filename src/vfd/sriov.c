@@ -210,9 +210,7 @@ tx_vlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id)
 			break;
 
 		case VFD_BNXT:
-#ifdef BNXT_SUPPORT
 			diag = vfd_bnxt_set_vf_vlan_insert( port_id, vf_id, vlan_id );
-#endif
 			break;
 			
 		default:
@@ -244,9 +242,7 @@ rx_vlan_strip_set_on_vf(portid_t port_id, uint16_t vf_id, int on)
 			break;
 
 		case VFD_BNXT:
-#ifdef BNXT_SUPPORT
 			diag = vfd_bnxt_set_vf_vlan_stripq(port_id, vf_id, on);;
-#endif
 			break;
 			
 		default:
@@ -278,10 +274,8 @@ set_vf_allow_bcast(portid_t port_id, uint16_t vf_id, int on)
 			break;
 
 		case VFD_BNXT:
-#ifdef BNXT_SUPPORT	
-		ret = vfd_bnxt_set_vf_broadcast(port_id, vf_id, on);
-#endif
-		break;
+			ret = vfd_bnxt_set_vf_broadcast(port_id, vf_id, on);
+			break;
 			
 		default:
 			bleat_printf( 0, "set_vf_allow_bcast: unknown device type: %u, port: %u", port_id, dev_type);
@@ -312,10 +306,8 @@ set_vf_allow_mcast(portid_t port_id, uint16_t vf_id, int on)
 			break;
 
 		case VFD_BNXT:
-#ifdef BNXT_SUPPORT	
-		ret = vfd_bnxt_set_vf_multicast_promisc(port_id, vf_id, on);
-#endif
-		break;
+			ret = vfd_bnxt_set_vf_multicast_promisc(port_id, vf_id, on);
+			break;
 			
 		default:
 			bleat_printf( 0, "set_vf_allow_mcast: unknown device type: %u, port: %u", port_id, dev_type);
@@ -345,10 +337,8 @@ set_vf_allow_un_ucast(portid_t port_id, uint16_t vf_id, int on)
 			ret = vfd_i40e_set_vf_unicast_promisc(port_id, vf_id, on);
 			break;
 
-		case VFD_BNXT:
-#ifdef BNXT_SUPPORT			
+		case VFD_BNXT:	
 			ret = vfd_bnxt_set_vf_unicast_promisc(port_id, vf_id, on);
-#endif
 			break;
 			
 		default:
@@ -379,10 +369,8 @@ set_vf_allow_untagged(portid_t port_id, uint16_t vf_id, int on)
 			ret = vfd_i40e_allow_untagged(port_id, vf_id, on);
 			break;
 
-		case VFD_BNXT:
-#ifdef BNXT_SUPPORT			
+		case VFD_BNXT:		
 			ret = vfd_bnxt_allow_untagged(port_id, vf_id, on);
-#endif
 			break;
 			
 		default:
@@ -420,10 +408,8 @@ set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  __attribute__((__
 			diag = vfd_i40e_set_vf_mac_addr(port_id, vf, &mac_addr);
 			break;
 
-		case VFD_BNXT:
-#ifdef BNXT_SUPPORT		
+		case VFD_BNXT:	
 			diag = vfd_bnxt_set_vf_mac_addr(port_id, vf, &mac_addr);
-#endif
 			break;
 			
 		default:
@@ -456,9 +442,7 @@ set_vf_rx_vlan(portid_t port_id, uint16_t vlan_id, uint64_t vf_mask, uint8_t on)
 			break;
 
 		case VFD_BNXT:
-#ifdef BNXT_SUPPORT
 			diag = vfd_bnxt_set_vf_vlan_filter(port_id, vlan_id, vf_mask, on);
-#endif
 			break;
 			
 		default:
@@ -491,9 +475,7 @@ set_vf_vlan_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 			break;
 
 		case VFD_BNXT:
-#ifdef BNXT_SUPPORT
 			diag = vfd_bnxt_set_vf_vlan_anti_spoof(port_id, vf, on);
-#endif
 			break;
 			
 		default:
@@ -526,9 +508,7 @@ set_vf_mac_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 			break;
 
 		case VFD_BNXT:
-#ifdef BNXT_SUPPORT
 			diag = vfd_bnxt_set_vf_mac_anti_spoof(port_id, vf, on);
-#endif
 			break;
 			
 		default:
@@ -560,9 +540,7 @@ tx_set_loopback(portid_t port_id, u_int8_t on)
 			break;
 
 		case VFD_BNXT:
-#ifdef BNXT_SUPPORT
 			diag = vfd_bnxt_set_tx_loopback(port_id, on);
-#endif
 			break;
 			
 		default:
@@ -595,9 +573,6 @@ int get_split_ctlreg( portid_t port_id, uint16_t vf_id ) {
 			break;
 
 		case VFD_BNXT:
-#ifdef BNXT_SUPPORT
-
-#endif
 			break;
 			
 		default:
@@ -628,9 +603,7 @@ void set_split_erop( portid_t port_id, uint16_t vf_id, int state ) {
 			break;
 
 		case VFD_BNXT:
-#ifdef BNXT_SUPPORT
 			vfd_bnxt_set_split_erop(port_id, vf_id, state);
-#endif
 			break;
 			
 		default:
@@ -655,9 +628,7 @@ static void set_rx_drop(portid_t port_id, uint16_t vf_id, int state )
 			break;
 
 		case VFD_BNXT:
-#ifdef BNXT_SUPPORT
 			vfd_bnxt_set_rx_drop(port_id, vf_id, state);
-#endif
 			break;
 			
 		default:
@@ -684,9 +655,7 @@ extern void set_pfrx_drop(portid_t port_id, int state )
 			break;
 
 		case VFD_BNXT:
-#ifdef BNXT_SUPPORT
 			//vfd_bnxt_set_pfrx_drop( port_id, state ); 				// not implemented TODO
-#endif
 			break;
 			
 		default:
@@ -725,9 +694,7 @@ void set_queue_drop( portid_t port_id, int state ) {
 			break;
 
 		case VFD_BNXT:
-#ifdef BNXT_SUPPORT
 			result = vfd_bnxt_set_all_queues_drop_en( port_id, !!state ); 				// not implemented TODO
-#endif
 			break;
 			
 		default:
@@ -778,9 +745,7 @@ is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter )
 			break;
 
 		case VFD_BNXT:
-#ifdef BNXT_SUPPORT
 			result = vfd_bnxt_is_rx_queue_on(port_id, vf_id, mcounter);
-#endif
 			break;
 			
 		default:
@@ -988,9 +953,7 @@ nic_stats_display(uint8_t port_id, char * buff, int bsize)
 			break;
 
 		case VFD_BNXT:
-#ifdef BNXT_SUPPORT
 			spoffed[port_id] += vfd_bnxt_get_pf_spoof_stats(port_id); 
-#endif
 			break;
 			
 		default:
@@ -1069,9 +1032,7 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 			break;
 
 		case VFD_BNXT:
-#ifdef BNXT_SUPPORT
 			result = vfd_bnxt_get_vf_stats(port_id, vf, &stats);
-#endif
 			break;
 			
 		default:
@@ -1187,9 +1148,7 @@ dump_all_vlans(portid_t port_id)
 			break;
 
 		case VFD_BNXT:
-#ifdef BNXT_SUPPORT
 			result = vfd_bnxt_dump_all_vlans(port_id);
-#endif
 			break;
 			
 		default:
@@ -1255,9 +1214,7 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 			break;
 
 		case VFD_BNXT:
-#ifdef BNXT_SUPPORT
 			retval = rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vfd_bnxt_vf_msb_event_callback, NULL);
-#endif
 			break;
 			
 		default:
@@ -1395,9 +1352,7 @@ ping_vfs(portid_t port_id, int vf)
 			break;
 
 		case VFD_BNXT:
-#ifdef BNXT_SUPPORT
 			retval = vfd_bnxt_ping_vfs(port_id, vf);
-#endif
 			break;
 			
 		default:

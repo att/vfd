@@ -4,10 +4,8 @@
 
 #include "sriov.h"
 
-#ifdef BNXT_SUPPORT
 #include <rte_pmd_bnxt.h>
 #include <drivers/net/bnxt/hsi_struct_def_dpdk.h>
-#endif
 
 
 
