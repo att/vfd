@@ -967,43 +967,48 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 }
 
 /*
-	EXPERIMANTAL --
-	Set the flow control config when not in qos.
+	Set flow control on.  We normally require switches to disable flow control on ports 
+	connected to VFd managed PFs, however if this cannot be controlled this provides the
+	means to enable it.  
 
-	Force should be set when calling during initialisation and not running in qos mode.
-	It causes us to track that we are allowed to reset the flag if called without
-	force on renegotiate callbacks.
+	Force should be used during initialisation. It causes the allow flag to be set and enables 
+	the callback processing function(s) to call blindly; the flow control will be set only if 
+	it was enabled during initialisation and doesn't require the callback function(s) to access 
+	the running parameters.
+
+	This function _only_ sets the flow control enable flag and does _not_ change the 
+	high/low thresholds or any timing values on the NIC.
 */
-extern void set_fcc( portid_t pf, int force ) {
-	static int allowed = 0;			// allows to safely call for reset
-
-	uint32_t val;
-	uint32_t cval = 0;				// current value read from nic
-	uint32_t offset;
-	uint32_t mask;
+extern void set_fc_on( portid_t pf, int force ) {
+	static int allowed = 0;	
+	struct rte_eth_fc_conf fcstate;		// current flow control settings
+	int		show = 0;					// show pf details; only during initialisation
+	int		state = 0;
 
 	if( force ) {
+bleat_printf( 0, ">>>>>  forcing flow control to be on" );
 		allowed = 1;
+		show = 1;
 	} else {
 		if( ! allowed ) {
 			return;
 		}
 	}
 
-	offset = 0x03d00;		// FCCFG.TFCE=10b
-	mask = 0xffffffe7;
-	cval = port_pci_reg_read( pf, offset );
-	val = 1 << 3;												// 01b (bits 3,4)  flow control on when not in dcb (match ixgbe driver)
-	port_pci_reg_write( pf, offset, (cval & mask) | val );		// flip on our bits, and set
-	bleat_printf( 1, "tfce %08x & %08x | %08x = %08x", cval, mask, val, (cval & mask) | val );
+	if( (state = rte_eth_dev_flow_ctrl_get( pf, &fcstate )) < 0 ) {		// get current settings; we'll keep high/low thresolds the same
+		if( show ) {
+			bleat_printf( 0, "WRN: flow control for pf %d cannot be set: %d (%s)", pf, state, strerror( -state ) );
+		}
+		return;													// either invalid pf or not supported; either way get out
+	}
 
-	// priority flow control enable should be set only when in dcb mode
-	offset = 0x04294;    	// MFLCN.RPFCE=1b RFCE=0b
-	val = 0x0a;				// match the ixgbe driver setting
-	mask =0xfffffff0;
-	cval = port_pci_reg_read( pf, offset );
-	port_pci_reg_write( pf, offset, (cval & mask) | val );		// flip on our bits, and set
-	bleat_printf( 1, "mflcn %08x & %08x | %08x = %08x", cval, mask, val, (cval & mask) | val );
+	if( show ) {												// only dump states during initialisation
+		bleat_printf( 1, "flow control state: pf=%d high=%d low=%d pause=%d send_x=%d mode=%d autoneg=%d", 
+				(int) pf, (int) fcstate.high_water, (int) fcstate.low_water, (int) fcstate.pause_time, (int) fcstate.send_xon, (int) fcstate.mode, (int) fcstate.autoneg );
+	}
+
+	fcstate.mode = RTE_FC_FULL;									// enable both Tx and Rx
+	rte_eth_dev_flow_ctrl_set( pf, &fcstate );
 }
 
 
@@ -1126,7 +1131,7 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			}
 
 			restore_vf_setings(port_id, vf);
-			set_fcc( port_id, 0 );									// reset flow-control if allowed
+			set_fc_on( port_id, !FORCE );									// enable flow control if allowed (force off)
 			tx_set_loopback( port_id, suss_loopback( port_id ) );		// enable loopback if set (could be reset if link was down)
 			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
 			break;
@@ -1145,7 +1150,7 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			p->retval =  RTE_PMD_IXGBE_MB_EVENT_PROCEED;   /* do what's needed */
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p->retval, "IXGBE_VF_API_NEGOTIATE");
 			
-			set_fcc( port_id, 0 );									// reset flow-control if allowed
+			set_fc_on( port_id, !FORCE );									// enable flow control if allowed
 			restore_vf_setings(port_id, vf);							// these must happen now, do NOT queue it. if not immediate guest-guest may hang
 			tx_set_loopback( port_id, suss_loopback( port_id ) );		// enable loopback if set (could be reset if link goes down)
 			break;

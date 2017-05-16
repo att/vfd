@@ -12,6 +12,7 @@
 					rather than to have them scattered.
 				22 Mar 2017 - Set the jumbo frame flag in the default dev config.
 					Fix comment in same initialisation.
+				16 May 2017 - Add flow control flag constant.
 */
 
 #ifndef _SRIOV_H_
@@ -78,6 +79,7 @@
 // ---------------------------------------------------------------------------------------
 #define SET_ON				1		// on/off parm constants
 #define SET_OFF				0
+#define FORCE				1
 
 #define VF_VAL_MCAST		0		// constants passed to get_vf_value()
 #define VF_VAL_BCAST		1
@@ -143,7 +145,8 @@ typedef uint16_t streamid_t;
 #define DISABLED	0
 								// port flags
 #define PF_LOOPBACK	0x01		// loopback is enabled
-#define PF_OVERSUB	0x02
+#define PF_OVERSUB	0x02		// allow qos oversubscription
+#define PF_FC_ON	0x04		// turn flow control on for port
 
 /*
 	Provides a static port configuration struct with defaults.
@@ -426,7 +429,7 @@ int is_valid_mac_str( char* mac );
 char*  gen_stats( sriov_conf_t* conf, int pf_only, int pf );
 
 //-- testing --
-extern void set_fcc( portid_t pf, int force );
+extern void set_fc_on( portid_t pf, int force );
 extern void set_fd_off( portid_t port_id );
 extern void set_rx_pbsize( portid_t port_id );
 
