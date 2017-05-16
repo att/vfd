@@ -1210,7 +1210,7 @@ bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *
 		{
 			struct hwrm_cfa_l2_filter_alloc_input *l2a = p->msg;
 
-			if (verify_mac_address(port_id, vf, l2a->l2_addr, l2a->l2_addr_mask))
+			if (verify_mac_address(port_id, vf, l2a->l2_addr, l2a->enables & HWRM_CFA_L2_FILTER_ALLOC_INPUT_ENABLES_L2_ADDR_MASK ? l2a->l2_addr_mask : NULL))
 				p->retval = RTE_PMD_BNXT_MB_EVENT_PROCEED;
 			else
 				p->retval = RTE_PMD_BNXT_MB_EVENT_NOOP_NACK;
