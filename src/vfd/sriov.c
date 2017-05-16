@@ -986,7 +986,6 @@ extern void set_fc_on( portid_t pf, int force ) {
 	int		state = 0;
 
 	if( force ) {
-bleat_printf( 0, ">>>>>  forcing flow control to be on" );
 		allowed = 1;
 		show = 1;
 	} else {
