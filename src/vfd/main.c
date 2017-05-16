@@ -86,7 +86,7 @@ static parms_t *g_parms = NULL;											// dpdk callback does not allow data p
 
 // -- global initialisation ----
 
-//const char *version = VFD_VERSION "    build: " __DATE__ " " __TIME__;
+const char *version = VFD_VERSION "    build: " __DATE__ " " __TIME__;
 
 // --- misc support ----------------------------------------------------------------------------------------------
 
