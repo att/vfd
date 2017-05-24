@@ -29,6 +29,7 @@
 				21 Mar 2017 - Ensure that looback is set on a port when reset/negotiate callbacks
 					are dirven.
 				06 Apr 2017 - Add set flowcontrol function, add mtu/jumbo confirmation msg to log.
+				22 May 2017 - Add ability to remove a whitelist RX mac.
 
 	useful doc:
 				 http://www.intel.com/content/dam/doc/design-guide/82599-sr-iov-driver-companion-guide.pdf
@@ -254,19 +255,48 @@ set_vf_allow_untagged(portid_t port_id, uint16_t vf_id, int on)
 
 */
 void
-set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  __attribute__((__unused__)) uint8_t on)
+//set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  __attribute__((__unused__)) uint8_t on)
+set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  uint8_t on)
 {
 	int diag;
-  struct ether_addr mac_addr;
-  ether_aton_r(mac, &mac_addr);
+	struct ether_addr mac_addr;
 
-	diag = rte_eth_dev_mac_addr_add(port_id, &mac_addr, vf);
-	if (diag < 0) {
-		bleat_printf( 0, "set rx mac failed: port=%d vf=%d on/off=%d mac=%s rc=%d", (int)port_id, (int)vf, on, mac, diag );
+	ether_aton_r(mac, &mac_addr);
+
+	if( on ) {
+		diag = rte_eth_dev_mac_addr_add(port_id, &mac_addr, vf);
+		if (diag < 0) {
+			bleat_printf( 0, "set rx mac failed: port=%d vf=%d on/off=%d mac=%s rc=%d", (int)port_id, (int)vf, on, mac, diag );
+		} else {
+			bleat_printf( 3, "set rx mac successful: port=%d vf=%d on/off=%d mac=%s", (int)port_id, (int)vf, on, mac );
+		}
 	} else {
-		bleat_printf( 3, "set rx mac successful: port=%d vf=%d on/off=%d mac=%s", (int)port_id, (int)vf, on, mac );
+		diag = rte_eth_dev_mac_addr_remove( port_id, &mac_addr );
+		if( diag < 0 ) {
+			bleat_printf( 0, "clear rx mac failed: port=%d vf=%d on/off=%d mac=%s rc=%d", (int)port_id, (int)vf, on, mac, diag );
+		} else {
+			bleat_printf( 3, "clear rx mac successful: port=%d vf=%d on/off=%d mac=%s", (int)port_id, (int)vf, on, mac );
+		}
 	}
 
+}
+
+/*
+	Set the 'default' MAC address for the VF. This is different than the set_vf_rx_mac() funciton
+	inasmuch as the address should be what the driver reports to a DPDK application when the 
+	MAC address is 'read' from the device.
+*/
+void set_vf_default_mac( portid_t port_id, const char* mac, uint32_t vf ) {
+	int state;
+	struct ether_addr mac_addr;
+
+	ether_aton_r(mac, &mac_addr);
+
+	if( (state = rte_pmd_ixgbe_set_vf_mac_addr( port_id, vf, &mac_addr )) >= 0 ) {
+		bleat_printf( 3, "set default mac successful: port=%d vf=%d mac=%s", (int)port_id, (int)vf, mac );
+	} else {
+		bleat_printf( 3, "set default mac failed: port=%d vf=%d mac=%s state=%d", (int)port_id, (int)vf, mac, state );
+	}
 }
 
 
@@ -1025,6 +1055,10 @@ lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param)
 				port_id, (unsigned)link.link_speed,
 			(link.link_duplex == ETH_LINK_FULL_DUPLEX) ?
 				("full-duplex") : ("half-duplex"));
+
+		if( type == RTE_ETH_EVENT_INTR_LSC ) {
+			restore_vf_setings( port_id, -1 );				// reset _all_ VFs on the port
+		}
 	} else
 		bleat_printf( 3, "Port %d Link Down", port_id);
 
@@ -1042,9 +1076,10 @@ void
 vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param) {
 
 	struct rte_pmd_ixgbe_mb_event_param *p = (struct rte_pmd_ixgbe_mb_event_param*) param;
-  uint16_t vf = p->vfid;
+	uint16_t vf = p->vfid;
 	uint16_t mbox_type = p->msg_type;
 	uint32_t *msgbuf = (uint32_t *) p->msg;
+	char	wbuf[128];							// small work buffer
 
 	struct ether_addr *new_mac;
 
@@ -1061,37 +1096,45 @@ vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param
 			break;
 
 		case IXGBE_VF_SET_MAC_ADDR:
-			bleat_printf( 1, "setmac event received: port=%d", port_id );
+			bleat_printf( 1, "setmac event approved for: port=%d", port_id );
 			p->retval = RTE_PMD_IXGBE_MB_EVENT_PROCEED;    						// do what's needed
-			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
+			bleat_printf( 4, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
 				type, port_id, vf, p->retval, "IXGBE_VF_SET_MAC_ADDR");
 
 			new_mac = (struct ether_addr *) (&msgbuf[1]);
 
-
-			if (is_valid_assigned_ether_addr(new_mac)) {
-				bleat_printf( 3, "setting mac, vf %u, MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
+			snprintf( wbuf, sizeof( wbuf ), "%02x:%02x:%02x:%02x:%02x:%02x", new_mac->addr_bytes[0], new_mac->addr_bytes[1],
+					new_mac->addr_bytes[2], new_mac->addr_bytes[3], new_mac->addr_bytes[4], new_mac->addr_bytes[5] );
+			push_mac( port_id, vf, wbuf );					// push onto the head of our list
+			bleat_printf( 1, "guest pushed mac address: %s", wbuf );
+	
+/*
+			if (is_valid_assigned_ether_addr(new_mac)) {						// verify it's unicast
+				bleat_printf( 2, "requested mac: port=%u vf=%u, MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
 					" %02" PRIx8 " %02" PRIx8 " %02" PRIx8,
+					(uint32_t)port_id,
 					(uint32_t)vf,
 					new_mac->addr_bytes[0], new_mac->addr_bytes[1],
 					new_mac->addr_bytes[2], new_mac->addr_bytes[3],
 					new_mac->addr_bytes[4], new_mac->addr_bytes[5]);
 			}
+*/
 
 			add_refresh_queue(port_id, vf);
 			break;
 
 		case IXGBE_VF_SET_MULTICAST:
-			bleat_printf( 1, "set multicast event received: port=%d", port_id );
+			bleat_printf( 1, "set multicast event approved: port=%d", port_id );
 			p->retval = RTE_PMD_IXGBE_MB_EVENT_PROCEED;    /* do what's needed */
-			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
+			bleat_printf( 4, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
 				type, port_id, vf, p->retval, "IXGBE_VF_SET_MULTICAST");
 
 			new_mac = (struct ether_addr *) (&msgbuf[1]);
 
 			if (is_valid_assigned_ether_addr(new_mac)) {
-				bleat_printf( 3, "setting mac, vf %u, MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
+				bleat_printf( 3, "requested mac:, port=%u vf=%u, MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
 					" %02" PRIx8 " %02" PRIx8 " %02" PRIx8,
+					(uint32_t)port_id,
 					(uint32_t)vf,
 					new_mac->addr_bytes[0], new_mac->addr_bytes[1],
 					new_mac->addr_bytes[2], new_mac->addr_bytes[3],

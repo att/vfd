@@ -249,8 +249,8 @@ extern void vfd_add_ports( parms_t* parms, sriov_conf_t* conf ) {
 
 		port = &conf->ports[pidx];
 		port->flags = 0;
-		port->last_updated = ADDED;												// flag newly added so the nic is configured next go round
-		snprintf( port->name, sizeof( port->name ), "port-%d",  i);				// TODO--- support getting a name from the config
+		port->last_updated = ADDED;						 						// flag newly added so the nic is configured next go round
+		snprintf( port->name, sizeof( port->name ), "port_%d",  i);				// TODO--- support getting a name from the config
 		snprintf( port->pciid, sizeof( port->pciid ), "%s", pfc->id );
 		port->mtu = pfc->mtu;
 
@@ -452,8 +452,8 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	}
 
 
-	if( vfc->nmacs > MAX_VF_MACS ) {
-		snprintf( mbuf, sizeof( mbuf ), "number of macs supplied (%d) exceeds the maximum (%d)", vfc->nmacs, MAX_VF_MACS );
+	if( vfc->nmacs > MAX_VF_MACS-1 ) {						// reduced by one so that the guest can push one down as the default mac
+		snprintf( mbuf, sizeof( mbuf ), "number of macs supplied (%d) exceeds the maximum (%d)", vfc->nmacs, MAX_VF_MACS-1 );
 		bleat_printf( 1, "vf not added: %s", mbuf );
 		if( reason ) {
 			*reason = strdup( mbuf );
@@ -650,10 +650,11 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	}
 	vf->num_vlans = vfc->nvlans;
 
-	for( i = 0; i < vfc->nmacs; i++ ) {
-		strcpy( vf->macs[i], vfc->macs[i] );		// we vet for length earlier, so this is safe.
+	for( i = 1; i <= vfc->nmacs; i++ ) {			// src is 0 based but vf list is 1 based to allow for easy push if guests sets a default mac
+		strcpy( vf->macs[i], vfc->macs[i-i] );		// we vet for length earlier, so this is safe.
 	}
 	vf->num_macs = vfc->nmacs;
+	vf->first_mac = 1;								// if guests pushes a mac, we'll add it to [0] and reset the index
 
 	for( i = 0; i < MAX_TCS; i++ ) {				// copy in the VF's share of each traffic class (percentage)
 		vf->qshares[i] = vfc->qshare[i];
@@ -1099,7 +1100,7 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 						vfd_response( req->resp_fifo, 1, mbuf );
 						free( reason );
 					}
-					if( bleat_will_it( 3 ) ) {					// TODO:  remove after testing
+					if( bleat_will_it( 4 ) ) {					// TODO:  remove after testing
   						dump_sriov_config( conf );
 					}
 					break;
@@ -1123,7 +1124,7 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 						vfd_response( req->resp_fifo, 1, mbuf );
 						free( reason );
 					}
-					if( bleat_will_it( 3 ) ) {					// TODO:  remove after testing
+					if( bleat_will_it( 4 ) ) {					// TODO:  remove after testing
   						dump_sriov_config( conf );
 					}
 					break;
