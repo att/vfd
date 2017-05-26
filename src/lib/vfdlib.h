@@ -24,6 +24,7 @@
 									// pfdef_t struct flags
 #define PFF_LOOP_BACK	0x01		// loop back enabled flag
 #define PFF_VF_OVERSUB  0x02        // vf_oversubscription enabled flag
+#define PFF_PROMISC  	0x04        // promisc should be set for the PF
 
 									// flags set in parm struct related to running state
 #define RF_ENABLE_QOS	0x01		// enable qos

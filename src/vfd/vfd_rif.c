@@ -254,6 +254,9 @@ extern void vfd_add_ports( parms_t* parms, sriov_conf_t* conf ) {
 		snprintf( port->pciid, sizeof( port->pciid ), "%s", pfc->id );
 		port->mtu = pfc->mtu;
 
+		if( pfc->flags & PFF_PROMISC ) {
+			port->flags |= PF_PROMISC;											// set promisc mode on the PF
+		}
 		if( pfc->flags & PFF_LOOP_BACK ) {
 			port->flags |= PF_LOOPBACK;											// enable VM->VM traffic without leaving nic
 		}

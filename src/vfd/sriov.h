@@ -147,6 +147,7 @@ typedef uint16_t streamid_t;
 #define PF_LOOPBACK	0x01		// loopback is enabled
 #define PF_OVERSUB	0x02		// allow qos oversubscription
 #define PF_FC_ON	0x04		// turn flow control on for port
+#define PF_PROMISC	0x08		// set promisc for the port when high
 
 /*
 	Provides a static port configuration struct with defaults.
