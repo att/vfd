@@ -653,8 +653,8 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	}
 	vf->num_vlans = vfc->nvlans;
 
-	for( i = 1; i <= vfc->nmacs; i++ ) {			// src is 0 based but vf list is 1 based to allow for easy push if guests sets a default mac
-		strcpy( vf->macs[i], vfc->macs[i-i] );		// we vet for length earlier, so this is safe.
+	for( i = 1; i <= vfc->nmacs; i++ ) {				// src is 0 based but vf list is 1 based to allow for easy push if guests sets a default mac
+		strcpy( vf->macs[i], vfc->macs[i-1] );			// length vetted earlier, so this is safe
 	}
 	vf->num_macs = vfc->nmacs;
 	vf->first_mac = 1;								// if guests pushes a mac, we'll add it to [0] and reset the index
