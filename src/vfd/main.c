@@ -62,6 +62,7 @@
 				23 May 2017 - Made log messages during config update consistant.
 				24 May 2017 - If the guest pushes a MAC, that will be saved and used as the default rather
 							than the first in the list.
+				26 May 2017 - Allow promisc mode on PF to be optionally disabled via main config file.
 */
 
 
@@ -761,14 +762,16 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 		if( port->last_updated == ADDED ) {								// updated since last call, reconfigure
 			if( parms->forreal ) {
 				bleat_printf( 1, "port updated: %s/%s",  port->name, port->pciid );
-				rte_eth_promiscuous_enable(port->rte_port_number);
+
+				if( port->flags & PF_PROMISC ) {
+					bleat_printf( 1, "enabling promiscuous mode for port %d", port->rte_port_number );
+					rte_eth_promiscuous_enable(port->rte_port_number);
+				}
 				rte_eth_allmulticast_enable(port->rte_port_number);
 	
-/*
 				ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
 				if (ret < 0)
 					bleat_printf( 0, "ERR: bad unicast hash table parameter, return code = %d", ret);
-*/
 	
 			} else {
 				bleat_printf( 1, "port update commands not sent (forreal is off): %s/%s",  port->name, port->pciid );
