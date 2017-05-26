@@ -147,6 +147,7 @@ typedef uint16_t streamid_t;
 #define PF_LOOPBACK	0x01		// loopback is enabled
 #define PF_OVERSUB	0x02		// allow qos oversubscription
 #define PF_FC_ON	0x04		// turn flow control on for port
+#define PF_PROMISC	0x08		// set promisc for the port when high
 
 /*
 	Provides a static port configuration struct with defaults.
@@ -204,6 +205,7 @@ struct vf_s
   int     link;                 /* -1 = down, 0 = mirror PF, 1 = up  */
   int     num_vlans;
   int     num_macs;
+	int		first_mac;				// index of first mac in list (1 if VF has not changed their mac, 0 if they've pushed one down)
   int     vlans[MAX_VF_VLANS];
   char    macs[MAX_VF_MACS][18];
 
@@ -376,6 +378,7 @@ void set_vf_allow_untagged(portid_t port_id, uint16_t vf_id, int on);
 
 void set_vf_rx_vlan(portid_t port_id, uint16_t vlan_id, uint64_t vf_mask, uint8_t on);
 void set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf, uint8_t on);
+void set_vf_default_mac( portid_t port_id, const char* mac, uint32_t vf );
 
 void set_vf_vlan_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on);
 void set_vf_mac_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on);
@@ -418,6 +421,7 @@ int valid_mtu( int port, int mtu );
 int valid_vlan( int port, int vfid, int vlan );
 int get_vf_setting( int portid, int vf, int what );
 int suss_loopback( int port );
+void push_mac( int port, int vf, char* mac );
 
 void add_refresh_queue(u_int8_t port_id, uint16_t vf_id);
 void process_refresh_queue(void);
