@@ -906,7 +906,10 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 			
 					// az says: figure out if we have to update it every time we change VLANS/MACS
 					// 			or once when update ports config
-					rte_eth_promiscuous_enable(port->rte_port_number);
+					if( port->flags & PF_PROMISC ) {
+						bleat_printf( 1, "enabling promiscuous mode for port %d", port->rte_port_number );
+						rte_eth_promiscuous_enable(port->rte_port_number);
+					}
 					rte_eth_allmulticast_enable(port->rte_port_number);
 					ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
 			
