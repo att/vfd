@@ -108,9 +108,9 @@
 #define RTE_PORT_ALL            (~(portid_t)0x0)
 #define IXGBE_RXDCTL_VME        0x40000000 /* VLAN mode enable */
 
-#define VFD_NIANTIC	0x10fb
-#define VFD_FVL25		0x158b
-#define VFD_BNXT		0x16d7
+#define VFD_NIANTIC		0x1
+#define VFD_FVL25		0x2
+#define VFD_BNXT		0x3
 
 #define TOGGLE(i) ((i+ 1) & 1)
 //#define TV_TO_US(tv) ((tv)->tv_sec * 1000000 + (tv)->tv_usec)

@@ -143,9 +143,18 @@ int
 get_nic_type(portid_t port_id)
 {
 	struct rte_eth_dev_info dev_info;
-  rte_eth_dev_info_get(port_id, &dev_info);
-
-	return dev_info.pci_dev->id.device_id;  
+	rte_eth_dev_info_get(port_id, &dev_info);
+	
+	if (strcmp(dev_info.driver_name, "net_bnxt") == 0)
+		return VFD_BNXT;
+	
+	if (strcmp(dev_info.driver_name, "net_ixgbe") == 0)
+		return VFD_NIANTIC;
+	
+	if (strcmp(dev_info.driver_name, "net_i40e") == 0)
+		return VFD_FVL25;
+	
+	return 0;
 }
 
 int
