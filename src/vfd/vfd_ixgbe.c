@@ -277,9 +277,10 @@ void
 vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param) {
 
 	struct rte_pmd_ixgbe_mb_event_param *p = (struct rte_pmd_ixgbe_mb_event_param*) param;
-  uint16_t vf = p->vfid;
+	uint16_t vf = p->vfid;
 	uint16_t mbox_type = p->msg_type;
 	uint32_t *msgbuf = (uint32_t *) p->msg;
+	char	wbuf[128];
 
 	struct ether_addr *new_mac;
 
@@ -296,22 +297,29 @@ vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, v
 			break;
 
 		case IXGBE_VF_SET_MAC_ADDR:
-			bleat_printf( 1, "setmac event received: port=%d", port_id );
+			bleat_printf( 1, "setmac event approved for: port=%d", port_id );
 			p->retval = RTE_PMD_IXGBE_MB_EVENT_PROCEED;    						// do what's needed
-			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
+			bleat_printf( 4, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
 				type, port_id, vf, p->retval, "IXGBE_VF_SET_MAC_ADDR");
 
 			new_mac = (struct ether_addr *) (&msgbuf[1]);
 
-
-			if (is_valid_assigned_ether_addr(new_mac)) {
-				bleat_printf( 3, "setting mac, vf %u, MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
+			snprintf( wbuf, sizeof( wbuf ), "%02x:%02x:%02x:%02x:%02x:%02x", new_mac->addr_bytes[0], new_mac->addr_bytes[1],
+					new_mac->addr_bytes[2], new_mac->addr_bytes[3], new_mac->addr_bytes[4], new_mac->addr_bytes[5] );
+			push_mac( port_id, vf, wbuf );					// push onto the head of our list
+			bleat_printf( 1, "guest pushed mac address: %s", wbuf );
+	
+/*
+			if (is_valid_assigned_ether_addr(new_mac)) {						// verify it's unicast
+				bleat_printf( 2, "requested mac: port=%u vf=%u, MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
 					" %02" PRIx8 " %02" PRIx8 " %02" PRIx8,
+					(uint32_t)port_id,
 					(uint32_t)vf,
 					new_mac->addr_bytes[0], new_mac->addr_bytes[1],
 					new_mac->addr_bytes[2], new_mac->addr_bytes[3],
 					new_mac->addr_bytes[4], new_mac->addr_bytes[5]);
 			}
+*/
 
 			add_refresh_queue(port_id, vf);
 			break;

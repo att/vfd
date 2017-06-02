@@ -57,6 +57,12 @@
 							to the tty and the window is resized.
 				16 May 2017 - To switch -F flag meaning: now means enable flow control rather than disable.
 							Flow control can also be enabled in the parm file.
+				22 May 2017 - Now set the first MAC in the list as the 'default' and the rest as members of
+							the white list.  The same checks for the total number of MACs still apply.
+				23 May 2017 - Made log messages during config update consistant.
+				24 May 2017 - If the guest pushes a MAC, that will be saved and used as the default rather
+							than the first in the list.
+				26 May 2017 - Allow promisc mode on PF to be optionally disabled via main config file.
 */
 
 
@@ -380,6 +386,24 @@ int valid_mtu( int port, int mtu ) {
 	return 0;
 }
 
+/*
+	Pushes the mac string onto the head of the list for the given port/vf combination. Sets
+	the first mac index to be 0 so that it is used if a port/vf reset is triggered.
+	Mac is a nil terminated ascii string of the form xx:xx:xx:xx:xx:xx.
+*/
+extern void push_mac( int port, int vfid, char* mac ) {
+	struct vf_s* vf;
+	
+	if( (vf = suss_vf( port, vfid )) == NULL ) {
+		bleat_printf( 2, "push_mac: vf doesn't map: %d/%d", port, vfid );
+		return;
+	}
+
+	vf->first_mac = 0;
+	strcpy( vf->macs[0], mac );			// make our copy
+
+	bleat_printf( 1, "default mac pushed onto head of list: %s", vf->macs[0] );
+}
 
 // ---------------------------------------------------------------------------------------------------------------
 /*
@@ -745,12 +769,15 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 		if( port->last_updated == ADDED ) {								// updated since last call, reconfigure
 			if( parms->forreal ) {
 				bleat_printf( 1, "port updated: %s/%s",  port->name, port->pciid );
-				//AZrte_eth_promiscuous_enable(port->rte_port_number);
-				//AZrte_eth_allmulticast_enable(port->rte_port_number);
-	
-				//AZret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
-				// set above for Niantic ?
-				ret = 0; //AZ
+
+				if( port->flags & PF_PROMISC ) {
+					bleat_printf( 1, "enabling promiscuous mode for port %d", port->rte_port_number );
+					rte_eth_promiscuous_enable(port->rte_port_number);
+				}
+				
+				rte_eth_allmulticast_enable(port->rte_port_number);	
+				ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
+				
 				if (ret < 0)
 					bleat_printf( 0, "ERR: bad unicast hash table parameter, return code = %d", ret);
 	
@@ -784,7 +811,7 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 					case RESET:		reason = "reset"; break;
 					default:		reason = "unknown reason"; break;
 				}
-				bleat_printf( 1, "reconfigure vf for %s: %s vf=%d", reason, port->pciid, vf->num );
+				bleat_printf( 1, "reconfigure vf for %s port: %d vf=%d", reason, port->rte_port_number, vf->num );
 
 				// TODO: order from original kept; probably can group into to blocks based on updated flag
 				if( vf->last_updated == DELETED ) { 							// delete vlans, free any buffers
@@ -803,35 +830,40 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 					
 					for(v = 0; v < vf->num_vlans; ++v) {
 						int vlan = vf->vlans[v];
-						bleat_printf( 2, "delete vlan: %s vf=%d vlan=%d", port->pciid, vf->num, vlan );
+						bleat_printf( 2, "delete vlan: port: %d vf: %d vlan: %d", port->rte_port_number, vf->num, vlan );
 						if( parms->forreal )
-							set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, 0);		// remove the vlan id from the list
+							set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, SET_OFF );		// remove the vlan id from the list
 					}
 				} else {
 					int v;
 					for(v = 0; v < vf->num_vlans; ++v) {
 						int vlan = vf->vlans[v];
-						bleat_printf( 2, "add vlan: %s vf=%d vlan=%d", port->pciid, vf->num, vlan );
+						bleat_printf( 2, "add vlan: port: %d vf=%d vlan=%d", port->rte_port_number, vf->num, vlan );
 						if( parms->forreal )
 							set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, on );		// add the vlan id to the list
 					}
 				}
 
 				if( vf->last_updated == DELETED ) {				// delete the macs
-					for(m = 0; m < vf->num_macs; ++m) {
+					for( m = vf->first_mac; m <= vf->num_macs; ++m ) {
 						mac = vf->macs[m];
-						bleat_printf( 2, "delete mac: %s vf=%d mac=%s", port->pciid, vf->num, mac );
+						bleat_printf( 2, "delete mac: port: %d vf: %d mac: %s", port->rte_port_number, vf->num, mac );
 		
 						if( parms->forreal )
-							set_vf_rx_mac(port->rte_port_number, mac, vf->num, 0);
+							set_vf_rx_mac(port->rte_port_number, mac, vf->num, SET_OFF );
 					}
 				} else {
-					for(m = 0; m < vf->num_macs; ++m) {
+					for( m = vf->first_mac; m <= vf->num_macs; ++m ) {			// if guest pushed a default, first will be [0], else first is [1]
 						mac = vf->macs[m];
-						bleat_printf( 2, "adding mac: %s vf=%d mac=%s", port->pciid, vf->num, mac );
+						bleat_printf( 2, "adding mac [%d]: port: %d vf: %d mac: %s", m, port->rte_port_number, vf->num, mac );
 
-						if( parms->forreal )
-							set_vf_rx_mac(port->rte_port_number, mac, vf->num, 1);
+						if( parms->forreal ) {
+							if( m > vf->first_mac ) {
+								set_vf_rx_mac( port->rte_port_number, mac, vf->num, SET_ON );	// set in whitelist
+							} else {
+								set_vf_default_mac( port->rte_port_number, mac, vf->num );		// first is set as default
+							}
+						}
 					}
 				}
 
@@ -847,25 +879,24 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 
 				if( vf->num >= 0 ) {
 					if( parms->forreal ) {
-						bleat_printf( 2, "%s vf: %d set anti-spoof %d", port->name, vf->num, vf->vlan_anti_spoof );
+						bleat_printf( 2, "port: %d vf: %d set anti-spoof to %d", port->rte_port_number, vf->num, vf->vlan_anti_spoof );
 						set_vf_vlan_anti_spoofing(port->rte_port_number, vf->num, vf->vlan_anti_spoof);
 	
-						bleat_printf( 2, "%s vf: %d set mac-anti-spoof %d", port->name, vf->num, vf->mac_anti_spoof );
+						bleat_printf( 2, "port: %d vf: %d set mac-anti-spoof to %d", port->rte_port_number, vf->num, vf->mac_anti_spoof );
 						set_vf_mac_anti_spoofing(port->rte_port_number, vf->num, vf->mac_anti_spoof);
 	
 						vfd_set_ins_strip( port, vf );				// set insert/strip options
 
-						bleat_printf( 2, "%s vf: %d set allow broadcast %d", port->name, vf->num, vf->allow_bcast );
+						bleat_printf( 2, "port: %d vf: %d set allow broadcast to %d", port->rte_port_number, vf->num, vf->allow_bcast );
 						set_vf_allow_bcast(port->rte_port_number, vf->num, vf->allow_bcast);
 
-						bleat_printf( 2, "%s vf: %d set allow multicast %d", port->name, vf->num, vf->allow_mcast );
+						bleat_printf( 2, "port: %d vf: %d set allow multicast to %d", port->rte_port_number, vf->num, vf->allow_mcast );
 						set_vf_allow_mcast(port->rte_port_number, vf->num, vf->allow_mcast);
 
-						bleat_printf( 2, "%s vf: %d set allow un-ucast %d", port->name, vf->num, vf->allow_un_ucast );
-						set_vf_allow_un_ucast(port->rte_port_number, vf->num, vf->allow_un_ucast);					
-					
+						bleat_printf( 2, "port: %d vf: %d set allow un-ucast to %d", port->rte_port_number, vf->num, vf->allow_un_ucast );
+						set_vf_allow_un_ucast(port->rte_port_number, vf->num, vf->allow_un_ucast);
 					} else {
-						bleat_printf( 1, "update vf skipping setup for spoofing, bcast, mcast, etc; forreal is off: %s vf=%d", port->pciid, vf->num );
+						bleat_printf( 1, "update vf skipping setup for spoofing, bcast, mcast, etc; forreal is off: %d vf=%d", port->rte_port_number, vf->num );
 					}
 				}
 
@@ -879,23 +910,28 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 				//qos_set_credits( port->rte_port_number, port->mtu, pp, TC_4PERQ_MODE );	// push out to nic
 			}
 
-			if( vf->num >= 0 ) {
+			if( change2port && vf->num >= 0 ) {
 				if( parms->forreal ) {
 					bleat_printf( 3, "set promiscuous: port: %d, vf: %d ", port->rte_port_number, vf->num);
-					//uint16_t rx_mode = 0;
-			
 			
 					// az says: figure out if we have to update it every time we change VLANS/MACS
 					// 			or once when update ports config
-					//rte_eth_promiscuous_enable(port->rte_port_number);
-					//rte_eth_allmulticast_enable(port->rte_port_number);
-					//AZret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);			
-			
+					if( port->flags & PF_PROMISC ) {
+						bleat_printf( 1, "enabling promiscuous mode for port %d", port->rte_port_number );
+						rte_eth_promiscuous_enable(port->rte_port_number);
+					}
+					
+					rte_eth_allmulticast_enable(port->rte_port_number);
+					ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
+						
+					if (ret < 0)
+						bleat_printf( 0, "ERR: bad unicast hash table parameter, return code = %d", ret);
+					
 					// don't accept untagged frames
 					set_vf_allow_untagged(port->rte_port_number, vf->num, !on);
 
 				} else {
-					bleat_printf( 1, "skipped end round updates to port: %s", port->pciid );
+					bleat_printf( 1, "skipped end round updates to port: %d", port->rte_port_number );
 				}
 			}
 		}				// end for each vf on this port
@@ -1030,13 +1066,17 @@ timeDelta(struct timeval * now, struct timeval * before)
 	that has been set on the VF since it's only working off of the values that are
 	configured here.  Is there a reset all? for these?  If so, that should be worked into
 	the update_nic() funciton for an add, and probably for the delete too.
+
+	This function may also be called in an extreme event when all active VFs on the port
+	must be refreshed.  If vf_id passed in is < 0, then we reset all of the VFs that 
+	we are currently managing.
 */
 void
 restore_vf_setings(uint8_t port_id, int vf_id) {
 	int i;
 	int matched = 0;		// number matched for log
 
-	if( bleat_will_it( 2 ) ) {
+	if( bleat_will_it( 5 ) ) {
 		dump_sriov_config(running_config);
 	}
 
@@ -1053,7 +1093,9 @@ restore_vf_setings(uint8_t port_id, int vf_id) {
 			for(y = 0; y < port->num_vfs; ++y){
 				struct vf_s *vf = &port->vfs[y];
 
-				if(vf_id == vf->num){
+				if( (vf_id < 0 && vf->num >= 0) || (vf_id == vf->num) ){
+					//uint32_t vf_mask = VFN2MASK(vf->num);
+
 					matched++;															// for bleat message at end
 					vf->last_updated = RESET;											// flag for update_nic()
 					if( vfd_update_nic( g_parms, running_config ) != 0 ) {				// now that dpdk is initialised run the list and 'activate' everything

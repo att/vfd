@@ -30,6 +30,7 @@
 				21 Mar 2017 - Ensure that looback is set on a port when reset/negotiate callbacks
 					are dirven.
 				06 Apr 2017 - Add set flowcontrol function, add mtu/jumbo confirmation msg to log.
+				22 May 2017 - Add ability to remove a whitelist RX mac.
 
 	useful doc:
 				 http://www.intel.com/content/dam/doc/design-guide/82599-sr-iov-driver-companion-guide.pdf
@@ -400,38 +401,66 @@ set_vf_allow_untagged(portid_t port_id, uint16_t vf_id, int on)
 
 */
 void
-set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  __attribute__((__unused__)) uint8_t on)
+//set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  __attribute__((__unused__)) uint8_t on)
+set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  uint8_t on)
 {
-	int diag = 0;
+
+  int diag = 0;
   struct ether_addr mac_addr;
   ether_aton_r(mac, &mac_addr);
 
-	
-	uint dev_type = get_nic_type(port_id);
-	switch (dev_type) {
-		case VFD_NIANTIC:
-			diag = vfd_ixgbe_set_vf_mac_addr(port_id, vf, &mac_addr);
-			break;
-			
-		case VFD_FVL25:		
-			diag = vfd_i40e_set_vf_mac_addr(port_id, vf, &mac_addr);
-			break;
+	if(on)
+	{
+		uint dev_type = get_nic_type(port_id);
+		switch (dev_type) {
+			case VFD_NIANTIC:
+				diag = vfd_ixgbe_set_vf_mac_addr(port_id, vf, &mac_addr);
+				break;
+				
+			case VFD_FVL25:		
+				diag = vfd_i40e_set_vf_mac_addr(port_id, vf, &mac_addr);
+				break;
 
-		case VFD_BNXT:	
-			diag = vfd_bnxt_set_vf_mac_addr(port_id, vf, &mac_addr);
-			break;
-			
-		default:
-			bleat_printf( 0, "set_vf_rx_mac: unknown device type: %u, port: %u", port_id, dev_type);
-			break;	
-	}
+			case VFD_BNXT:	
+				diag = vfd_bnxt_set_vf_mac_addr(port_id, vf, &mac_addr);
+				break;
+				
+			default:
+				bleat_printf( 0, "set_vf_rx_mac: unknown device type: %u, port: %u", port_id, dev_type);
+				break;	
+		}
 	
-	if (diag < 0) {
-		bleat_printf( 0, "set rx mac failed: port=%d vf=%d on/off=%d mac=%s rc=%d", (int)port_id, (int)vf, on, mac, diag );
+		if (diag < 0) {
+			bleat_printf( 0, "set rx mac failed: port=%d vf=%d on/off=%d mac=%s rc=%d", (int)port_id, (int)vf, on, mac, diag );
+		}
+		
 	} else {
-		bleat_printf( 3, "set rx mac successful: port=%d vf=%d on/off=%d mac=%s", (int)port_id, (int)vf, on, mac );
-	}
 
+		diag = rte_eth_dev_mac_addr_remove( port_id, &mac_addr );
+		if( diag < 0 ) {
+			bleat_printf( 0, "clear rx mac failed: port=%d vf=%d on/off=%d mac=%s rc=%d", (int)port_id, (int)vf, on, mac, diag );
+		} else {
+			bleat_printf( 3, "clear rx mac successful: port=%d vf=%d on/off=%d mac=%s", (int)port_id, (int)vf, on, mac );
+		}
+	}
+}
+
+/*
+	Set the 'default' MAC address for the VF. This is different than the set_vf_rx_mac() funciton
+	inasmuch as the address should be what the driver reports to a DPDK application when the 
+	MAC address is 'read' from the device.
+*/
+void set_vf_default_mac( portid_t port_id, const char* mac, uint32_t vf ) {
+	int state;
+	struct ether_addr mac_addr;
+
+	ether_aton_r(mac, &mac_addr);
+
+	if( (state = rte_pmd_ixgbe_set_vf_mac_addr( port_id, vf, &mac_addr )) >= 0 ) {
+		bleat_printf( 3, "set default mac successful: port=%d vf=%d mac=%s", (int)port_id, (int)vf, mac );
+	} else {
+		bleat_printf( 3, "set default mac failed: port=%d vf=%d mac=%s state=%d", (int)port_id, (int)vf, mac, state );
+	}
 }
 
 
@@ -1341,6 +1370,10 @@ lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param)
 				port_id, (unsigned)link.link_speed,
 			(link.link_duplex == ETH_LINK_FULL_DUPLEX) ?
 				("full-duplex") : ("half-duplex"));
+
+		if( type == RTE_ETH_EVENT_INTR_LSC ) {
+			restore_vf_setings( port_id, -1 );				// reset _all_ VFs on the port
+		}
 	} else
 		bleat_printf( 3, "Port %d Link Down", port_id);
 
