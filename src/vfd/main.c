@@ -486,7 +486,6 @@ static void insert_pair( char** target, int *index, int max, char const* flag, c
 static int vfd_eal_init( parms_t* parms ) {
 	int		argc = 0;					// argc/v parms we dummy up
 	char** argv;
-	//int		argc_idx = 11;			// insertion index into argc (initial value depends on static parms below)  without --no-huge
 	int		i;
 	char	wbuf[128];				// scratch buffer
 	int		count;
@@ -496,8 +495,6 @@ static int vfd_eal_init( parms_t* parms ) {
 		exit( 1 );
 	}
 
-	//argc = argc_idx + (parms->npciids * 2);											// 2 slots for each pcciid;  number to alloc is one larger to allow for ending nil
-	//if( (argv = (char **) malloc( (argc + 1) * sizeof( char* ) )) == NULL ) {		// n static parms + 2 slots for each pciid + null
 	if( (argv = (char **) malloc( MAX_ARGV_LEN * sizeof( char* ) )) == NULL ) {		// get enough for a max set of pointers
 		bleat_printf( 0, "CRI: abort: unable to alloc argv array for eal initialisation" );
 		exit( 1 );

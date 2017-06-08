@@ -8,25 +8,25 @@ The usual RTE_ environment variables must be defined.
 
 
 This code makes use of a modified dpdk library which must be pulled from the
-github:/att/dpdk repo.  The suggested method is to clone it alongside other 
-repos and create a sim-link in src/lib here.   There are some includes which
-must make reference to a relative path because of the way the dpdk stuff is
-built via the dpdk make environment. 
+https://github.com/ajitkhaparde/dpdk-next-net/tree/17.08-bnxt-sumbit-vfd
+repo.  The branch to use is 17.08-bnxt-sumbit-vfd.  The depenency on this 
+specialised repo will be eliminated when all of the changes are incorporated
+into the main dpdk repo which we assume will be 17.08.
 
 Once the dpdk repo has been cloned, it must be built before anything in the 
 vfd source tree can be built. To do this follow the following steps:
 
     -   cd dpdk				# where ever you installed it
-    -   git checkout v16.11
+    -   git checkout <correct-tag/branch>
     -   make config T=x86_64-native-linuxapp-gcc
     -   make
-    -   tools/dpdk-setup.sh
+    -   usertools/dpdk-setup.sh
          + select the option which corresponds to the correct
            environment, most likely: x86_64-native-linuxapp-gcc
            This will go through another make process which sets
-           libraries and such up. If there are link errors during
-           the build, it is likely this step was not executed, or
-           didn't finish correctly
+           libraries and such up and 'installs'. If there are link 
+           errors during the build, it is likely this step was not 
+           executed, or didn't finish correctly
 
     -   export RTE_SDK=$PWD
     -   export RTE_TARGET=x86_64-native-linuxapp-gcc
@@ -44,7 +44,3 @@ After the DPDK library has been built, you can cd into vfd/src and:
 
 Todo:
 	A toplevel mk/make build needs to be provided
-
-
-The original requirement to have a symlink to the dpdk library in the vfd
-lib directory is _no longer_ needed.
