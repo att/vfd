@@ -63,6 +63,7 @@
 				24 May 2017 - If the guest pushes a MAC, that will be saved and used as the default rather
 							than the first in the list.
 				26 May 2017 - Allow promisc mode on PF to be optionally disabled via main config file.
+				08 Jun 2017 - Add support to disable huge pages.
 */
 
 
@@ -87,6 +88,7 @@
 
 
 #define DEBUG
+#define MAX_ARGV_LEN	64		// number of parms (max) passed on eal_init call
 
 // ---------------------globals: bad form, but unavoidable -------------------------------------------------------
 static parms_t *g_parms = NULL;											// dpdk callback does not allow data pointer so we must have a global. all other functions should accept a pointer!
@@ -94,7 +96,7 @@ static parms_t *g_parms = NULL;											// dpdk callback does not allow data p
 
 // -- global initialisation ----
 
-//const char *version = VFD_VERSION "    build: " __DATE__ " " __TIME__;
+const char *version = VFD_VERSION "    build: " __DATE__ " " __TIME__;
 
 // --- misc support ----------------------------------------------------------------------------------------------
 
@@ -446,6 +448,28 @@ static int dummy_rte_eal_init( int argc, char** argv ) {
 }
 
 /*
+    Insert a flag/value pair, or just a flag, into the target array, and advance the index
+    accordingly.  If value is nil, then just the flag is inserted.  If an attempt to insert
+    beyond the max size, then the process is aborted.
+*/
+static void insert_pair( char** target, int *index, int max, char const* flag, char const* value ) {
+	if( *index < max-2 ) {
+		target[*index] = strdup( flag );
+		if( value != NULL ) {
+			bleat_printf( 1, "set flag: %s %s", flag, value );
+			target[(*index)+1] = strdup( value );
+			*index += 2;
+		} else {
+			bleat_printf( 1, "set flag: %s", flag );
+			*index += 1;
+		}
+	} else {
+		bleat_printf( 0, "abort: unable to squeeze parms into dpdk initialisation target" );
+		exit( 1 );
+	}
+}
+
+/*
 	Initialise the EAL.  We must dummy up what looks like a command line and pass it to the dpdk funciton.
 	This builds the base command, and then adds a -w option for each pciid/vf combination that we know
 	about.
@@ -460,10 +484,9 @@ static int dummy_rte_eal_init( int argc, char** argv ) {
 		- dpdk eal initialisation fails
 */
 static int vfd_eal_init( parms_t* parms ) {
-	int		argc;					// argc/v parms we dummy up
+	int		argc = 0;					// argc/v parms we dummy up
 	char** argv;
-	//int		argc_idx = 12;			// insertion index into argc (initial value depends on static parms below)  --no-huge
-	int		argc_idx = 11;			// insertion index into argc (initial value depends on static parms below)  without --no-huge
+	//int		argc_idx = 11;			// insertion index into argc (initial value depends on static parms below)  without --no-huge
 	int		i;
 	char	wbuf[128];				// scratch buffer
 	int		count;
@@ -473,14 +496,15 @@ static int vfd_eal_init( parms_t* parms ) {
 		exit( 1 );
 	}
 
-	argc = argc_idx + (parms->npciids * 2);											// 2 slots for each pcciid;  number to alloc is one larger to allow for ending nil
-	if( (argv = (char **) malloc( (argc + 1) * sizeof( char* ) )) == NULL ) {		// n static parms + 2 slots for each pciid + null
-		bleat_printf( 0, "CRI: abort: unable to alloc memory for eal initialisation" );
+	//argc = argc_idx + (parms->npciids * 2);											// 2 slots for each pcciid;  number to alloc is one larger to allow for ending nil
+	//if( (argv = (char **) malloc( (argc + 1) * sizeof( char* ) )) == NULL ) {		// n static parms + 2 slots for each pciid + null
+	if( (argv = (char **) malloc( MAX_ARGV_LEN * sizeof( char* ) )) == NULL ) {		// get enough for a max set of pointers
+		bleat_printf( 0, "CRI: abort: unable to alloc argv array for eal initialisation" );
 		exit( 1 );
 	}
-	memset( argv, 0, sizeof( char* ) * (argc + 1) );
+	memset( argv, 0, sizeof( char* ) * MAX_ARGV_LEN );
 
-	argv[0] = strdup(  "vfd" );						// dummy up a command line to pass to rte_eal_init() -- it expects that we got these on our command line (what a hack)
+	argv[argc++] = strdup( "vfd" );							// dummy up a command line to pass to rte_eal_init() -- it expects that we got these on our command line (what a hack)
 
 
 	if( parms->cpu_mask != NULL ) {
@@ -505,7 +529,7 @@ static int vfd_eal_init( parms_t* parms ) {
 		}
 	}
 	if( parms->cpu_mask == NULL ) {
-			parms->cpu_mask = strdup( "0x01" );
+		parms->cpu_mask = strdup( "0x04" );
 	} else {
 		if( *(parms->cpu_mask+1) != 'x' ) {														// not something like 0xff
 			snprintf( wbuf, sizeof( wbuf ), "0x%02x", atoi( parms->cpu_mask ) );				// assume integer as a string given; cvt to hex
@@ -514,38 +538,28 @@ static int vfd_eal_init( parms_t* parms ) {
 		}
 	}
 	
-	argv[1] = strdup( "-c" );
-	argv[2] = strdup( parms->cpu_mask );
-
-	argv[3] = strdup( "-n" );
-	argv[4] = strdup( "4" );
-
-	//argv[5] = strdup( "-m" );
-	//argv[6] = strdup( "50" );					// MiB of memory
+	insert_pair( argv, &argc, MAX_ARGV_LEN, "-c", parms->cpu_mask );
+	insert_pair( argv, &argc, MAX_ARGV_LEN, "-n", "4" );
+	insert_pair( argv, &argc, MAX_ARGV_LEN, "--socket-mem", "64,64" );
+	insert_pair( argv, &argc, MAX_ARGV_LEN, "--file-prefix", "vfd" );
 	
-	argv[5] = strdup( "--socket-mem" );
-	argv[6] = strdup( "64,64" );					// MiB of memory
-	
-	argv[7] = strdup( "--file-prefix" );
-	argv[8] = strdup( "vfd" );					// dpdk creates some kind of lock file, this is used for that
-	
-	argv[9] = strdup( "--log-level" );
 	snprintf( wbuf, sizeof( wbuf ), "%d", parms->dpdk_init_log_level );
-	argv[10] = strdup( wbuf );
+	insert_pair( argv, &argc, MAX_ARGV_LEN, "--log-level", wbuf );
 	
-	//argv[11] = strdup( "--no-huge" );
-
-
-	for( i = 0; i < parms->npciids && argc_idx < argc - 1; i++ ) {			// add in the -w pciid values to the list
-		argv[argc_idx++] = strdup( "-w" );
-		argv[argc_idx++] = strdup( parms->pciids[i].id );
-		bleat_printf( 1, "add pciid to dpdk dummy command line -w %s", parms->pciids[i].id );
+	if( parms->rflags & RF_NO_HUGE ) {
+		insert_pair( argv, &argc, MAX_ARGV_LEN, "--no-huge", NULL );
+		//argv[11] = strdup( "--no-huge" );
 	}
 
-	dummy_rte_eal_init( argc, argv );			// print out parms, vet, etc.
+
+	for( i = 0; i < parms->npciids; i++ ) {												// add in the -w pciid values to the list
+		insert_pair( argv, &argc, MAX_ARGV_LEN, "-w", parms->pciids[i].id );
+	}
+
+	dummy_rte_eal_init( argc, argv );													// print out parms, vet, etc.
 	if( parms->forreal ) {
 		bleat_printf( 1, "invoking real rte initialisation argc=%d", argc );
-		i = rte_eal_init( argc, argv ); 			// http://dpdk.org/doc/api/rte__eal_8h.html
+		i = rte_eal_init( argc, argv ); 												// http://dpdk.org/doc/api/rte__eal_8h.html
 		bleat_printf( 1, "initialisation returned %d", i );
 		rte_eal_devargs_dump(stdout);
 	} else {
@@ -1183,6 +1197,7 @@ main(int argc, char **argv)
 	int		enable_qos = 0;				// off by default enable_qos in config should be used to set on
 	int		state;
 	int 	j;
+	int		no_huge = 0;				// -H will turn on and we will flip the appropriate bit in parms
 
 	uint16_t	cfg_offset = 0x100;
 	int		enable_fc = 0;				// enable flow control (-F sets)
@@ -1190,11 +1205,12 @@ main(int argc, char **argv)
 
   const char * main_help =
 		"\n"
-		"Usage: vfd [-f] [-F] [-n] [-p parm-file] [-v level] [-q]\n"
+		"Usage: vfd [-f] [-F] [-H] [-n] [-p parm-file] [-v level] [-q]\n"
 		"Usage: vfd -?\n"
 		"  Options:\n"
 		"\t -f        keep in 'foreground'\n"
 		"\t -F        enable flow control (might be ignored in qos mode)\n"
+		"\t -H        disable use of huge pages\n"
 		"\t -n        no-nic actions executed\n"
 		"\t -p <file> parmm file (/etc/vfd/vfd.cfg)\n"
 		"\t -q        enable dcb qos (use config file parm as general rule)\n"
@@ -1212,7 +1228,7 @@ main(int argc, char **argv)
 	log_file = (char *) malloc( sizeof( char ) * BUF_1K );
 
   // Parse command line options
-  while ( (opt = getopt(argc, argv, "?qfFhnqv:p:s:")) != -1)
+  while ( (opt = getopt(argc, argv, "?qfFHhnqv:p:s:")) != -1)
   {
     switch (opt)
     {
@@ -1222,6 +1238,10 @@ main(int argc, char **argv)
 			
 		case 'f':
 			run_asynch = 0;
+			break;
+		
+		case 'H':
+			no_huge = 1;
 			break;
 		
 		case 'n':
@@ -1245,7 +1265,7 @@ main(int argc, char **argv)
 		case 'h':
 		case '?':
 			printf( "\nVFd %s\n", version );
-			printf( "(17406)\n" );
+			printf( "(17608)\n" );
 			printf("%s\n", main_help);
 			exit( 0 );
 			break;
@@ -1262,6 +1282,10 @@ main(int argc, char **argv)
 	if( (g_parms = read_parms( parm_file )) == NULL ) {						// get overall configuration (includes list of pciids we manage)
 		fprintf( stderr, "CRI: unable to read configuration from %s: %s\n", parm_file, strerror( errno ) );
 		exit( 1 );
+	}
+
+	if( no_huge ) {							// can be set on cmd line or in config
+		g_parms->rflags |= RF_NO_HUGE;
 	}
 
 	if( enable_qos ) {							// command line flag overrides the config to force qos on

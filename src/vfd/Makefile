@@ -38,7 +38,7 @@ VFD_VERSION = $(shell junk=$$( (git log -n 1 2>/dev/null || echo Commit non-git-
 	 date="$${junk\#\#*\|}";\
 	 tag=$$( git tag -l --contains $$cid 2>/dev/null | head -1 );\
 	 mod=$$( git status 2>/dev/null | awk '/modified:/ { m="+++" } END { print m }' );\
-	 printf "%s%s%s\n" "$$mod" "$$cid($$tag)" "$$date"; )
+	 printf "%s%s%s\n" "$$mod" "$$cid-$${tag:-notag}" "$$date"; )
 	 
 
 
@@ -57,12 +57,11 @@ CFLAGS_main.o += -Wno-return-type
 endif
 
 
-EXTRA_CFLAGS += -O3 -g -Wfatal-errors #-DVFD_VERSION='"($VFD_VERSION)"'
+EXTRA_CFLAGS += -O3 -g -Wfatal-errors -DVFD_VERSION='"$(VFD_VERSION)"'
 
 
 
 include $(RTE_SDK)/mk/rte.extapp.mk
-
 
 clean: 
 	rm -rf build
