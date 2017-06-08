@@ -30,6 +30,7 @@
 #define RF_ENABLE_QOS	0x01		// enable qos
 #define RF_INITIALISED	0x02		// init has finished
 #define RF_ENABLE_FC	0x04		// enable flow control for all PFs
+#define RF_NO_HUGE		0x08		// disable huget pages
 
 #define MAX_TCS			8			// max number of traffic classes supported (0 - 7)
 #define NUM_BWGS		8			// number of bandwidth groups

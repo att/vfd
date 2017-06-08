@@ -15,6 +15,7 @@
 				29 Nov 2016 : Added changes to support queue share in vf config.
 				11 Feb 2017 : Fix issues with leading spaces rather than tabs (formatting)
 				26 May 2017 : Allow promisc to be set (default is true to match original behavour)
+				08 Jun 2017 : Allow huge_pages to be set (defult is on)
 
 	TODO:		convert things to the new jw_xapi functions to make for easier to read code.
 */
@@ -187,6 +188,12 @@ extern parms_t* read_parms( char* fname ) {
 		if( jw_is_bool( jblob, "enable_qos" ) ) {
 			if( jw_value( jblob, "enable_qos" ) ) {
 				parms->rflags |= RF_ENABLE_QOS;
+			}
+		}
+
+		if( jw_is_bool( jblob, "huge_pages" ) ) {				// we enable huge pages by default, flag in parms is to disable (no_huge) set when this is false
+			if( ! jw_value( jblob, "huge_pages" ) ) {
+				parms->rflags |= RF_NO_HUGE;
 			}
 		}
 
