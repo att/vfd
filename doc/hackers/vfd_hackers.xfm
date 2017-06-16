@@ -693,14 +693,21 @@ across all VFs on each PF.
 Please refer to the limits section later in this document for more details.
 
 &h3( Strip/Insert VLAN IDs )
-The VF may be configured to automatically remove the VLAN tag as each packet is received, and to automatically insert
-a VLAN tag as each packet is transmitted.
-Both functions are set with the same &cw( strip_stag ) field; as the strip and insert operations are related, they 
-are both either enabled or disabled and thus only one field is necessary.
-When this field is set to &cw( true, ) the array of VLAN IDs must contain only a single ID as it is impossible for 
-the NIC to know which VLAN ID to insert if multiple IDs are defined in the array. 
-Thus, VFd will reject the configuration if the strip stag field is set to &cw( true, ) and the VLAN array has more 
-than one element.
+The VF may be configured such that the VLAN tag in each packet is automatically removed (stripped) as the packet 
+arrives, and inserted into each packet as packets are transmitted.
+Setting the &cw( strip_stag ) field to true causes &bold(both) strip and insert to be preformed, and when set to 
+false, the VLAN tag is not removed on ingress and it is assumed that the transmitting application has added one 
+of the VLAN IDs in from the list to packets being transmitted. 
+
+
+.sp
+When the strip field is set to true, the VLAN ID is removed from all arriving packets, while the behavour for 
+transmitted packets is affected by the contents of the VLAN ID array.
+When the array contains a single VLAN ID, that ID is placed into each outgoing packet by the hardware and the 
+application is not expected to supply the ID.
+If the array contains two, or more, IDs, then the transmitting application is expected to add one of the listed
+IDs in the outgoing packet (it is impossible for the hardware to know which of the listed IDs should be applied 
+to any given packet).
 
 &h3( VF Quality of service configuration )
 In addition to the parameters noted above, a set of QoS parameters may be supplied in the VF configuration file.
