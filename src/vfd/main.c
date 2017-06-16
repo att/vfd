@@ -787,10 +787,14 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 				}
 				
 				rte_eth_allmulticast_enable(port->rte_port_number);	
-				ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
-				
-				if (ret < 0)
-					bleat_printf( 0, "ERR: bad unicast hash table parameter, return code = %d", ret);
+			
+				if (get_nic_type(port->rte_port_number) == VFD_NIANTIC) {
+					ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
+					
+					if (ret < 0)
+						bleat_printf( 0, "ERR: bad unicast hash table parameter, return code = %d", ret);
+				}	
+
 	
 			} else {
 				bleat_printf( 1, "port update commands not sent (forreal is off): %s/%s",  port->name, port->pciid );
@@ -933,10 +937,14 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 					}
 					
 					rte_eth_allmulticast_enable(port->rte_port_number);
-					ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
+					
+					if (get_nic_type(port->rte_port_number) == VFD_NIANTIC) {
+						ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
 						
-					if (ret < 0)
-						bleat_printf( 0, "ERR: bad unicast hash table parameter, return code = %d", ret);
+						if (ret < 0)
+							bleat_printf( 0, "ERR: bad unicast hash table parameter, return code = %d", ret);
+					}					
+						
 					
 					// don't accept untagged frames
 					set_vf_allow_untagged(port->rte_port_number, vf->num, !on);
