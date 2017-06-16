@@ -154,6 +154,9 @@ get_nic_type(portid_t port_id)
 	
 	if (strcmp(dev_info.driver_name, "net_i40e") == 0)
 		return VFD_FVL25;
+
+	if (strcmp(dev_info.driver_name, "net_mlx5") == 0)
+		return VFD_MLX5;
 	
 	return 0;
 }
@@ -186,6 +189,10 @@ set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk)
 		case VFD_BNXT:
 			break;
 			
+		case VFD_MLX5:
+			diag = vfd_mlx5_set_vf_rate_limit(port_id, vf, rate);
+			break;
+
 		default:
 			bleat_printf( 0, "set_vf_rate: unknown device type: %u, port: %u", port_id, dev_type);
 			break;	
@@ -220,7 +227,11 @@ tx_vlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id)
 			break;
 
 		case VFD_BNXT:
-			diag = vfd_bnxt_set_vf_vlan_insert( port_id, vf_id, vlan_id );
+			//diag = vfd_bnxt_set_vf_vlan_insert( port_id, vf_id, vlan_id );
+			break;
+
+		case VFD_MLX5:
+			diag = vfd_mlx5_set_vf_vlan_insert( port_id, vf_id, vlan_id );
 			break;
 			
 		default:
@@ -245,16 +256,20 @@ rx_vlan_strip_set_on_vf(portid_t port_id, uint16_t vf_id, int on)
 	switch (dev_type) {
 		case VFD_NIANTIC:
 			diag = vfd_ixgbe_set_vf_vlan_stripq(port_id, vf_id, on);
-			break;
-			
+		break;
+
 		case VFD_FVL25:		
 			diag = vfd_i40e_set_vf_vlan_stripq(port_id, vf_id, on);
 			break;
 
 		case VFD_BNXT:
-			diag = vfd_bnxt_set_vf_vlan_stripq(port_id, vf_id, on);;
+			//diag = vfd_bnxt_set_vf_vlan_stripq(port_id, vf_id, on);
 			break;
 			
+		case VFD_MLX5:
+			diag = vfd_mlx5_set_vf_vlan_stripq(port_id, vf_id, on);
+			break;
+
 		default:
 			bleat_printf( 0, "rx_vlan_strip_set_on_vf: unknown device type: %u, port: %u", port_id, dev_type);
 			break;	
@@ -284,7 +299,7 @@ set_vf_allow_bcast(portid_t port_id, uint16_t vf_id, int on)
 			break;
 
 		case VFD_BNXT:
-			ret = vfd_bnxt_set_vf_broadcast(port_id, vf_id, on);
+			//ret = vfd_bnxt_set_vf_broadcast(port_id, vf_id, on);
 			break;
 			
 		default:
@@ -316,7 +331,7 @@ set_vf_allow_mcast(portid_t port_id, uint16_t vf_id, int on)
 			break;
 
 		case VFD_BNXT:
-			ret = vfd_bnxt_set_vf_multicast_promisc(port_id, vf_id, on);
+			//ret = vfd_bnxt_set_vf_multicast_promisc(port_id, vf_id, on);
 			break;
 			
 		default:
@@ -348,7 +363,7 @@ set_vf_allow_un_ucast(portid_t port_id, uint16_t vf_id, int on)
 			break;
 
 		case VFD_BNXT:	
-			ret = vfd_bnxt_set_vf_unicast_promisc(port_id, vf_id, on);
+			//ret = vfd_bnxt_set_vf_unicast_promisc(port_id, vf_id, on);
 			break;
 			
 		default:
@@ -380,7 +395,7 @@ set_vf_allow_untagged(portid_t port_id, uint16_t vf_id, int on)
 			break;
 
 		case VFD_BNXT:		
-			ret = vfd_bnxt_allow_untagged(port_id, vf_id, on);
+			//ret = vfd_bnxt_allow_untagged(port_id, vf_id, on);
 			break;
 			
 		default:
@@ -422,9 +437,13 @@ set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  uint8_t on)
 				break;
 
 			case VFD_BNXT:	
-				diag = vfd_bnxt_set_vf_mac_addr(port_id, vf, &mac_addr);
+				//diag = vfd_bnxt_set_vf_mac_addr(port_id, vf, &mac_addr);
 				break;
 				
+			case VFD_MLX5:	
+				//diag = vfd_mlx5_set_vf_mac_addr(port_id, vf, mac);
+				break;
+
 			default:
 				bleat_printf( 0, "set_vf_rx_mac: unknown device type: %u, port: %u", port_id, dev_type);
 				break;	
@@ -480,7 +499,10 @@ set_vf_rx_vlan(portid_t port_id, uint16_t vlan_id, uint64_t vf_mask, uint8_t on)
 			break;
 
 		case VFD_BNXT:
-			diag = vfd_bnxt_set_vf_vlan_filter(port_id, vlan_id, vf_mask, on);
+			//diag = vfd_bnxt_set_vf_vlan_filter(port_id, vlan_id, vf_mask, on);
+			break;
+
+		case VFD_MLX5:
 			break;
 			
 		default:
@@ -513,7 +535,7 @@ set_vf_vlan_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 			break;
 
 		case VFD_BNXT:
-			diag = vfd_bnxt_set_vf_vlan_anti_spoof(port_id, vf, on);
+			//diag = vfd_bnxt_set_vf_vlan_anti_spoof(port_id, vf, on);
 			break;
 			
 		default:
@@ -546,7 +568,11 @@ set_vf_mac_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 			break;
 
 		case VFD_BNXT:
-			diag = vfd_bnxt_set_vf_mac_anti_spoof(port_id, vf, on);
+			//diag = vfd_bnxt_set_vf_mac_anti_spoof(port_id, vf, on);
+			break;
+
+		case VFD_MLX5:
+			diag = vfd_mlx5_set_vf_mac_anti_spoof(port_id, vf, on);
 			break;
 			
 		default:
@@ -578,9 +604,12 @@ tx_set_loopback(portid_t port_id, u_int8_t on)
 			break;
 
 		case VFD_BNXT:
-			diag = vfd_bnxt_set_tx_loopback(port_id, on);
+			//diag = vfd_bnxt_set_tx_loopback(port_id, on);
 			break;
 			
+		case VFD_MLX5:
+			break;
+
 		default:
 			bleat_printf( 0, "tx_set_loopback: unknown device type: %u, port: %u", port_id, dev_type);
 			break;	
@@ -641,7 +670,7 @@ void set_split_erop( portid_t port_id, uint16_t vf_id, int state ) {
 			break;
 
 		case VFD_BNXT:
-			vfd_bnxt_set_split_erop(port_id, vf_id, state);
+			//vfd_bnxt_set_split_erop(port_id, vf_id, state);
 			break;
 			
 		default:
@@ -666,7 +695,7 @@ static void set_rx_drop(portid_t port_id, uint16_t vf_id, int state )
 			break;
 
 		case VFD_BNXT:
-			vfd_bnxt_set_rx_drop(port_id, vf_id, state);
+			//vfd_bnxt_set_rx_drop(port_id, vf_id, state);
 			break;
 			
 		default:
@@ -732,7 +761,7 @@ void set_queue_drop( portid_t port_id, int state ) {
 			break;
 
 		case VFD_BNXT:
-			result = vfd_bnxt_set_all_queues_drop_en( port_id, !!state ); 				// not implemented TODO
+			//result = vfd_bnxt_set_all_queues_drop_en( port_id, !!state ); 				// not implemented TODO
 			break;
 			
 		default:
@@ -783,7 +812,7 @@ is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter )
 			break;
 
 		case VFD_BNXT:
-			result = vfd_bnxt_is_rx_queue_on(port_id, vf_id, mcounter);
+			//result = vfd_bnxt_is_rx_queue_on(port_id, vf_id, mcounter);
 			break;
 			
 		default:
@@ -991,9 +1020,12 @@ nic_stats_display(uint8_t port_id, char * buff, int bsize)
 			break;
 
 		case VFD_BNXT:
-			spoffed[port_id] += vfd_bnxt_get_pf_spoof_stats(port_id); 
+			//spoffed[port_id] += vfd_bnxt_get_pf_spoof_stats(port_id); 
 			break;
 			
+		case VFD_MLX5:
+			spoffed[port_id] += vfd_mlx5_get_pf_spoof_stats(port_id); 
+			break;
 		default:
 			bleat_printf( 0, "nic_stats_display: unknown device type: %u, port: %u", port_id, dev_type);
 			break;	
@@ -1070,9 +1102,13 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 			break;
 
 		case VFD_BNXT:
-			result = vfd_bnxt_get_vf_stats(port_id, vf, &stats);
+			//result = vfd_bnxt_get_vf_stats(port_id, vf, &stats);
 			break;
 			
+		case VFD_MLX5:
+			//result = vfd_mlx5_get_vf_stats(port_id, vf, &stats);
+			break;
+
 		default:
 			bleat_printf( 0, "vf_stats_display: unknown device type: %u, port: %u", port_id, dev_type);
 			break;	
@@ -1186,9 +1222,12 @@ dump_all_vlans(portid_t port_id)
 			break;
 
 		case VFD_BNXT:
-			result = vfd_bnxt_dump_all_vlans(port_id);
+			//result = vfd_bnxt_dump_all_vlans(port_id);
 			break;
 			
+		case VFD_MLX5:
+			break;
+
 		default:
 			bleat_printf( 0, "set_queue_drop: unknown device type: %u, port: %u", port_id, dev_type);
 			break;	
@@ -1252,9 +1291,12 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 			break;
 
 		case VFD_BNXT:
-			retval = rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vfd_bnxt_vf_msb_event_callback, NULL);
+			//retval = rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vfd_bnxt_vf_msb_event_callback, NULL);
 			break;
 			
+		case VFD_MLX5:
+			break;
+
 		default:
 			bleat_printf( 0, "port_init: unknown device type: %u, port: %u", port, dev_type);
 			break;	
@@ -1398,7 +1440,7 @@ ping_vfs(portid_t port_id, int vf)
 			break;
 
 		case VFD_BNXT:
-			retval = vfd_bnxt_ping_vfs(port_id, vf);
+			//retval = vfd_bnxt_ping_vfs(port_id, vf);
 			break;
 			
 		default:

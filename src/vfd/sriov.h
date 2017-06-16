@@ -74,6 +74,7 @@
 #include "vfd_bnxt.h"
 #include "vfd_ixgbe.h"
 #include "vfd_i40e.h"
+#include "vfd_mlx5.h"
 
 
 // ---------------------------------------------------------------------------------------
@@ -111,6 +112,7 @@
 #define VFD_NIANTIC		0x1
 #define VFD_FVL25		0x2
 #define VFD_BNXT		0x3
+#define VFD_MLX5		0x4
 
 #define TOGGLE(i) ((i+ 1) & 1)
 //#define TV_TO_US(tv) ((tv)->tv_sec * 1000000 + (tv)->tv_usec)
