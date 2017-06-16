@@ -3,15 +3,10 @@ Top level source directory.  Things which maybe aren't obvious are described
 in this file.
 
 
-VFd (master branch) should now build cleanly against (and requeres) DPDK 16.11.
-The usual RTE_ environment variables must be defined. 
 
-
-This code makes use of a modified dpdk library which must be pulled from the
-https://github.com/ajitkhaparde/dpdk-next-net/tree/17.08-bnxt-sumbit-vfd
-repo.  The branch to use is 17.08-bnxt-sumbit-vfd.  The depenency on this 
-specialised repo will be eliminated when all of the changes are incorporated
-into the main dpdk repo which we assume will be 17.08.
+This code makes use of DPDK 17.08 features which are currently in the master
+branch.  Pull the DPDK repo, and attempt to checkout v17.08. If this fails
+checkout the master branch until the v17.08 tag is added.
 
 Once the dpdk repo has been cloned, it must be built before anything in the 
 vfd source tree can be built. To do this follow the following steps:
