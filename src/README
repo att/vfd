@@ -6,16 +6,12 @@ in this file.
 VFd (master branch) should now build cleanly against (and requeres) DPDK 16.11.
 The usual RTE_ environment variables must be defined. 
 
-
-This code makes use of a modified dpdk library which must be pulled from the
-github:/att/dpdk repo.  The suggested method is to clone it alongside other 
-repos and create a sim-link in src/lib here.   There are some includes which
-must make reference to a relative path because of the way the dpdk stuff is
-built via the dpdk make environment. 
-
-Once the dpdk repo has been cloned, it must be built before anything in the 
+You will need to clone the dpdk.org repo, and build that before you can build
+VFd.  Once the dpdk repo has been cloned, it must be built before anything in the 
 vfd source tree can be built. To do this follow the following steps:
 
+	-   cd build            # where ever you plan to clone/build it
+    -   git clone http://dpdk.org/git/dpdk   # if you need to clone 
     -   cd dpdk				# where ever you installed it
     -   git checkout v16.11
     -   make config T=x86_64-native-linuxapp-gcc
@@ -46,5 +42,9 @@ Todo:
 	A toplevel mk/make build needs to be provided
 
 
-The original requirement to have a symlink to the dpdk library in the vfd
-lib directory is _no longer_ needed.
+Notes:
+  - The original requirement to have a symlink to the dpdk library in the vfd
+    lib directory is _no longer_ needed.
+
+  - You should only need to rebuild the DPDK library if there are changes, 
+    you switched to a different branch/tag, or you recloned the repo. 
