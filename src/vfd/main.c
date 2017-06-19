@@ -1269,7 +1269,7 @@ main(int argc, char **argv)
 
 		case 'h':
 		case '?':
-			printf( "\nVFd %s\n", version );
+			printf( "\nVFd v2 %s\n", version );
 			printf( "(17608)\n" );
 			printf("%s\n", main_help);
 			exit( 0 );
