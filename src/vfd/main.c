@@ -97,6 +97,7 @@ static parms_t *g_parms = NULL;											// dpdk callback does not allow data p
 // -- global initialisation ----
 
 const char *version = VFD_VERSION "    build: " __DATE__ " " __TIME__;
+const char *vnum = "v2";
 
 // --- misc support ----------------------------------------------------------------------------------------------
 
@@ -1269,7 +1270,7 @@ main(int argc, char **argv)
 
 		case 'h':
 		case '?':
-			printf( "\nVFd v2 %s\n", version );
+			printf( "\nVFd %s %s\n", vnum, version );
 			printf( "(17608)\n" );
 			printf("%s\n", main_help);
 			exit( 0 );
@@ -1324,7 +1325,7 @@ main(int argc, char **argv)
 	}
 	free( log_file );
 	bleat_set_lvl( g_parms->init_log_level );											// set default level
-	bleat_printf( 0, "VFD %s initialising", version );
+	bleat_printf( 0, "VFD %s %s initialising", vnum, version );
 	bleat_printf( 0, "config dir set to: %s", g_parms->config_dir );
 
 	if( vfd_init_fifo( g_parms ) < 0 ) {
