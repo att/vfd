@@ -2,4 +2,4 @@
 
 libs = -L../lib -lvfd 
 vreq:	vreq.c ../lib/libvfd.a
-	gcc -I ../lib vreq.c -o vreq $(libs)
+	gcc -I ../lib vreq.c -o vfd_req $(libs)
