@@ -19,7 +19,7 @@ function build_it
 	(
 		set -e
         cd $src_dir/src/lib
-        git clone http://dpdk.org/git/dpdk -b v16.11
+        git clone http://dpdk.org/git/dpdk
 		cd $src_dir/src/lib/dpdk
 		echo "building dpdk...."
         cat <<endKat >config/defconfig_x86_64-vfd-linuxapp-gcc
@@ -43,6 +43,8 @@ endKat
 		cd $src_dir/src/lib
 		make jsmn
         make libvfd.a
+        cd $src_dir/src/system
+        make
 		cd $src_dir/src/vfd
 		make
 
