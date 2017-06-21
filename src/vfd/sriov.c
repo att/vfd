@@ -1298,7 +1298,6 @@ bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *
 		case HWRM_FUNC_QCAPS:
 		case HWRM_FUNC_QCFG:
 		case HWRM_FUNC_QSTATS:
-		case HWRM_FUNC_CLR_STATS:
 		case HWRM_FUNC_DRV_QVER:
 		case HWRM_PORT_PHY_QCFG:
 		case HWRM_PORT_MAC_QCFG:
@@ -1320,7 +1319,6 @@ bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *
 		case HWRM_VNIC_QCAPS:
 		case HWRM_STAT_CTX_ALLOC:
 		case HWRM_STAT_CTX_FREE:
-		case HWRM_STAT_CTX_CLR_STATS:
 		//case 0xc8:
 			p->retval = RTE_PMD_BNXT_MB_EVENT_PROCEED;
 			break;
@@ -1377,6 +1375,8 @@ bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *
 		case HWRM_NVM_READ:
 		case HWRM_NVM_WRITE:
 		case HWRM_NVM_RAW_WRITE_BLK:
+		case HWRM_STAT_CTX_CLR_STATS:
+		case HWRM_FUNC_CLR_STATS:
 		default:
 			p->retval = RTE_PMD_BNXT_MB_EVENT_NOOP_NACK;     // VM should see failure
 			break;
