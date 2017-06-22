@@ -713,7 +713,7 @@ static int vfd_set_ins_strip( struct sriov_port_s *port, struct vf_s *vf ) {
 		bleat_printf( 2, "pf: %s vf: %d set strip vlan tag %d", port->name, vf->num, vf->strip_stag );
 		rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag );			// if just one in the list, push through user strip option
 
-		if( vf->insert_stag ) {																// when stripping, we must also insert
+			if( vf->strip_stag && (vf->last_updated != DELETED)) {							// when stripping, we must also insert
 			bleat_printf( 2, "%s vf: %d set insert vlan tag with id %d", port->name, vf->num, vf->vlans[0] );
 			tx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->vlans[0] );
 		} else {
@@ -842,7 +842,7 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 
 
 					//AZif (get_nic_type(port->rte_port_number) == VFD_NIANTIC)
-					//	set_vf_rx_vlan(port->rte_port_number, 0, vf_mask, 0);		// remove vlan id 0 do we need it here for i40e?
+					//set_vf_rx_vlan(port->rte_port_number, 0, vf_mask, 0);		// remove vlan id 0 do we need it here for i40e?
 					
 					for(v = 0; v < vf->num_vlans; ++v) {
 						int vlan = vf->vlans[v];
@@ -860,7 +860,12 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 					}
 				}
 
-				if( vf->last_updated == DELETED ) {				// delete the macs
+				if( vf->last_updated == DELETED ) {				// delete the macs (need to disable anti-spoof first
+					if (vf->mac_anti_spoof) {
+						bleat_printf( 2, "port: %d vf: %d set mac-anti-spoof to %d", port->rte_port_number, vf->num, 0 );
+						set_vf_mac_anti_spoofing(port->rte_port_number, vf->num, SET_OFF);
+					}
+
 					for( m = vf->first_mac; m <= vf->num_macs; ++m ) {
 						mac = vf->macs[m];
 						bleat_printf( 2, "delete mac: port: %d vf: %d mac: %s", port->rte_port_number, vf->num, mac );
@@ -878,6 +883,7 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 								set_vf_rx_mac( port->rte_port_number, mac, vf->num, SET_ON );	// set in whitelist
 							} else {
 								set_vf_default_mac( port->rte_port_number, mac, vf->num );		// first is set as default
+								bleat_printf( 2, "Setting default mac was succesfull");
 							}
 						}
 					}
@@ -889,6 +895,12 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 				}
 
 				if( vf->last_updated == DELETED ) {				// do this last!
+					if( parms->forreal ) { 
+						vfd_set_ins_strip( port, vf );
+
+						bleat_printf( 2, "port: %d vf: %d set link status to %d", port->rte_port_number, vf->num, VF_LINK_AUTO);
+						set_vf_link_status( port->rte_port_number, vf->num, VF_LINK_AUTO);
+					}
 					vf->num = -1;								// must reset this so an add request with the now deleted number will succeed
 					// TODO -- is there anything else that we need to clean up in the struct?
 				}
@@ -911,10 +923,15 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 
 						bleat_printf( 2, "port: %d vf: %d set allow un-ucast to %d", port->rte_port_number, vf->num, vf->allow_un_ucast );
 						set_vf_allow_un_ucast(port->rte_port_number, vf->num, vf->allow_un_ucast);
+	
+						bleat_printf( 2, "port: %d vf: %d set link status to %d", port->rte_port_number, vf->num, vf->link);
+						set_vf_link_status( port->rte_port_number, vf->num, vf->link);
 					} else {
 						bleat_printf( 1, "update vf skipping setup for spoofing, bcast, mcast, etc; forreal is off: %d vf=%d", port->rte_port_number, vf->num );
 					}
 				}
+
+
 
 				vf->last_updated = UNCHANGED;				// mark processed
 			}
@@ -1407,6 +1424,8 @@ main(int argc, char **argv)
 					port2config_map[portid] = i;									// map real port to our array index
 					running_config->ports[i].rte_port_number = portid; 				// record the real pf number
 					running_config->ports[i].nvfs_config = dev_info.max_vfs;		// number of configured VFs (could be less than max)
+					if (strcmp(dev_info.driver_name, "net_mlx5") == 0)
+						running_config->ports[i].nvfs_config = vfd_mlx5_get_num_vfs(portid);
 					break;
 				}
 			}
@@ -1454,7 +1473,7 @@ main(int argc, char **argv)
 							
 			// Find the SR-IOV extended capability structure
 			
-			if (get_nic_type(portid) == VFD_BNXT){ 
+			if (get_nic_type(portid) == VFD_BNXT /*|| get_nic_type(portid) == VFD_MLX5*/){ 
 				do {
 					rte_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, cfg_offset);
 					bleat_printf(4, "Header: %08x (%04x)", pci_control_r, cfg_offset);

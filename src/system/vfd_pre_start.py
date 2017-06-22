@@ -211,7 +211,7 @@ def check_vendor(pciids):
         cmd = "lspci -vm -s %s" % pciid
         try:
             vendor_name = subprocess.check_output(cmd, shell=True).splitlines()[2].split(':')[1].lstrip()
-            if vendor_name == 'Intel Corporation' or vendor_name == "Broadcom Corporation":
+            if vendor_name == 'Intel Corporation' or vendor_name == "Broadcom Corporation" or vendor_name == 'Mellanox Technologies' :
                 continue
             else:
                 not_intel_broadcom_vendor.append(pciid)

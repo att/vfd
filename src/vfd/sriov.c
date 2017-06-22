@@ -162,6 +162,30 @@ get_nic_type(portid_t port_id)
 }
 
 int
+set_vf_link_status(portid_t port_id, uint16_t vf, int status)
+{
+	int diag = 0;
+
+	if ((status > VF_LINK_ON) || (status < VF_LINK_OFF))
+			bleat_printf( 0, "set_vf_link_status: invalid link status: %d, port: %u", status, port_id);
+
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_MLX5:
+			diag = vfd_mlx5_set_vf_link_status(port_id, vf, status);
+			break;
+		default:
+			bleat_printf( 0, "set_vf_link_status: unknown device type: %u, port: %u", port_id, dev_type);
+	}
+
+	if (diag != 0) {
+		bleat_printf( 0, "set_vf_link_status: unable to set link state %d: (%d) %s", status, diag, strerror( -diag ) );
+	}
+
+	return diag;
+}
+
+int
 set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk)
 {
 	int diag = 0;
@@ -424,9 +448,9 @@ set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  uint8_t on)
   struct ether_addr mac_addr;
   ether_aton_r(mac, &mac_addr);
 
+  uint dev_type = get_nic_type(port_id);
 	if(on)
 	{
-		uint dev_type = get_nic_type(port_id);
 		switch (dev_type) {
 			case VFD_NIANTIC:
 				diag = vfd_ixgbe_set_vf_mac_addr(port_id, vf, &mac_addr);
@@ -441,7 +465,7 @@ set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  uint8_t on)
 				break;
 				
 			case VFD_MLX5:	
-				//diag = vfd_mlx5_set_vf_mac_addr(port_id, vf, mac);
+				diag = vfd_mlx5_set_vf_mac_addr(port_id, vf, mac);
 				break;
 
 			default:
@@ -454,8 +478,15 @@ set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  uint8_t on)
 		}
 		
 	} else {
+		switch (dev_type) {
+			case VFD_MLX5:
+				diag = vfd_mlx5_vf_mac_remove(port_id, vf);
+				break;
+			default:
+				diag = rte_eth_dev_mac_addr_remove( port_id, &mac_addr );
+				break;
+		}
 
-		diag = rte_eth_dev_mac_addr_remove( port_id, &mac_addr );
 		if( diag < 0 ) {
 			bleat_printf( 0, "clear rx mac failed: port=%d vf=%d on/off=%d mac=%s rc=%d", (int)port_id, (int)vf, on, mac, diag );
 		} else {
@@ -470,16 +501,38 @@ set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  uint8_t on)
 	MAC address is 'read' from the device.
 */
 void set_vf_default_mac( portid_t port_id, const char* mac, uint32_t vf ) {
-	int state;
-	struct ether_addr mac_addr;
+  	int diag = 0;
+  	struct ether_addr mac_addr;
 
-	ether_aton_r(mac, &mac_addr);
+  	ether_aton_r(mac, &mac_addr);
 
-	if( (state = rte_pmd_ixgbe_set_vf_mac_addr( port_id, vf, &mac_addr )) >= 0 ) {
-		bleat_printf( 3, "set default mac successful: port=%d vf=%d mac=%s", (int)port_id, (int)vf, mac );
-	} else {
-		bleat_printf( 3, "set default mac failed: port=%d vf=%d mac=%s state=%d", (int)port_id, (int)vf, mac, state );
+	uint dev_type = get_nic_type(port_id);
+	bleat_printf( 0, "set_default_vf_rx_mac: device type: %u, port: %u", port_id, dev_type);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			diag = rte_pmd_ixgbe_set_vf_mac_addr( port_id, vf, &mac_addr );
+			break;
+			
+		case VFD_FVL25:		
+			break;
+
+		case VFD_BNXT:	
+			break;
+				
+		case VFD_MLX5:	
+			diag = vfd_mlx5_set_vf_mac_addr(port_id, vf, mac);
+			break;
+
+		default:
+			bleat_printf( 0, "set_vf_rx_mac: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
 	}
+	
+	if (diag < 0) {
+		bleat_printf( 0, "set rx default mac failed: port=%d vf=%d mac=%s rc=%d", (int)port_id, (int)vf, mac, diag );
+	}
+
+	return;
 }
 
 
@@ -1106,7 +1159,7 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 			break;
 			
 		case VFD_MLX5:
-			//result = vfd_mlx5_get_vf_stats(port_id, vf, &stats);
+			result = vfd_mlx5_get_vf_stats(port_id, vf, &stats);
 			break;
 
 		default:
