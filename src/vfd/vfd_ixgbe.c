@@ -284,6 +284,7 @@ vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, v
 
 	struct ether_addr *new_mac;
 
+	bleat_printf( 3, "procesing callback type: %d, Port: %d, VF: %d, OUT: %d, _T: %d", type, port_id, vf, p->retval, mbox_type);
 	/* check & process VF to PF mailbox message */
 	switch (mbox_type) {
 		case IXGBE_VF_RESET:
@@ -397,7 +398,15 @@ vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, v
 			break;
 
 		case IXGBE_VF_GET_QUEUES:
-			bleat_printf( 1, "get queues  event received: port=%d (responding proceed)", port_id );
+			bleat_printf( 1, "get queues event received: port=%d (responding proceed)", port_id );
+			p->retval =  RTE_PMD_IXGBE_MB_EVENT_PROCEED;   /* do what's needed */
+			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p->retval, "IXGBE_VF_GET_QUEUES");
+
+			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
+			break;
+	
+		case IXGBE_VF_UPDATE_XCAST_MODE:
+			bleat_printf( 1, "update xcast mode event received: port=%d (responding proceed)", port_id );
 			p->retval =  RTE_PMD_IXGBE_MB_EVENT_PROCEED;   /* do what's needed */
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p->retval, "IXGBE_VF_GET_QUEUES");
 
@@ -405,7 +414,7 @@ vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, v
 			break;
 
 		default:
-			bleat_printf( 1, "unknown  event request received: port=%d (responding nop+nak)", port_id );
+			bleat_printf( 1, "unknown event request received: port=%d (responding nop+nak)", port_id );
 			p->retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     /* noop & nack */
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, MBOX_TYPE: %d", type, port_id, vf, p->retval, mbox_type);
 
@@ -413,7 +422,6 @@ vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, v
 			break;
 	}
 				
-	bleat_printf( 3, "callback type: %d, Port: %d, VF: %d, OUT: %d, _T: %d", type, port_id, vf, p->retval, mbox_type);
 }
 
 
