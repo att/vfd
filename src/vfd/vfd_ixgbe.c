@@ -67,7 +67,7 @@ vfd_ixgbe_set_tx_loopback(uint8_t port_id, uint8_t on)
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_ixgbe_set_tx_loopback failed: (port_id=%d, on=%d) failed rc=%d", port_id, on, diag );
 	} else {
-		bleat_printf( 3, "rte_pmd_ixgbe_set_tx_loopback successful: port_id=%d, vf_id=%d", port_id, on);
+		bleat_printf( 3, "rte_pmd_ixgbe_set_tx_loopback successful: port_id=%d, on=%d", port_id, on);
 	}
 	
 	return diag;	
@@ -216,7 +216,7 @@ vfd_ixgbe_get_vf_stats(uint8_t port_id, uint16_t vf_id, struct rte_eth_stats *st
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_ixgbe_set_vf_stats failed: (port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, diag );
 	} else {
-		bleat_printf( 3, "rte_pmd_ixgbe_set_vf_stats successful: port_id=%d, vf_id=%d on=%d", port_id, vf_id);
+		bleat_printf( 3, "rte_pmd_ixgbe_set_vf_stats successful: port_id=%d, vf_id=%d", port_id, vf_id);
 	}
 	
 	return diag;			
@@ -438,7 +438,7 @@ uint32_t
 vfd_ixgbe_get_vf_spoof_stats(__attribute__((__unused__)) uint8_t port_id, __attribute__((__unused__)) uint16_t vf_id)
 {
 	/* not implemented */
-	bleat_printf( 3, "vfd_ixgbe_get_vf_spoof_stats not implemented: port_id=%d, on=%d", port_id, vf_id);
+	bleat_printf( 3, "vfd_ixgbe_get_vf_spoof_stats not implemented: port_id=%d, vf_id=%d", port_id, vf_id);
 	return 0;
 }
 
