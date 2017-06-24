@@ -39,6 +39,7 @@
 #include "vfdlib.h"
 #include "sriov.h"
 #include "vfd_dcb.h"
+#include "vfd_mlx5.h"
 
 
 #define RTE_PMD_PARAM_UNSET -1

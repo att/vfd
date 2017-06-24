@@ -326,14 +326,14 @@ extern parms_t* read_parms( char* fname ) {
 											parms->pciids[i].tcs[priority]->flags &= ~TCF_LOW_LATENCY;
 										}
 										if( !jw_is_bool( tcobj, "lsp" ) ? 0 : (int) jw_value( tcobj, "lsp" ) ) {
-											parms->pciids[i].tcs[priority]->flags |= TCF_BW_STRICTP;
-										} else {
-											parms->pciids[i].tcs[priority]->flags &= ~TCF_BW_STRICTP;
-										}
-										if( !jw_is_bool( tcobj, "bsp" ) ? 0 : (int) jw_value( tcobj, "bsp" ) ) {
 											parms->pciids[i].tcs[priority]->flags |= TCF_LNK_STRICTP;
 										} else {
 											parms->pciids[i].tcs[priority]->flags &= ~TCF_LNK_STRICTP;
+										}
+										if( !jw_is_bool( tcobj, "bsp" ) ? 0 : (int) jw_value( tcobj, "bsp" ) ) {
+											parms->pciids[i].tcs[priority]->flags |= TCF_BW_STRICTP;
+										} else {
+											parms->pciids[i].tcs[priority]->flags &= ~TCF_BW_STRICTP;
 										}
 										parms->pciids[i].tcs[priority]->max_bw = !jw_is_value( tcobj, "max_bw" ) ? 100 : IBOUND( (int)jw_value( tcobj, "max_bw" ), 1, 100 );
 										parms->pciids[i].tcs[priority]->min_bw = !jw_is_value( tcobj, "min_bw" ) ? 1 : IBOUND( (int)jw_value( tcobj, "min_bw" ), 1, 100 );

@@ -74,7 +74,6 @@
 #include "vfd_bnxt.h"
 #include "vfd_ixgbe.h"
 #include "vfd_i40e.h"
-#include "vfd_mlx5.h"
 
 
 // ---------------------------------------------------------------------------------------

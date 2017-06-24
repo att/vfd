@@ -313,3 +313,75 @@ vfd_mlx5_pf_vf_offset(char *pciid)
 	printf("got mlx5 dev %s vf offset %s\n", pciid, data);
 	return atoi(data);
 }
+
+int
+vfd_mlx5_set_prio_trust(uint8_t port_id)
+{
+	char ifname[IF_NAMESIZE];
+	char cmd[128] = "";
+	
+	if (vfd_mlx5_get_ifname(port_id, ifname))
+		return -1;
+
+	sprintf(cmd, "mlnx_qos -i %s --trust=pcp", ifname);
+
+	system(cmd);
+
+	return 0;
+}
+
+int
+vfd_mlx5_set_qos_pf(uint8_t port_id, sriov_port_t *pf)
+{
+	char ifname[IF_NAMESIZE];
+	char cmd[256] = "";
+	struct mlx5_tc_cfg tc_cfg[MAX_TCS];
+	struct rte_eth_link link;
+	int i;
+
+	if (vfd_mlx5_get_ifname(port_id, ifname))
+		return -1;
+
+	if (pf->ntcs != 8) {
+		printf("mlx5 devices don't support 4 TC configuration\n");
+		return -2;
+	}
+
+	memset(tc_cfg, 0, sizeof(tc_cfg));
+
+	rte_eth_link_get_nowait(port_id, &link);
+
+	for(i=0; i< pf->ntcs; i++) {
+		strcpy(tc_cfg[i].policy, (pf->tc_config[i]->flags & TCF_LNK_STRICTP) ? "strict" : "ets");
+		tc_cfg[i].min_bw = (pf->tc_config[i]->flags & TCF_LNK_STRICTP) ? 0 : pf->tc_config[i]->min_bw;
+		if (pf->tc_config[i]->max_bw < 100) {
+			tc_cfg[i].max_bw = (pf->tc_config[i]->max_bw * link.link_speed) / 100;
+			if (tc_cfg[i].max_bw < 1000)
+				tc_cfg[i].max_bw = 1000;
+
+			//move to Gbps
+			tc_cfg[i].max_bw =  tc_cfg[i].max_bw / 1000;
+		}
+	}
+		
+
+	sprintf(cmd, "mlnx_qos -i %s -s %s,%s,%s,%s,%s,%s,%s,%s -t %d,%d,%d,%d,%d,%d,%d,%d", ifname, tc_cfg[0].policy, tc_cfg[1].policy,
+			tc_cfg[2].policy, tc_cfg[3].policy, tc_cfg[4].policy, tc_cfg[5].policy, tc_cfg[6].policy, tc_cfg[7].policy,
+			tc_cfg[0].min_bw, tc_cfg[1].min_bw, tc_cfg[2].min_bw, tc_cfg[3].min_bw, tc_cfg[4].min_bw, tc_cfg[5].min_bw,
+			tc_cfg[6].min_bw, tc_cfg[7].min_bw);
+
+	printf("vfd_mlx5 executing set_qos_pf with cmd %s\n", cmd);
+
+	system(cmd);
+
+	//set rate limiters
+	
+	sprintf(cmd, "mlnx_qos -i %s -r %d,%d,%d,%d,%d,%d,%d,%d", ifname, tc_cfg[0].max_bw, tc_cfg[1].max_bw, tc_cfg[2].max_bw,
+				tc_cfg[3].max_bw, tc_cfg[4].max_bw, tc_cfg[5].max_bw, tc_cfg[6].max_bw, tc_cfg[7].max_bw);
+
+	printf("vfd_mlx5 executing set_qos_pf with cmd %s\n", cmd);
+
+	system(cmd);
+
+	return 0;
+}

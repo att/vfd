@@ -82,6 +82,7 @@
 #include <vfdlib.h>		// if vfdlib.h needs an include it must be included there, can't be include prior
 #include "vfd_rif.h"	// request interface stuff
 #include "vfd_dcb.h"	// dcb related stuff
+#include "vfd_mlx5.h"
 
 //#include "ixgbe_ethdev.h"
 //#include "ixgbe_ethdev.h"
