@@ -137,16 +137,6 @@ vfd_mlx5_set_vf_vlan_insert(uint8_t port_id, uint16_t vf_id, uint16_t vlan_id)
 	if (vfd_mlx5_get_ifname(port_id, ifname))
 		return -1;
 
-	//if (vlan_id == 0)
-	//	strcpy(vlan_id_s, "4095");
-	//else 
-	//	sprintf(vlan_id_s, "%d", vlan_id);
-	//
-	//sprintf(vf_id_s, "%d", vf_id);
-
-	//ip link add link <ifname> name <ifname.vlan_id> type vlan id <vlan_id>
-	//execl("/usr/sbin/ip", "ip", "link", "set", ifname, "vf", vf_id_s, "vlan", vlan_id_s, NULL);
-	
 	sprintf(cmd, "ip link set %s vf %d vlan %d", ifname, vf_id, vlan_id);
 
 	system(cmd);
@@ -197,15 +187,6 @@ vfd_mlx5_get_pf_spoof_stats(uint8_t port_id)
 	if (vfd_mlx5_get_ifname(port_id, ifname))
 		return -1;
 
-	/*fp = popen("ethtool -S <ifname> | grep <counter_name> | cut -c32-", "r");
-	if (fp == NULL)
-		return 0;
-	
-	while (fgets(data, 64, fp) != NULL);
-	val = atoi(data);
-	
-	if (pclose(fp) == -1)
-		printf("fp close error\n");*/
 	return val;
 }
 
@@ -310,7 +291,6 @@ vfd_mlx5_pf_vf_offset(char *pciid)
 	if (!strlen(data))
 		return 0;
 
-	printf("got mlx5 dev %s vf offset %s\n", pciid, data);
 	return atoi(data);
 }
 
@@ -370,16 +350,12 @@ vfd_mlx5_set_qos_pf(uint8_t port_id, sriov_port_t *pf)
 			tc_cfg[0].min_bw, tc_cfg[1].min_bw, tc_cfg[2].min_bw, tc_cfg[3].min_bw, tc_cfg[4].min_bw, tc_cfg[5].min_bw,
 			tc_cfg[6].min_bw, tc_cfg[7].min_bw);
 
-	printf("vfd_mlx5 executing set_qos_pf with cmd %s\n", cmd);
-
 	system(cmd);
 
 	//set rate limiters
 	
 	sprintf(cmd, "mlnx_qos -i %s -r %d,%d,%d,%d,%d,%d,%d,%d", ifname, tc_cfg[0].max_bw, tc_cfg[1].max_bw, tc_cfg[2].max_bw,
 				tc_cfg[3].max_bw, tc_cfg[4].max_bw, tc_cfg[5].max_bw, tc_cfg[6].max_bw, tc_cfg[7].max_bw);
-
-	printf("vfd_mlx5 executing set_qos_pf with cmd %s\n", cmd);
 
 	system(cmd);
 

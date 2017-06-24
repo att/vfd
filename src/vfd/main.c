@@ -891,8 +891,11 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 				}
 
 				if( vf->rate > 0 ) {
-					bleat_printf( 1, "setting rate: %d", (int)  ( 10000 * vf->rate ) );
-					set_vf_rate_limit( port->rte_port_number, vf->num, (uint16_t)( 10000 * vf->rate ), 0x01 );
+					struct rte_eth_link link;
+
+					rte_eth_link_get_nowait(port->rte_port_number, &link);
+					bleat_printf( 1, "setting rate: %d", (int)  ( (float)link.link_speed * vf->rate ) );
+					set_vf_rate_limit( port->rte_port_number, vf->num, (uint16_t)( (float)link.link_speed * vf->rate ), 0x01 );
 				}
 
 				if( vf->last_updated == DELETED ) {				// do this last!
