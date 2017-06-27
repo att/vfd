@@ -167,8 +167,10 @@ def bind_vfs(vfs_list):
 def driver_attach_pf(dev_id, pf_driver):
     index = 0
     cmd = 'lspci -k -s %s' % dev_id
+    log.info(cmd)
     try:
         driver_name = subprocess.check_output(cmd, shell=True).splitlines()[2].split(':')[1].lstrip()
+        log.info(driver_name)
         if driver_name == pf_driver:
             return [index, True]
         return [index, False]
@@ -303,9 +305,9 @@ def main():
         else:
             log.error("unable to load pci-stub driver")
             sys.exit(1)
-    
-    pf_driver = "vfio-pci"
-    vf_driver = "vfio-pci"
+
+    pf_driver = None
+    vf_driver = None
     for obj in pciids_obj:
         if 'pf_driver' in obj:
             pf_driver = obj['pf_driver']
@@ -322,7 +324,11 @@ def main():
 
         if pciid in real_pciids and pciid in group_pciids:
             group_pciids.remove(pciid)
-            status_list = driver_attach_pf(pciid, pf_driver)
+            if pf_driver != None:
+                status_list = driver_attach_pf(pciid, pf_driver)
+            else:
+                log.info("please pass valid pf_driver in /etc/vfd/vfd.cfg")
+                sys.exit(1)
             if status_list[1] and (vfs_count == len(get_vfids(pciid))):
                 if not bind_pf(pciid, pf_driver):
                     log.error("unable to bind %s with %s", pciid, pf_driver)
@@ -338,7 +344,7 @@ def main():
                         log.info("Successfully created vfs for pf: %s", pciid)
                 else:
                     log.error("not able to reset vfs for pf %s", pciid)
-                    sys.exit(1)  
+                    sys.exit(1)
                 if not bind_pf(pciid, pf_driver):
                     log.error("unable to bind %s with %s", pciid, pf_driver)
                     sys.exit(1)
@@ -350,15 +356,21 @@ def main():
                     sys.exit(1)
                 else:
                     log.info("Successfully bind to %s", pciid)
+    log.info(group_pciids)
     for group_pciid in group_pciids:
-        status_list = driver_attach_pf(pciid, pf_driver)
+        if pf_driver != None:
+            status_list = driver_attach_pf(group_pciid, pf_driver)
+        else:
+            log.info("please pass valid pf_driver in /etc/vfd/vfd.cfg")
+            sys.exit(1)
+        log.info(status_list)
         if not status_list[1]:
             if status_list[0] == 0:
-                if not bind_pf(pciid, pf_driver):
-                    log.error("unable to bind %s with %s", pciid, pf_driver)
+                if not bind_pf(group_pciid, pf_driver):
+                    log.error("unable to bind %s with %s", group_pciid, pf_driver)
                     sys.exit(1)
                 else:
-                    log.info("Successfully bind %s", pciid)
+                    log.info("Successfully bind %s", group_pciid)
 
 if __name__ == "__main__":
     main()
