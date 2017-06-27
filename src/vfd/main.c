@@ -832,6 +832,12 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 
 				if( vf->num >= 0 ) {
 					if( parms->forreal ) {
+#ifdef BNXT_SUPPORT
+						if (strcmp(rte_eth_devices[port->rte_port_number].driver->pci_drv.driver.name, "net_bnxt") == 0) {
+							bleat_printf( 2, "%s vf: %d set keep stats", port->name, vf->num);
+							rte_pmd_bnxt_set_vf_persist_stats(port->rte_port_number, vf->num, 1);
+						}
+#endif
 						bleat_printf( 2, "%s vf: %d set anti-spoof %d", port->name, vf->num, vf->vlan_anti_spoof );
 						set_vf_vlan_anti_spoofing(port->rte_port_number, vf->num, vf->vlan_anti_spoof);
 	
