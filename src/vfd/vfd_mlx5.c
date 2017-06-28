@@ -158,18 +158,15 @@ int
 vfd_mlx5_set_vf_rate_limit(uint8_t port_id, uint16_t vf_id, uint16_t rate)
 {
 	char ifname[IF_NAMESIZE];
-	char vf_id_s[8] = "";
-	char rate_s[32] = "";
+	char cmd[128] = "";
 
 	if (vfd_mlx5_get_ifname(port_id, ifname))
 		return -1;
 
-	sprintf(vf_id_s, "%d", vf_id);
-	sprintf(rate_s, "%d", rate);
-
-	//We don't support q_mask but rather applying it on all vf queues.
-	//execl("/usr/sbin/ip", "ip", "link", "set", ifname, "vf", vf_id_s, "rate", rate_s, NULL);
+	sprintf(cmd, "ip link set %s vf %d rate %d", ifname, vf_id, rate);
 	
+	system(cmd);
+
 	return 0;
 }
 
@@ -234,20 +231,85 @@ vfd_mlx5_get_vf_sysfs_counter(char *ifname, const char *counter,  uint16_t vf_id
 	return val;
 }
 
+uint64_t
+vfd_mlx5_get_vf_ethtool_counter(char *ifname, const char *counter)
+{
+	FILE *fp;
+	uint64_t val;
+	char cmd[128] = "";
+	char data[64] = "";
+
+	sprintf(cmd, "ethtool -S %s | grep %s | cut -c%d-", ifname, counter, (int)strlen(counter) + 2);
+
+	fp = popen(cmd, "r");
+	if (fp == NULL)
+		return 0;
+	
+	while (fgets(data, 64, fp) != NULL);
+	val = strtoll(data, NULL, 10);
+	
+	pclose(fp);
+
+	return val;
+}
+
+uint64_t
+vfd_mlx5_get_vf_spoof_stats(uint8_t port_id, uint16_t vf_id)
+{
+	char ifname[IF_NAMESIZE];
+	char tx_err_cnt[64] = "";
+
+	if (vfd_mlx5_get_ifname(port_id, ifname))
+		return -1;
+
+	sprintf(tx_err_cnt, "tx_vport%d_spoof_drop_packets", vf_id+1);
+
+	return vfd_mlx5_get_vf_ethtool_counter(ifname, tx_err_cnt);
+}
+
 int
 vfd_mlx5_get_vf_stats(uint8_t port_id, uint16_t vf_id, struct rte_eth_stats *stats)
 {
 	char ifname[IF_NAMESIZE];
+	char tx_err_cnt[64] = "";
+	char rx_err_cnt[64] = "";
 	
 	if (vfd_mlx5_get_ifname(port_id, ifname))
 		return -1;
+
+	sprintf(tx_err_cnt, "tx_vport%d_spoof_drop_packets", vf_id+1);
+	sprintf(rx_err_cnt, "rx_vport%d_drop_packets", vf_id+1);
 
 	stats->ipackets = vfd_mlx5_get_vf_sysfs_counter(ifname, "rx_packets", vf_id);
 	stats->opackets = vfd_mlx5_get_vf_sysfs_counter(ifname, "tx_packets", vf_id);
 	stats->ibytes = vfd_mlx5_get_vf_sysfs_counter(ifname, "rx_bytes", vf_id);
 	stats->obytes = vfd_mlx5_get_vf_sysfs_counter(ifname, "tx_bytes", vf_id);
 	stats->ipackets = vfd_mlx5_get_vf_sysfs_counter(ifname, "rx_packets", vf_id);
-	stats->oerrors = 0;
+	stats->ierrors = vfd_mlx5_get_vf_ethtool_counter(ifname, tx_err_cnt);
+	stats->oerrors = vfd_mlx5_get_vf_ethtool_counter(ifname, tx_err_cnt);
 	
 	return 0;
+}
+
+int
+vfd_mlx5_pf_vf_offset(char *pciid)
+{
+	char cmd[128] = "";
+	char data[8] = "";
+	FILE *fp;
+
+	sprintf(cmd, "lspci -s %s -vv | grep -o 'VF offset: [0-9]*' | grep -o '[0-9]*'", pciid);
+	fp = popen(cmd, "r");
+	if (fp == NULL)
+		return 0;
+	
+	while (fgets(data, 8, fp) != NULL);
+
+	pclose(fp);
+
+	if (!strlen(data))
+		return 0;
+
+	printf("got mlx5 dev %s vf offset %s\n", pciid, data);
+	return atoi(data);
 }

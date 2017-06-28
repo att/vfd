@@ -19,5 +19,8 @@ uint32_t vfd_mlx5_get_pf_spoof_stats(uint8_t port_id);
 int vfd_mlx5_get_num_vfs(uint8_t port_id);
 int vfd_mlx5_get_vf_stats(uint8_t port_id, uint16_t vf_id, struct rte_eth_stats *stats);
 uint64_t vfd_mlx5_get_vf_sysfs_counter(char *ifname, const char *counter,  uint16_t vf_id);
+uint64_t vfd_mlx5_get_vf_ethtool_counter(char *ifname, const char *counter);
+uint64_t vfd_mlx5_get_vf_spoof_stats(uint8_t port_id, uint16_t vf_id);
+int vfd_mlx5_pf_vf_offset(char *pciid);
 
 #endif

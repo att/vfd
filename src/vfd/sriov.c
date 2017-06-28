@@ -421,6 +421,10 @@ set_vf_allow_untagged(portid_t port_id, uint16_t vf_id, int on)
 		case VFD_BNXT:		
 			//ret = vfd_bnxt_allow_untagged(port_id, vf_id, on);
 			break;
+		case VFD_MLX5:
+			if (on) //when allowing untagged we go back to VGT mode. When !on it should be configured via insert_vlan
+				ret = vfd_mlx5_set_vf_vlan_insert(port_id, vf_id, 0);
+			break;
 			
 		default:
 			bleat_printf( 0, "set_vf_allow_untagged: unknown device type: %u, port: %u", port_id, dev_type);
@@ -1119,6 +1123,7 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 {
 	uint32_t vf;
 	int result = 0;
+	uint64_t vf_spoffed = 0;
 		
 	if( ivf < 0 || ivf > 31 ) {
 		return -1;
@@ -1160,6 +1165,7 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 			
 		case VFD_MLX5:
 			result = vfd_mlx5_get_vf_stats(port_id, vf, &stats);
+			vf_spoffed = vfd_mlx5_get_vf_spoof_stats(port_id, vf);
 			break;
 
 		default:
@@ -1180,9 +1186,9 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 	    stpcpy(status, "UP  ");
 	
 
-	return 	snprintf(buff, bsize, "%2s %6d    %04X:%02X:%02X.%01X %6s %30"PRIu64" %15"PRIu64" %47"PRIu64" %15"PRIu64" %15"PRIu64"\n",
+	return 	snprintf(buff, bsize, "%2s %6d    %04X:%02X:%02X.%01X %6s %30"PRIu64" %15"PRIu64" %15"PRIu64" %31"PRIu64" %15"PRIu64" %15"PRIu64" %15"PRIu64"\n",
 				"vf", vf, vf_pci_addr.domain, vf_pci_addr.bus, vf_pci_addr.devid, vf_pci_addr.function, status,
-				stats.ipackets, stats.ibytes, stats.opackets, stats.obytes, stats.oerrors);
+				stats.ipackets, stats.ibytes, stats.ierrors, stats.opackets, stats.obytes, stats.oerrors, vf_spoffed);
 				
 }
 

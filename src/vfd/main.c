@@ -896,6 +896,10 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 
 				if( vf->last_updated == DELETED ) {				// do this last!
 					if( parms->forreal ) { 
+						if( vf->rate > 0 ) { //disable rate limit
+							bleat_printf( 1, "setting rate: %d", (int)  ( 10000 * vf->rate ) );
+							set_vf_rate_limit( port->rte_port_number, vf->num, 0, 0x01 );
+						}
 						vfd_set_ins_strip( port, vf );
 
 						bleat_printf( 2, "port: %d vf: %d set link status to %d", port->rte_port_number, vf->num, VF_LINK_AUTO);
@@ -937,10 +941,12 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 			}
 
 			if( change2port && (g_parms->rflags & RF_ENABLE_QOS) ) {		// changes, we must recompute queue shares and push to nic
-				//uint8_t* pp;
-				gen_port_qshares( port );									// compute and save in the port struct
-				qos_set_credits( port->rte_port_number, port->mtu, port->vftc_qshares, TC_4PERQ_MODE );	// push out to nic
-				//qos_set_credits( port->rte_port_number, port->mtu, pp, TC_4PERQ_MODE );	// push out to nic
+				if (get_nic_type(port->rte_port_number) != VFD_MLX5) { // No support in mlx5 yet
+					//uint8_t* pp;
+					gen_port_qshares( port );									// compute and save in the port struct
+					qos_set_credits( port->rte_port_number, port->mtu, port->vftc_qshares, TC_4PERQ_MODE );	// push out to nic
+					//qos_set_credits( port->rte_port_number, port->mtu, pp, TC_4PERQ_MODE );	// push out to nic
+				}
 			}
 
 			if( change2port && vf->num >= 0 ) {
@@ -1473,7 +1479,7 @@ main(int argc, char **argv)
 							
 			// Find the SR-IOV extended capability structure
 			
-			if (get_nic_type(portid) == VFD_BNXT /*|| get_nic_type(portid) == VFD_MLX5*/){ 
+			if (get_nic_type(portid) == VFD_BNXT){ 
 				do {
 					rte_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, cfg_offset);
 					bleat_printf(4, "Header: %08x (%04x)", pci_control_r, cfg_offset);
@@ -1496,6 +1502,10 @@ main(int argc, char **argv)
 			
 			
 			struct sriov_port_s *port = &running_config->ports[portid];
+			
+			if (get_nic_type(portid) == VFD_MLX5)
+				pci_control_r = vfd_mlx5_pf_vf_offset(port->pciid) | (1 << 16);
+
 			port->vf_offset = pci_control_r & 0x0ffff;
 			port->vf_stride = pci_control_r >> 16;
 					
