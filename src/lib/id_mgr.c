@@ -101,6 +101,74 @@ extern int idm_alloc( void* vid ) {
 	return -1;
 }
 
+/*
+	Allows the user to allocate a specific ID; returns 1 if
+	the ID was unused and is now marked in use, and 0 if the ID
+	was already assigned and should not otherwise be used. A return 
+	of -1 indicated an error (bad value passed in etc.).
+*/
+extern int idm_use( void* vid, int id_val ) {
+	idm_t*	id;
+	int i;
+	unsigned char bit;
+
+	if( vid == NULL ){
+		return -1;
+	}
+
+	id = (idm_t *) vid;
+
+	if( id_val > id->num_ids || id_val < 0 ) {
+		return -1;
+	}
+	
+	i = id_val / 8;					// offset into bit poool
+	if( i > id->nallocated ) {		// shouldn't happen, but prevent accidents
+		return -1;
+	}
+
+	bit = 1 << (id_val % 8);					// bit to flip
+	if( id->bit_pool[i] & bit ) {				// set, so return in use
+		return 0;
+	}
+
+	id->bit_pool[i] |= bit;						//  mark used
+	id->nallocated++;
+	
+	return 1;
+}
+
+/*
+	Returns 1 if in use, 0 if not.  Returns -1 on error (bad value).
+*/
+extern int idm_is_used( void* vid, int id_val ) {
+	idm_t*	id;
+	int i;
+	unsigned char bit;
+
+	if( vid == NULL ){
+		return -1;
+	}
+
+	id = (idm_t *) vid;
+
+	if( id_val > id->num_ids || id_val < 0 ) {
+		return -1;
+	}
+	
+	i = id_val / 8;					// offset into bit poool
+	if( i > id->nallocated ) {		// shouldn't happen, but prevent accidents
+		return -1;
+	}
+
+	bit = 1 << (id_val % 8);					// bit to flip
+	if( id->bit_pool[i] & bit ) {				// set, so return in use
+		return 1;
+	}
+
+	return 0;									// not in use
+}
+
 
 /*
 	Return the id value to the pool.
@@ -134,6 +202,7 @@ extern void idm_return( void* vid, int id_val ) {
 	if( id->nallocated > 0 ) {
 		id->nallocated--;
 	}
+
 }
 
 /*
