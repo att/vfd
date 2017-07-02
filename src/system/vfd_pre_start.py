@@ -42,6 +42,20 @@ def setup_logging(logfile):
     log.setLevel(logging.INFO)
     log.addHandler(handler)
 
+def is_mlx5_core_loaded():
+    try:
+        subprocess.check_call('lsmod | grep mlx5_core >/dev/null', shell=True)
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+def load_mlx5_core_driver():
+    try:
+        subprocess.check_call('modprobe mlx5_core', shell=True)
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
 def is_pci_stub_loaded():
     try:
         subprocess.check_call('lsmod | grep pci_stub >/dev/null', shell=True)
@@ -153,9 +167,9 @@ def bind_pf(dev_id, pf_driver):
     except subprocess.CalledProcessError:
         return False
 
-# bind vf's to vfio-pci
-def bind_vfs(vfs_list):
-    bind_cmd = "dpdk_nic_bind --force -b vfio-pci %s" % ' '.join(vfs_list)
+# bind vf's to $vf_driver
+def bind_vfs(vfs_list, vf_driver="vfio-pci"):
+    bind_cmd = "dpdk_nic_bind --force -b %s %s" % (vf_driver, ' '.join(vfs_list))
     try:
         subprocess.check_call(bind_cmd, shell=True)
         log.info(bind_cmd)
@@ -211,7 +225,8 @@ def check_vendor(pciids):
         cmd = "lspci -vm -s %s" % pciid
         try:
             vendor_name = subprocess.check_output(cmd, shell=True).splitlines()[2].split(':')[1].lstrip()
-            if vendor_name == 'Intel Corporation' or vendor_name == "Broadcom Corporation" or vendor_name == 'Mellanox Technologies' :
+            if vendor_name == 'Intel Corporation' or vendor_name == "Broadcom Corporation" \
+                    or vendor_name == 'Mellanox Technologies' :
                 continue
             else:
                 not_intel_broadcom_vendor.append(pciid)
@@ -220,9 +235,12 @@ def check_vendor(pciids):
             sys.exit(1)
     return not_intel_broadcom_vendor
 
-def get_vfs_path(dev_id):
+def get_vfs_path(dev_id, pf_driver):
     global file_path
-    cmd = "find /sys -name max_vfs | grep %s" % dev_id
+    if pf_driver.startswith("mlx"):
+        cmd = "find /sys -name sriov_numvfs | grep %s" % dev_id
+    else:
+        cmd = "find /sys -name max_vfs | grep %s" % dev_id
     log.info(cmd)
     try:
         file_path = subprocess.check_output(cmd, shell=True)
@@ -232,9 +250,9 @@ def get_vfs_path(dev_id):
         log.info(file_path)
         return False
 
-def create_vfs(dev_id, vfs):
+def create_vfs(dev_id, vfs, pf_driver):
     global file_path
-    get_vfs_path(dev_id)
+    get_vfs_path(dev_id, pf_driver)
     cmd = "echo %s > %s" % (str(vfs), file_path)
     log.info(cmd)
     try:
@@ -243,9 +261,9 @@ def create_vfs(dev_id, vfs):
     except subprocess.CalledProcessError:
         return False
 
-def reset_vfs(dev_id):
+def reset_vfs(dev_id, pf_driver):
     global file_path
-    get_vfs_path(dev_id)
+    get_vfs_path(dev_id, pf_driver)
     vfs = 0
     cmd = "echo %s > %s" % (str(vfs), file_path)
     log.info(cmd)
@@ -281,31 +299,6 @@ def main():
         log.error("VFD wont handle for this vendors: %s", not_intel_broadcom_vendor)
         sys.exit(1)
 
-    if not is_uio_loaded():
-        if load_uio():
-            log.info("Successfully loaded uio driver")
-        else:
-            log.error("unable to load uio driver")
-            sys.exit(1)
-
-    if not is_igb_uio_loaded():
-        log.error("please load dpdk igb_uio driver")
-        sys.exit(1)
-
-    if not is_vfio_pci_loaded():
-        if load_vfio_pci_driver():
-            log.info("Successfully loaded vfio-pci driver")
-        else:
-            log.error("unable to load vfio-pci driver")
-            sys.exit(1)
-
-    if not is_pci_stub_loaded():
-        if load_pci_stub():
-            log.info("Successfully loaded pci-stub driver")
-        else:
-            log.error("unable to load pci-stub driver")
-            sys.exit(1)
-
     pf_driver = None
     vf_driver = None
     for obj in pciids_obj:
@@ -313,6 +306,55 @@ def main():
             pf_driver = obj['pf_driver']
         if 'vf_driver' in obj:
             vf_driver = obj['vf_driver']
+
+        if pf_driver == "igb_uio" and vf_driver == "vfio-pci":
+            if not is_uio_loaded():
+                if load_uio():
+                    log.info("Successfully loaded uio driver")
+                else:
+                    log.error("unable to load uio driver")
+                    sys.exit(1)
+            else:
+                log.info("Already loaded uio driver")
+
+            if not is_igb_uio_loaded():
+                log.error("please load dpdk igb_uio driver")
+                sys.exit(1)
+
+            if not is_vfio_pci_loaded():
+                if load_vfio_pci_driver():
+                    log.info("Successfully loaded vfio-pci driver")
+                else:
+                    log.error("unable to load vfio-pci driver")
+                    sys.exit(1)
+            else:
+                log.info("Already loaded vfio-pci driver")
+        elif pf_driver == "vfio-pci" and vf_driver == "vfio-pci":
+            if not is_vfio_pci_loaded():
+                if load_vfio_pci_driver():
+                    log.info("Successfully loaded vfio-pci driver")
+                else:
+                    log.error("unable to load vfio-pci driver")
+                    sys.exit(1)
+        elif pf_driver == "mlx5_core":
+            if not is_mlx5_core_loaded():
+                if load_mlx5_core_driver():
+                    log.info("Successfully loaded mlx5_core driver")
+                else:
+                    log.error("unable to load mlx5_core driver")
+                    sys.exit(1)
+            else:
+                log.info("Already loaded mlx5_core driver")
+        elif vf_driver == "pci-stub":
+            if not is_pci_stub_loaded():
+                if load_pci_stub():
+                    log.info("Successfully loaded pci-stub driver")
+                else:
+                    log.error("unable to load pci-stub driver")
+                    sys.exit(1)
+        else:
+            log.error("Invalid drivers")
+            sys.exit(1)
 
         pciid = None
         if 'id' in obj:
@@ -336,8 +378,8 @@ def main():
                 else:
                     log.info("Successfully bind to %s", pciid)
             elif status_list[1] and (len(get_vfids(pciid)) < vfs_count):
-                if reset_vfs(pciid):
-                    if not create_vfs(pciid, vfs_count):
+                if reset_vfs(pciid, pf_driver):
+                    if not create_vfs(pciid, vfs_count, pf_driver):
                         log.error("not able to create vfs for pf %s", pciid)
                         sys.exit(1)
                     else:
