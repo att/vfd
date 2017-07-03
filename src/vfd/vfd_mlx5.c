@@ -52,11 +52,11 @@ vfd_mlx5_set_vf_link_status(uint8_t port_id, uint16_t vf_id, int status)
 	char ifname[IF_NAMESIZE];
 	char link_state[16]= "";
 	char cmd[128] = "";
+	int ret;
 
 	if (vfd_mlx5_get_ifname(port_id, ifname))
 		return -1;
-	
-			
+
 	switch (status) {
 		case VF_LINK_ON:
 			strcpy(link_state, "enable");
@@ -69,11 +69,15 @@ vfd_mlx5_set_vf_link_status(uint8_t port_id, uint16_t vf_id, int status)
 			break;
 		default:
 			return -1;
-	}	
-	
+	}
+
 	sprintf(cmd, "ip link set %s vf %d state %s", ifname, vf_id, link_state);
-	
-	system(cmd);
+
+	ret = system(cmd);
+
+	if (ret < 0) {
+	//	printf("cmd exec returned %d\n", ret);
+	}
 
 	return 0;
 }
@@ -83,13 +87,18 @@ vfd_mlx5_set_vf_mac_addr(uint8_t port_id, uint16_t vf_id, const char* mac)
 {
 	char ifname[IF_NAMESIZE];
 	char cmd[128] = "";
+	int ret;
 
 	if (vfd_mlx5_get_ifname(port_id, ifname))
 		return -1;
 
 	sprintf(cmd, "ip link set %s vf %d mac %s", ifname, vf_id, mac);
 	
-	system(cmd);
+	ret = system(cmd);
+
+	if (ret < 0) {
+	//	printf("cmd exec returned %d\n", ret);
+	}
 
 	return 0;
 }
@@ -99,13 +108,18 @@ vfd_mlx5_vf_mac_remove(uint8_t port_id, uint16_t vf_id)
 {
 	char ifname[IF_NAMESIZE];
 	char cmd[128] = "";
+	int ret;
 
 	if (vfd_mlx5_get_ifname(port_id, ifname))
 		return -1;
 
 	sprintf(cmd, "ip link set %s vf %d mac 00:00:00:00:00:00", ifname, vf_id);
 	
-	system(cmd);
+	ret = system(cmd);
+
+	if (ret < 0) {
+	//	printf("cmd exec returned %d\n", ret);
+	}
 
 	return 0;
 }
@@ -133,13 +147,18 @@ vfd_mlx5_set_vf_vlan_insert(uint8_t port_id, uint16_t vf_id, uint16_t vlan_id)
 {
 	char ifname[IF_NAMESIZE];
 	char cmd[128] = "";
+	int ret;
 
 	if (vfd_mlx5_get_ifname(port_id, ifname))
 		return -1;
 
 	sprintf(cmd, "ip link set %s vf %d vlan %d", ifname, vf_id, vlan_id);
 
-	system(cmd);
+	ret = system(cmd);
+
+	if (ret < 0) {
+	//	printf("cmd exec returned %d\n", ret);
+	}
 
 	return 0;
 }
@@ -149,13 +168,18 @@ vfd_mlx5_set_vf_rate_limit(uint8_t port_id, uint16_t vf_id, uint16_t rate)
 {
 	char ifname[IF_NAMESIZE];
 	char cmd[128] = "";
+	int ret;
 
 	if (vfd_mlx5_get_ifname(port_id, ifname))
 		return -1;
 
 	sprintf(cmd, "ip link set %s vf %d rate %d", ifname, vf_id, rate);
 	
-	system(cmd);
+	ret = system(cmd);
+
+	if (ret < 0) {
+	//	printf("cmd exec returned %d\n", ret);
+	}
 
 	return 0;
 }
@@ -165,14 +189,18 @@ vfd_mlx5_set_vf_mac_anti_spoof(uint8_t port_id, uint16_t vf_id, uint8_t on)
 {
 	char ifname[IF_NAMESIZE];
 	char cmd[128] = "";
+	int ret;
 
 	if (vfd_mlx5_get_ifname(port_id, ifname))
 		return -1;
 
 	sprintf(cmd, "ip link set %s vf %d spoofchk %s", ifname, vf_id, on ? "on" : "off");
 
-	system(cmd);
+	ret = system(cmd);
 
+	if (ret < 0) {
+	//	printf("cmd exec returned %d\n", ret);
+	}
 	return 0;
 }
 
@@ -299,13 +327,18 @@ vfd_mlx5_set_prio_trust(uint8_t port_id)
 {
 	char ifname[IF_NAMESIZE];
 	char cmd[128] = "";
+	int ret;
 	
 	if (vfd_mlx5_get_ifname(port_id, ifname))
 		return -1;
 
 	sprintf(cmd, "mlnx_qos -i %s --trust=pcp", ifname);
 
-	system(cmd);
+	ret = system(cmd);
+
+	if (ret < 0) {
+	//	printf("cmd exec returned %d\n", ret);
+	}
 
 	return 0;
 }
@@ -317,7 +350,7 @@ vfd_mlx5_set_qos_pf(uint8_t port_id, sriov_port_t *pf)
 	char cmd[256] = "";
 	struct mlx5_tc_cfg tc_cfg[MAX_TCS];
 	struct rte_eth_link link;
-	int i;
+	int i, ret;
 
 	if (vfd_mlx5_get_ifname(port_id, ifname))
 		return -1;
@@ -350,14 +383,18 @@ vfd_mlx5_set_qos_pf(uint8_t port_id, sriov_port_t *pf)
 			tc_cfg[0].min_bw, tc_cfg[1].min_bw, tc_cfg[2].min_bw, tc_cfg[3].min_bw, tc_cfg[4].min_bw, tc_cfg[5].min_bw,
 			tc_cfg[6].min_bw, tc_cfg[7].min_bw);
 
-	system(cmd);
+	ret = system(cmd);
 
 	//set rate limiters
 	
 	sprintf(cmd, "mlnx_qos -i %s -r %d,%d,%d,%d,%d,%d,%d,%d", ifname, tc_cfg[0].max_bw, tc_cfg[1].max_bw, tc_cfg[2].max_bw,
 				tc_cfg[3].max_bw, tc_cfg[4].max_bw, tc_cfg[5].max_bw, tc_cfg[6].max_bw, tc_cfg[7].max_bw);
 
-	system(cmd);
+	ret = system(cmd);
+
+	if (ret < 0) {
+	//	printf("cmd exec returned %d\n", ret);
+	}
 
 	return 0;
 }
