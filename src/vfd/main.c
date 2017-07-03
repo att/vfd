@@ -1232,7 +1232,7 @@ main(int argc, char **argv)
 	int 	j;
 	int		no_huge = 0;				// -H will turn on and we will flip the appropriate bit in parms
 
-	uint16_t	cfg_offset = 0x100;
+	//uint16_t	cfg_offset = 0x100;
 	int		enable_fc = 0;				// enable flow control (-F sets)
 
 
@@ -1377,10 +1377,10 @@ main(int argc, char **argv)
 		
 		rte_openlog_stream(stderr);
 		//rte_log_set_level(~RTE_LOGTYPE_PMD && ~RTE_LOGTYPE_PORT, g_parms->dpdk_init_log_level);
-		ret = rte_log_set_level(RTE_LOGTYPE_PMD, g_parms->dpdk_init_log_level);
+		//ret = rte_log_set_level(RTE_LOGTYPE_PMD, g_parms->dpdk_init_log_level);
 
 
-		bleat_printf( 2, "log level = %d, log type = %d, ret = %d", rte_log_cur_msg_loglevel(), rte_log_cur_msg_logtype(), ret);
+		//bleat_printf( 2, "log level = %d, log type = %d, ret = %d", rte_log_cur_msg_loglevel(), rte_log_cur_msg_logtype(), ret);
 		
 
 		n_ports = rte_eth_dev_count();
@@ -1478,12 +1478,12 @@ main(int argc, char **argv)
 			
 			
 			// read PCI config to get VM offset and stride
-			struct rte_eth_dev_info pf_dev;
-			rte_eth_dev_info_get(portid, &pf_dev);
+			//struct rte_eth_dev_info pf_dev;
+			//rte_eth_dev_info_get(portid, &pf_dev);
 							
 			// Find the SR-IOV extended capability structure
 			
-			if (get_nic_type(portid) == VFD_BNXT){ 
+			/*if (get_nic_type(portid) == VFD_BNXT){ 
 				do {
 					rte_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, cfg_offset);
 					bleat_printf(4, "Header: %08x (%04x)", pci_control_r, cfg_offset);
@@ -1502,13 +1502,12 @@ main(int argc, char **argv)
 				rte_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, cfg_offset + 20);
 			} else {
 				rte_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, 0x174);					// Intel NIC's
-			}
+			}*/
 			
 			
 			struct sriov_port_s *port = &running_config->ports[portid];
 			
-			if (get_nic_type(portid) == VFD_MLX5)
-				pci_control_r = vfd_mlx5_pf_vf_offset(port->pciid) | (1 << 16);
+			pci_control_r = vfd_mlx5_pf_vf_offset(port->pciid) | (1 << 16);
 
 			port->vf_offset = pci_control_r & 0x0ffff;
 			port->vf_stride = pci_control_r >> 16;
@@ -1549,7 +1548,7 @@ main(int argc, char **argv)
 	bleat_printf( 1, "initialisation complete, setting bleat level to %d; starting to loop", g_parms->log_level );
 	bleat_set_lvl( g_parms->log_level );					// initialisation finished, set log level to running level
 	if( forreal ) {
-		rte_log_set_level(g_parms->dpdk_init_log_level, RTE_LOGTYPE_PMD && RTE_LOGTYPE_PORT);
+		//rte_log_set_level(g_parms->dpdk_init_log_level, RTE_LOGTYPE_PMD && RTE_LOGTYPE_PORT);
 	}
 
 	free( parm_file );			// now it's safe to free the parm file

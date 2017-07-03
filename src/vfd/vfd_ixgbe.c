@@ -4,7 +4,7 @@
 int  
 vfd_ixgbe_ping_vfs( __attribute__((__unused__)) uint8_t port_id,  __attribute__((__unused__)) int16_t vf_id)
 {
-	int diag = 0;
+	/*int diag = 0;
 	int i;
 
 	int vf_num = get_num_vfs( port_id );
@@ -26,7 +26,7 @@ vfd_ixgbe_ping_vfs( __attribute__((__unused__)) uint8_t port_id,  __attribute__(
 		bleat_printf( 0, "rte_pmd_ixgbe_ping_vfs failed: (port_pi=%d, vf_id=%d) failed rc=%d", port_id, vf_id, diag );
 	} else {
 		bleat_printf( 3, "rte_pmd_ixgbe_ping_vfs successful: port_id=%d, vf_id=%d", port_id, vf_id);
-	}
+	}*/
 	
 	return 0;
 }
