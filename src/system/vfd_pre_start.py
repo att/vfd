@@ -325,7 +325,7 @@ def main():
         if pciid in real_pciids and pciid in group_pciids:
             group_pciids.remove(pciid)
             if pf_driver != None:
-                status_list = driver_attach_pf(pciid, pf_driver)
+                status_list = driver_attach_pf(pciid, "igb_uio")
             else:
                 log.info("please pass valid pf_driver in /etc/vfd/vfd.cfg")
                 sys.exit(1)
@@ -335,7 +335,7 @@ def main():
                     sys.exit(1)
                 else:
                     log.info("Successfully bind to %s", pciid)
-            elif status_list[1] and (len(get_vfids(pciid)) < vfs_count):
+            elif status_list[1] and (len(get_vfids(pciid)) < vfs_count) and (len(get_vfids(pciid)) == 0):
                 if reset_vfs(pciid):
                     if not create_vfs(pciid, vfs_count):
                         log.error("not able to create vfs for pf %s", pciid)
@@ -356,7 +356,29 @@ def main():
                     sys.exit(1)
                 else:
                     log.info("Successfully bind to %s", pciid)
-    log.info(group_pciids)
+            elif not status_list[1] and (len(get_vfids(pciid)) < vfs_count) and (len(get_vfids(pciid)) == 0):
+                if not bind_pf(pciid, "igb_uio"):
+                    log.error("unable to bind %s with %s", pciid, "igb_uio")
+                    sys.exit(1)
+                else:
+                    log.info("Successfully bind to %s", pciid)
+                    if reset_vfs(pciid):
+                        if not create_vfs(pciid, vfs_count):
+                            log.error("not able to create vfs for pf %s", pciid)
+                            sys.exit(1)
+                        else:
+                            log.info("Successfully created vfs for pf: %s", pciid)
+                            if not bind_pf(pciid, pf_driver):
+                                log.error("unable to bind %s with %s", pciid, pf_driver)
+                                sys.exit(1)
+                            else:
+                                log.info("Successfully bind to %s", pciid)
+                    else:
+                        log.error("not able to reset vfs for pf %s", pciid)
+                        sys.exit(1)
+            else:
+                log.error("Please check something is wrong with the drivers")
+                sys.exit(1)
     for group_pciid in group_pciids:
         if pf_driver != None:
             status_list = driver_attach_pf(group_pciid, pf_driver)
