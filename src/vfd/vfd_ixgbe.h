@@ -26,7 +26,8 @@ int vfd_ixgbe_reset_vf_stats(uint8_t port, uint16_t vf_id);
 int vfd_ixgbe_set_vf_rate_limit(uint8_t port_id, uint16_t vf_id, uint16_t tx_rate, uint64_t q_msk);
 int vfd_ixgbe_set_all_queues_drop_en(uint8_t port, uint8_t on);
 
-void vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
+int vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param, void *data);
+
 
 uint32_t vfd_ixgbe_get_pf_spoof_stats(uint8_t port_id);
 uint32_t vfd_ixgbe_get_vf_spoof_stats(uint8_t port_id, uint16_t vf_id);

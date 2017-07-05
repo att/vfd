@@ -273,8 +273,8 @@ vfd_ixgbe_set_all_queues_drop_en(uint8_t port_id, uint8_t on)
 	Called when a 'mailbox' message is received.  Examine and take action based on
 	the message type.
 */
-void
-vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param) {
+int
+vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param, void* data ) {
 
 	struct rte_pmd_ixgbe_mb_event_param *p = (struct rte_pmd_ixgbe_mb_event_param*) param;
 	uint16_t vf = p->vfid;
@@ -283,6 +283,8 @@ vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, v
 	char	wbuf[128];
 
 	struct ether_addr *new_mac;
+
+	RTE_SET_USED(data);
 
 	bleat_printf( 3, "procesing callback type: %d, Port: %d, VF: %d, OUT: %d, _T: %d", type, port_id, vf, p->retval, mbox_type);
 	/* check & process VF to PF mailbox message */
@@ -422,6 +424,7 @@ vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, v
 			break;
 	}
 				
+	return 0;   // CAUTION:  as of 2017/07/05 it seems this value is ignored by dpdk, but it might not alwyas be
 }
 
 

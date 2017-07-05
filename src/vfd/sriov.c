@@ -1356,12 +1356,15 @@ extern void set_fc_on( portid_t pf, int force ) {
 }
 
 
-void
-lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param)
+
+//lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param, __attribute__((__unused__)) void *data)
+int 
+lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param, void *data)
 {
 	struct rte_eth_link link;
 
 	RTE_SET_USED(param);
+	RTE_SET_USED(data);
 
 	bleat_printf( 3, "Event type: %s", type == RTE_ETH_EVENT_INTR_LSC ? "LSC interrupt" : "unknown event");
 	rte_eth_link_get_nowait(port_id, &link);
@@ -1377,8 +1380,10 @@ lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param)
 	} else
 		bleat_printf( 3, "Port %d Link Down", port_id);
 
-  // notify every VF about link status change
-  ping_vfs(port_id, -1);
+	// notify every VF about link status change
+	ping_vfs(port_id, -1);
+
+	return 0;   // CAUTION:  as of 2017/07/05 it seems this value is ignored by dpdk, but it might not alwyas be
 }
 
 

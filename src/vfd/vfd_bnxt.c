@@ -274,8 +274,8 @@ static void apply_rx_restrictions(uint8_t port_id, uint16_t vf, struct hwrm_cfa_
 		mi->mask &= ~HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_PROMISCUOUS;
 }
 
-void
-vfd_bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param)
+int
+vfd_bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param, void *data)
 {
 	struct rte_pmd_bnxt_mb_event_param *p = param;
 	struct input *req_base = p->msg;
@@ -283,6 +283,8 @@ vfd_bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 	uint16_t mbox_type = rte_le_to_cpu_16(req_base->req_type);
 	bool add_refresh = false;
 	bool restore = false;
+
+	RTE_SET_USED(data);
 
 	/* check & process VF to PF mailbox message */
 	switch (mbox_type) {
@@ -440,6 +442,8 @@ vfd_bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 
 	bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %d",
 	             type, port_id, vf, p->retval, mbox_type);
+
+	return 0;   // CAUTION:  as of 2017/07/05 it seems this value is ignored by dpdk, but it might not alwyas be
 }
 
 

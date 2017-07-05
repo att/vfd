@@ -423,7 +423,7 @@ int update_ports_config(void);
 int cmp_vfs (const void * a, const void * b);
 void disable_default_pool(portid_t port_id);
 
-void lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
+int lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param, void* data );
 //void ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
 //void bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
 void restore_vf_setings(uint8_t port_id, int vf);
