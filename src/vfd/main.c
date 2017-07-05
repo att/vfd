@@ -842,6 +842,11 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 						vf->stop_cb = NULL;
 					}
 
+					if( port->mirrors[y].dir != MIRROR_OFF ) {												// stop the mirror on delete
+						set_mirror( port->rte_port_number, y, port->mirrors[y].id, -1, MIRROR_OFF );		// turn off, no target needed (-1)
+						port->mirrors[y].dir = MIRROR_OFF;
+						idm_return( conf->mir_id_mgr, port->mirrors[y].id );								// mark the id as unused in allocator
+					}
 
 					//AZif (get_nic_type(port->rte_port_number) == VFD_NIANTIC)
 					//	set_vf_rx_vlan(port->rte_port_number, 0, vf_mask, 0);		// remove vlan id 0 do we need it here for i40e?
@@ -852,15 +857,29 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 						if( parms->forreal )
 							set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, SET_OFF );		// remove the vlan id from the list
 					}
+
+					for( m = vf->first_mac; m <= vf->num_macs; ++m ) {				// delete MAC addresses 
+						mac = vf->macs[m];
+						bleat_printf( 2, "delete mac: port: %d vf: %d mac: %s", port->rte_port_number, vf->num, mac );
+		
+						if( parms->forreal )
+							set_vf_rx_mac(port->rte_port_number, mac, vf->num, SET_OFF );
+					}
+
+					vf->num = -1;				//DO THIS LAST --  must reset this so an add request with the now deleted number will succeed
 				} else {
 					int v;
+
+					if( port->mirrors[y].dir != MIRROR_OFF ) {						// setup the mirror
+						set_mirror( port->rte_port_number, y, port->mirrors[y].id, port->mirrors[y].target, port->mirrors[y].dir );		// set target and type (in/out/both)
+					}
+
 					for(v = 0; v < vf->num_vlans; ++v) {
 						int vlan = vf->vlans[v];
 						bleat_printf( 2, "add vlan: port: %d vf=%d vlan=%d", port->rte_port_number, vf->num, vlan );
 						if( parms->forreal )
 							set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, on );		// add the vlan id to the list
 					}
-				}
 
 				if( vf->last_updated == DELETED ) {				// delete the macs
 					for( m = vf->first_mac; m <= vf->num_macs; ++m ) {
@@ -892,10 +911,6 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 					set_vf_rate_limit( port->rte_port_number, vf->num, (uint16_t)( 10000 * vf->rate ), 0x01 );
 				}
 
-				if( vf->last_updated == DELETED ) {				// do this last!
-					vf->num = -1;								// must reset this so an add request with the now deleted number will succeed
-					// TODO -- is there anything else that we need to clean up in the struct?
-				}
 
 				if( vf->num >= 0 ) {
 					if( parms->forreal ) {
@@ -1315,6 +1330,7 @@ main(int argc, char **argv)
 	}
 	memset( running_config, 0, sizeof( *running_config ) );
 	rte_spinlock_init( &running_config->update_lock );			// initialise and leave unlocked
+	running_config->mir_id_mgr = mk_idm( 256 );					// make an id manager with 256 ID 'slots' for allocating mirror IDs
 
 	snprintf( log_file, BUF_1K, "%s/vfd.log", g_parms->log_dir );
 	if( run_asynch ) {
