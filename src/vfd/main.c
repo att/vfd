@@ -994,6 +994,7 @@ static void sig_int( int sig ) {
 		case SIGABRT:
 		case SIGFPE:
 		case SIGSEGV:
+				terminated = 1;				// prevent loop
 				bleat_printf( 0, "signal caught (aborting): %d", sig );
 				close_ports();				// must attempt to do this else we potentially crash the machine
 				abort( );					// to get core; not safe to just set term flag and end normally

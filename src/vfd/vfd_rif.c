@@ -119,7 +119,7 @@ extern int check_qs_spread( struct sriov_port_s* port, uint8_t* qshares ) {
 	}
 
 	for( i = 0; i < MAX_TCS; i++ ) {
-		if( max[i] / min[i]  > 10 ) {
+		if( min[i] != 0 && max[i] / min[i]  > 10 ) {
 			rc = 1;
 			bleat_printf( 1, "requested traffic class percentage takes spread to more than 10x for tc %d min=%d max=%d", i, min[i], max[i] );
 		}
