@@ -64,6 +64,7 @@
 							than the first in the list.
 				26 May 2017 - Allow promisc mode on PF to be optionally disabled via main config file.
 				08 Jun 2017 - Add support to disable huge pages.
+				23 Jun 2017 - Ensure socket mem isn't asked for if no-huge is given.
 */
 
 
@@ -538,7 +539,6 @@ static int vfd_eal_init( parms_t* parms ) {
 	
 	insert_pair( argv, &argc, MAX_ARGV_LEN, "-c", parms->cpu_mask );
 	insert_pair( argv, &argc, MAX_ARGV_LEN, "-n", "4" );
-	insert_pair( argv, &argc, MAX_ARGV_LEN, "--socket-mem", "64,64" );
 	insert_pair( argv, &argc, MAX_ARGV_LEN, "--file-prefix", "vfd" );
 	
 	snprintf( wbuf, sizeof( wbuf ), "%d", parms->dpdk_init_log_level );
@@ -546,7 +546,9 @@ static int vfd_eal_init( parms_t* parms ) {
 	
 	if( parms->rflags & RF_NO_HUGE ) {
 		insert_pair( argv, &argc, MAX_ARGV_LEN, "--no-huge", NULL );
-		//argv[11] = strdup( "--no-huge" );
+		insert_pair( argv, &argc, MAX_ARGV_LEN, "-m", "128" );
+	} else {
+		insert_pair( argv, &argc, MAX_ARGV_LEN, "--socket-mem", "64,64" );				// can't specify if huge pages are off
 	}
 
 
@@ -1383,10 +1385,9 @@ main(int argc, char **argv)
 		bleat_printf( 1, "refresh queue management thread created" );
 	
 		bleat_printf( 1, "creating memory pool" ); 									// Creates a new mempool in memory to hold the mbufs.  
-		mbuf_pool = rte_pktmbuf_pool_create("sriovctl", NUM_MBUFS * n_ports, MBUF_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
-		//mbuf_pool = rte_pktmbuf_pool_create("sriovctl", NUM_MBUFS * n_ports, MBUF_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE, SOCKET_ID_ANY);
+		mbuf_pool = rte_pktmbuf_pool_create("sriovctl", NUM_MBUFS, MBUF_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
 		if (mbuf_pool == NULL) {
-			bleat_printf( 0, "CRI: abort: mbfuf pool creation failed" );
+			bleat_printf( 0, "CRI: abort: mbuf pool creation failed" );
 			rte_exit(EXIT_FAILURE, "Cannot create mbuf pool\n");
 		}
 

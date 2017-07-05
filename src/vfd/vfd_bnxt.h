@@ -26,7 +26,7 @@ int vfd_bnxt_set_vf_vlan_filter(uint8_t port, uint16_t vlan_id, uint64_t vf_mask
 int vfd_bnxt_get_vf_stats(uint8_t port, uint16_t vf_id, struct rte_eth_stats *stats);
 int vfd_bnxt_reset_vf_stats(uint8_t port, uint16_t vf_id);
 
-void vfd_bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
+int vfd_bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param, void* data );
 
 int vfd_bnxt_allow_untagged(uint8_t port, uint16_t vf_id, uint8_t on);
 

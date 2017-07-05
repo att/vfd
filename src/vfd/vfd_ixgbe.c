@@ -67,7 +67,7 @@ vfd_ixgbe_set_tx_loopback(uint8_t port_id, uint8_t on)
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_ixgbe_set_tx_loopback failed: (port_id=%d, on=%d) failed rc=%d", port_id, on, diag );
 	} else {
-		bleat_printf( 3, "rte_pmd_ixgbe_set_tx_loopback successful: port_id=%d, vf_id=%d", port_id, on);
+		bleat_printf( 3, "rte_pmd_ixgbe_set_tx_loopback successful: port_id=%d, on=%d", port_id, on);
 	}
 	
 	return diag;	
@@ -216,7 +216,7 @@ vfd_ixgbe_get_vf_stats(uint8_t port_id, uint16_t vf_id, struct rte_eth_stats *st
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_ixgbe_set_vf_stats failed: (port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, diag );
 	} else {
-		bleat_printf( 3, "rte_pmd_ixgbe_set_vf_stats successful: port_id=%d, vf_id=%d on=%d", port_id, vf_id);
+		bleat_printf( 3, "rte_pmd_ixgbe_set_vf_stats successful: port_id=%d, vf_id=%d", port_id, vf_id);
 	}
 	
 	return diag;			
@@ -273,8 +273,8 @@ vfd_ixgbe_set_all_queues_drop_en(uint8_t port_id, uint8_t on)
 	Called when a 'mailbox' message is received.  Examine and take action based on
 	the message type.
 */
-void
-vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param) {
+int
+vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param, void* data ) {
 
 	struct rte_pmd_ixgbe_mb_event_param *p = (struct rte_pmd_ixgbe_mb_event_param*) param;
 	uint16_t vf = p->vfid;
@@ -284,6 +284,9 @@ vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, v
 
 	struct ether_addr *new_mac;
 
+	RTE_SET_USED(data);
+
+	bleat_printf( 3, "procesing callback type: %d, Port: %d, VF: %d, OUT: %d, _T: %d", type, port_id, vf, p->retval, mbox_type);
 	/* check & process VF to PF mailbox message */
 	switch (mbox_type) {
 		case IXGBE_VF_RESET:
@@ -397,7 +400,15 @@ vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, v
 			break;
 
 		case IXGBE_VF_GET_QUEUES:
-			bleat_printf( 1, "get queues  event received: port=%d (responding proceed)", port_id );
+			bleat_printf( 1, "get queues event received: port=%d (responding proceed)", port_id );
+			p->retval =  RTE_PMD_IXGBE_MB_EVENT_PROCEED;   /* do what's needed */
+			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p->retval, "IXGBE_VF_GET_QUEUES");
+
+			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
+			break;
+	
+		case IXGBE_VF_UPDATE_XCAST_MODE:
+			bleat_printf( 1, "update xcast mode event received: port=%d (responding proceed)", port_id );
 			p->retval =  RTE_PMD_IXGBE_MB_EVENT_PROCEED;   /* do what's needed */
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p->retval, "IXGBE_VF_GET_QUEUES");
 
@@ -405,7 +416,7 @@ vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, v
 			break;
 
 		default:
-			bleat_printf( 1, "unknown  event request received: port=%d (responding nop+nak)", port_id );
+			bleat_printf( 1, "unknown event request received: port=%d (responding nop+nak)", port_id );
 			p->retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     /* noop & nack */
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, MBOX_TYPE: %d", type, port_id, vf, p->retval, mbox_type);
 
@@ -413,7 +424,7 @@ vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, v
 			break;
 	}
 				
-	bleat_printf( 3, "callback type: %d, Port: %d, VF: %d, OUT: %d, _T: %d", type, port_id, vf, p->retval, mbox_type);
+	return 0;   // CAUTION:  as of 2017/07/05 it seems this value is ignored by dpdk, but it might not alwyas be
 }
 
 
@@ -430,7 +441,7 @@ uint32_t
 vfd_ixgbe_get_vf_spoof_stats(__attribute__((__unused__)) uint8_t port_id, __attribute__((__unused__)) uint16_t vf_id)
 {
 	/* not implemented */
-	bleat_printf( 3, "vfd_ixgbe_get_vf_spoof_stats not implemented: port_id=%d, on=%d", port_id, vf_id);
+	bleat_printf( 3, "vfd_ixgbe_get_vf_spoof_stats not implemented: port_id=%d, vf_id=%d", port_id, vf_id);
 	return 0;
 }
 

@@ -308,8 +308,8 @@ struct i40e_virtchnl_promisc_info {
 #define I40E_FLAG_VF_MULTICAST_PROMISC	0x00000002
 
 
-void
-vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param) {
+int
+vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param, void *data) {
 
 	struct rte_pmd_ixgbe_mb_event_param *p = (struct rte_pmd_ixgbe_mb_event_param*) param;
   uint16_t vf = p->vfid;
@@ -317,6 +317,9 @@ vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 	uint32_t *msgbuf = (uint32_t *) p->msg;
 	struct ether_addr *new_mac;
 	
+
+	RTE_SET_USED(data);
+
 	//AZprintf("------------------- MBOX port: %d, vf: %d, configured: %d box_type: %d-------------------\n", port_id, vf, running_config->ports[port_id].vfs[vf].num_vlans, mbox_type );
 			
 
@@ -552,6 +555,8 @@ vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, MBOX_TYPE: %d", type, port_id, vf, p->retval, mbox_type);
 			break;
 	}
+
+	return 0;   // CAUTION:  as of 2017/07/05 it seems this value is ignored by dpdk, but it might not alwyas be
 }
 
 uint32_t 

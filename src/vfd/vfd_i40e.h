@@ -58,7 +58,7 @@ int vfd_i40e_set_vf_vlan_filter(uint8_t port, uint16_t vlan_id, uint64_t vf_mask
 int vfd_i40e_get_vf_stats(uint8_t port, uint16_t vf_id, struct rte_eth_stats *stats);
 int vfd_i40e_reset_vf_stats(uint8_t port, uint16_t vf_id);
 int vfd_i40e_set_all_queues_drop_en(uint8_t port_id, uint8_t on);
-void vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
+int vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param, void *data);
 uint32_t vfd_i40e_get_pf_spoof_stats(uint8_t port_id);
 uint32_t vfd_i40e_get_vf_spoof_stats(uint8_t port_id, uint16_t vf_id);
 int vfd_i40e_is_rx_queue_on(uint8_t port_id, uint16_t vf_id, int* mcounter);
