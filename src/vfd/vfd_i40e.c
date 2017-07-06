@@ -311,12 +311,19 @@ struct i40e_virtchnl_promisc_info {
 int
 vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param, void *data) {
 
-	struct rte_pmd_ixgbe_mb_event_param *p = (struct rte_pmd_ixgbe_mb_event_param*) param;
-  uint16_t vf = p->vfid;
-	uint16_t mbox_type = p->msg_type;
-	uint32_t *msgbuf = (uint32_t *) p->msg;
+	struct rte_pmd_ixgbe_mb_event_param *p;
+	uint16_t vf;
+	uint16_t mbox_type;
+	uint32_t *msgbuf;
 	struct ether_addr *new_mac;
-	
+
+	p = (struct rte_pmd_ixgbe_mb_event_param*) param;
+	if( p == NULL ) {
+		return 0;
+	}
+	vf = p->vfid;
+	mbox_type = p->msg_type;
+	msgbuf = (uint32_t *) p->msg;
 
 	RTE_SET_USED(data);
 
