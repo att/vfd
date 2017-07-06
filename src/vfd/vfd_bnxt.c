@@ -277,12 +277,25 @@ static void apply_rx_restrictions(uint8_t port_id, uint16_t vf, struct hwrm_cfa_
 int
 vfd_bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param, void *data)
 {
-	struct rte_pmd_bnxt_mb_event_param *p = param;
-	struct input *req_base = p->msg;
-	uint16_t vf = p->vf_id;
-	uint16_t mbox_type = rte_le_to_cpu_16(req_base->req_type);
+	struct rte_pmd_bnxt_mb_event_param *p;
+	struct input *req_base;
+	uint16_t vf;
+	uint16_t mbox_type;
 	bool add_refresh = false;
 	bool restore = false;
+
+	p = param;
+	if( p == NULL ) {
+		return 0;
+	}
+
+	req_base = p->msg;
+	if( req_base == NULL ) {
+		return 0;
+	}
+
+	vf = p->vf_id;
+	mbox_type = rte_le_to_cpu_16(req_base->req_type);
 
 	RTE_SET_USED(data);
 

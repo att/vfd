@@ -276,15 +276,24 @@ vfd_ixgbe_set_all_queues_drop_en(uint8_t port_id, uint8_t on)
 int
 vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param, void* data ) {
 
-	struct rte_pmd_ixgbe_mb_event_param *p = (struct rte_pmd_ixgbe_mb_event_param*) param;
-	uint16_t vf = p->vfid;
-	uint16_t mbox_type = p->msg_type;
-	uint32_t *msgbuf = (uint32_t *) p->msg;
+	struct rte_pmd_ixgbe_mb_event_param *p;
+	uint16_t vf;
+	uint16_t mbox_type;
+	uint32_t *msgbuf;
 	char	wbuf[128];
 
 	struct ether_addr *new_mac;
 
 	RTE_SET_USED(data);
+
+	p = (struct rte_pmd_ixgbe_mb_event_param*) param;
+	if( p == NULL ) {									// yes this has happened
+		return 0;
+	}
+
+	vf = p->vfid;
+	mbox_type = p->msg_type;
+	msgbuf = (uint32_t *) p->msg;
 
 	bleat_printf( 3, "procesing callback type: %d, Port: %d, VF: %d, OUT: %d, _T: %d", type, port_id, vf, p->retval, mbox_type);
 	/* check & process VF to PF mailbox message */
