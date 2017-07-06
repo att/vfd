@@ -309,7 +309,7 @@ struct i40e_virtchnl_promisc_info {
 
 
 int
-vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param, void *data) {
+vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *data, void *param) {
 
 	struct rte_pmd_ixgbe_mb_event_param *p;
 	uint16_t vf;
