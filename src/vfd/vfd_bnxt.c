@@ -275,7 +275,7 @@ static void apply_rx_restrictions(uint8_t port_id, uint16_t vf, struct hwrm_cfa_
 }
 
 int
-vfd_bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param, void *data)
+vfd_bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *data, void *param)
 {
 	struct rte_pmd_bnxt_mb_event_param *p;
 	struct input *req_base;

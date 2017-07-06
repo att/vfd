@@ -271,10 +271,11 @@ vfd_ixgbe_set_all_queues_drop_en(uint8_t port_id, uint8_t on)
 
 /*
 	Called when a 'mailbox' message is received.  Examine and take action based on
-	the message type.
+	the message type. (Somewhere after dpdk 17.05 data was inserted but is generally
+	NULL (hard set in their code).
 */
 int
-vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param, void* data ) {
+vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *data, void* param ) {
 
 	struct rte_pmd_ixgbe_mb_event_param *p;
 	uint16_t vf;
@@ -288,6 +289,7 @@ vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, v
 
 	p = (struct rte_pmd_ixgbe_mb_event_param*) param;
 	if( p == NULL ) {									// yes this has happened
+		bleat_printf( 2, "callback driven with null pointer data=%p", data );
 		return 0;
 	}
 
