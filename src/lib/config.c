@@ -16,6 +16,7 @@
 				11 Feb 2017 : Fix issues with leading spaces rather than tabs (formatting)
 				26 May 2017 : Allow promisc to be set (default is true to match original behavour)
 				08 Jun 2017 : Allow huge_pages to be set (defult is on)
+				10 Jul 2017 : We now support "mac": "addr" rather than an array.
 
 	TODO:		convert things to the new jw_xapi functions to make for easier to read code.
 */
@@ -511,8 +512,14 @@ extern vf_config_t*	read_config( char* fname ) {
 				// TODO -- how to handle error? free and return nil?
 			}
 		} else {
-			vfc->nmacs = 0;		// if not set len() might return -1
-			vfc->macs = NULL;	// take no chances
+			if(  (stuff = jw_string( jblob, "mac" )) ) {							// new, going forward, just one MAC
+				vfc->nmacs = 1;
+				vfc->macs = malloc( sizeof( *vfc->macs ) * 1 );						// VFd should always support an array 
+				vfc->macs[0] = ltrim( stuff );
+			} else {
+				vfc->nmacs = 0;		// if not set len() might return -1
+				vfc->macs = NULL;	// take no chances
+			}
 		}
 
 		// ---- pick up the qos parameters --------------------------

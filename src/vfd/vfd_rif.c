@@ -625,7 +625,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 
 	vf->allow_untagged = 0;					// for now these cannot be set by the config file data
 	vf->vlan_anti_spoof = 1;
-	vf->mac_anti_spoof = vfc->antispoof_mac;
+	vf->mac_anti_spoof = get_mac_antispoof( port->rte_port_number );		// value depends on the nic in some cases
 
 	vf->rate = vfc->rate;
 	
