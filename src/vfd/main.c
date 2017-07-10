@@ -871,7 +871,8 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 							set_vf_rx_mac(port->rte_port_number, mac, vf->num, SET_OFF );
 					}
 				} else {
-					for( m = vf->first_mac; m <= vf->num_macs; ++m ) {			// if guest pushed a default, first will be [0], else first is [1]
+					//for( m = vf->first_mac; m <= vf->num_macs; ++m ) {			// if guest pushed a default, first will be [0], else first is [1]
+					for( m = vf->num_macs - 1; m >= vf->first_mac; m-- ) {			// must run in reverse order because of FV oddness
 						mac = vf->macs[m];
 						bleat_printf( 2, "adding mac [%d]: port: %d vf: %d mac: %s", m, port->rte_port_number, vf->num, mac );
 
@@ -1274,7 +1275,7 @@ main(int argc, char **argv)
 		case 'h':
 		case '?':
 			printf( "\nVFd %s %s\n", vnum, version );
-			printf( "(17608)\n" );
+			printf( "(17710)\n" );
 			printf("%s\n", main_help);
 			exit( 0 );
 			break;

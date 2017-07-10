@@ -401,7 +401,6 @@ set_vf_allow_untagged(portid_t port_id, uint16_t vf_id, int on)
 
 */
 void
-//set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  __attribute__((__unused__)) uint8_t on)
 set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  uint8_t on)
 {
 
@@ -445,21 +444,43 @@ set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  uint8_t on)
 	}
 }
 
+
 /*
 	Set the 'default' MAC address for the VF. This is different than the set_vf_rx_mac() funciton
 	inasmuch as the address should be what the driver reports to a DPDK application when the 
 	MAC address is 'read' from the device.
+
+	CAUTION:  Intel FV doesn't provide a separate function to set the default; the last MAC set is
+			used as the default. The caller probably should set all MACs in the white list with
+			set_vf_rx_mac() calls first, and then set the default so that the correct behavour
+			happens if the underlying NIC is fortville.
 */
 void set_vf_default_mac( portid_t port_id, const char* mac, uint32_t vf ) {
-	int state;
+	int diag = 0;
 	struct ether_addr mac_addr;
-
 	ether_aton_r(mac, &mac_addr);
 
-	if( (state = rte_pmd_ixgbe_set_vf_mac_addr( port_id, vf, &mac_addr )) >= 0 ) {
-		bleat_printf( 3, "set default mac successful: port=%d vf=%d mac=%s", (int)port_id, (int)vf, mac );
-	} else {
-		bleat_printf( 3, "set default mac failed: port=%d vf=%d mac=%s state=%d", (int)port_id, (int)vf, mac, state );
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			diag = vfd_ixgbe_set_vf_default_mac_addr(port_id, vf, &mac_addr );
+			break;
+			
+		case VFD_FVL25:		
+			diag = vfd_i40e_set_vf_mac_addr(port_id, vf, &mac_addr );
+			break;
+
+		case VFD_BNXT:	
+			diag = vfd_bnxt_set_vf_default_mac_addr(port_id, vf, &mac_addr );
+			break;
+			
+		default:
+			bleat_printf( 0, "set_vf_rx_mac: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
+	}
+
+	if (diag < 0) {
+		bleat_printf( 0, "set default rx mac failed: port=%d vf=%d mac=%s rc=%d", (int)port_id, (int)vf, mac, diag );
 	}
 }
 

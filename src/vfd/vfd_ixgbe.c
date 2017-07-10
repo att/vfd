@@ -115,6 +115,24 @@ vfd_ixgbe_set_vf_mac_addr(uint8_t port_id, uint16_t vf_id, struct ether_addr *ma
 	return diag;
 }
 
+/*
+	Set the 'default' MAC address for the VF. This is different than the set_vf_rx_mac() funciton
+	inasmuch as the address should be what the driver reports to a DPDK application when the 
+	MAC address is 'read' from the device.
+*/
+int vfd_ixgbe_set_vf_default_mac_addr( portid_t port_id, uint16_t vf, struct ether_addr *mac_addr ) {
+	int state;
+
+	state =  rte_pmd_ixgbe_set_vf_mac_addr( port_id, vf, mac_addr );
+	if( state < 0 ) {
+		bleat_printf( 0, "rte_pmd_ixgbe_set_vf_default_mac_addr failed: (port_id=%d, vf_id=%d) failed rc=%d", port_id, vf, state );
+	} else {
+		bleat_printf( 3, "rte_pmd_ixgbe_set_vf_default_mac_addr successful: port_id=%d, vf_id=%d", port_id, vf );
+	}
+
+	return state;
+}
+
 
 int 
 vfd_ixgbe_set_vf_vlan_stripq(uint8_t port_id, uint16_t vf_id, uint8_t on)

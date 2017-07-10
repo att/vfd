@@ -94,18 +94,41 @@ vfd_bnxt_set_vf_multicast_promisc(uint8_t port_id, uint16_t vf_id, uint8_t on)
 }
 
 
+/*
+	This adds a MAC address to the Rx whitelist.  See vfd_bnxt_set_vf_default_mac_addr() 
+	for adding a MAC as the default (guest visible) MAC address.
+*/
 int 
 vfd_bnxt_set_vf_mac_addr(uint8_t port_id, uint16_t vf_id, struct ether_addr *mac_addr)
 {
-	int diag = rte_pmd_bnxt_set_vf_mac_addr(port_id, vf_id, mac_addr);
+	int diag = rte_pmd_bnxt_mac_addr_add(port_id, mac_addr, vf_id );
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_bnxt_set_vf_mac_addr failed: port_pi=%d, vf_id=%d) failed rc=%d", port_id, vf_id, diag );
 	} else {
 		bleat_printf( 3, "rte_pmd_bnxt_set_vf_mac_addr successful: port_id=%d, vf=%d", port_id, vf_id);
 	}
+
+	return diag;
+}
+
+/*
+	Set the default rx MAC address for the pf/vf. This is the address that will be visible into the guest.
+*/
+int vfd_bnxt_set_vf_default_mac_addr( uint8_t port_id, uint16_t vf_id, struct ether_addr *mac_addr ) {
+	int diag;
+
+	diag  = rte_pmd_bnxt_set_vf_mac_addr(port_id, vf_id, mac_addr);
+
+	if (diag < 0) {
+		bleat_printf( 0, "rte_pmd_bnxt_set_vf_default_mac_addr failed: port_pi=%d, vf_id=%d) failed rc=%d", port_id, vf_id, diag );
+	} else {
+		bleat_printf( 3, "rte_pmd_bnxt_set_vf_default_mac_addr successful: port_id=%d, vf=%d", port_id, vf_id);
+	}
 	
 	return diag;
 }
+
+
 
 
 int 
