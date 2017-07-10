@@ -106,8 +106,7 @@ int
 vfd_i40e_set_vf_mac_addr(uint8_t port_id, uint16_t vf_id,  __attribute__((__unused__)) struct ether_addr *mac_addr)
 {
 	int diag = 0;
-	//int diag = rte_pmd_i40e_set_vf_mac_addr(port_id, vf_id, mac_addr);
-	bleat_printf( 3, "rte_pmd_i40e_set_vf_mac_addr (skip setting mac address): port_id=%d, vf=%d", port_id, vf_id);
+	diag = rte_pmd_i40e_set_vf_mac_addr(port_id, vf_id, mac_addr);
 		
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_i40e_set_vf_mac_addr failed: (port_pi=%d, vf_id=%d) failed rc=%d", port_id, vf_id, diag );
