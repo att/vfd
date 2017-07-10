@@ -447,6 +447,7 @@ int vfd_init_fifo( parms_t* parms );
 int is_valid_mac_str( char* mac );
 char*  gen_stats( sriov_conf_t* conf, int pf_only, int pf );
 int get_nic_type(portid_t port_id);
+int get_mac_antispoof( portid_t port_id );
 int get_max_qpp( uint32_t port_id );
 int get_num_vfs( uint32_t port_id );
 

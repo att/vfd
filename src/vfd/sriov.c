@@ -772,6 +772,36 @@ void set_queue_drop( portid_t port_id, int state ) {
 	disable_default_pool(port_id);
 }
 
+/*
+	Different NICs may have different reuirements for antispoofing.  We always force VLAN antispoofing
+	to be on, which meanst that normally MAC antispoofing can be off.  However, on the niantic if one
+	is on, they both must be on, so this function exists to return the proper mac antispoofing value
+	(true or false) based on the port.
+*/
+int get_mac_antispoof( portid_t port_id )
+{
+  int sv = 0;				// spoof value: default to setting to off (allow guests to use any mac)
+
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			sv = 1;
+			bleat_printf( 0, "forcing mac antispoofing to be on for niantic" );
+			break;
+			
+		case VFD_FVL25:		
+			break;
+
+		case VFD_BNXT:
+			break;
+			
+		default:
+			break;	
+	}
+
+	return sv;
+}
+
 // --------------- pending reset support ----------------------------------------------------------------------
 /*
 	The refresh queue is where VFd manages queued reset requests. When we receive

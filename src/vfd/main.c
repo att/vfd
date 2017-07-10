@@ -872,7 +872,8 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 					}
 				} else {
 					//for( m = vf->first_mac; m <= vf->num_macs; ++m ) {			// if guest pushed a default, first will be [0], else first is [1]
-					for( m = vf->num_macs - 1; m >= vf->first_mac; m-- ) {			// must run in reverse order because of FV oddness
+					bleat_printf( 2, "configuring %d mac addresses: port: %d vf: %d firstmac=%d", vf->num_macs, port->rte_port_number, vf->num, vf->first_mac );
+					for( m = vf->num_macs; m >= vf->first_mac; m-- ) {				// must run in reverse order because of FV oddness
 						mac = vf->macs[m];
 						bleat_printf( 2, "adding mac [%d]: port: %d vf: %d mac: %s", m, port->rte_port_number, vf->num, mac );
 
