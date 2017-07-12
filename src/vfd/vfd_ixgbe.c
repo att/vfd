@@ -102,10 +102,17 @@ vfd_ixgbe_set_vf_multicast_promisc(uint8_t port_id, uint16_t vf_id, uint8_t on)
 }
 
 
+/*
+	Add a MAC address to the white list. When more than one address is added to the list
+	AND a default has not been set with a call to vfd_ixgbe_set_vf_default_mac_addr(),
+	it seems the niantic picks one to report to the driver when the VF user requests
+	the address; it is not clear how this is determined. The call to the set default
+	should be made after all calls to this function have been made. 
+*/
 int 
 vfd_ixgbe_set_vf_mac_addr(uint8_t port_id, uint16_t vf_id, struct ether_addr *mac_addr)
 {
-	int diag = rte_pmd_ixgbe_set_vf_mac_addr(port_id, vf_id, mac_addr);
+ 	int diag = rte_eth_dev_mac_addr_add( port_id, mac_addr, vf_id );			// add to whitelist
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_ixgbe_set_vf_mac_addr failed: (port_id=%d, vf_id=%d) failed rc=%d", port_id, vf_id, diag );
 	} else {
@@ -116,7 +123,7 @@ vfd_ixgbe_set_vf_mac_addr(uint8_t port_id, uint16_t vf_id, struct ether_addr *ma
 }
 
 /*
-	Set the 'default' MAC address for the VF. This is different than the set_vf_rx_mac() funciton
+	Set the 'default' MAC address for the VF. This is different than the set_vf_rx_mac() function
 	inasmuch as the address should be what the driver reports to a DPDK application when the 
 	MAC address is 'read' from the device.
 */
