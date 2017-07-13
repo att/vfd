@@ -169,8 +169,17 @@ tx_vlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id)
 	int diag;
 
 #ifdef BNXT_SUPPORT
-	if (strcmp(rte_eth_devices[port_id].driver->pci_drv.driver.name, "net_bnxt") == 0)
+	if (strcmp(rte_eth_devices[port_id].driver->pci_drv.driver.name, "net_bnxt") == 0) {
 		diag = rte_pmd_bnxt_set_vf_vlan_insert( port_id, vf_id, vlan_id );
+		if (diag >= 0) {
+			if (vlan_id == 0) {
+				struct vf_s *vf_cfg = suss_vf(port_id, vf_id);
+
+				if (!vf_cfg->strip_stag)
+					rte_pmd_bnxt_set_vf_vlan_stripq(port_id, vf_id, vlan_id);
+			}
+		}
+	}
 	else
 #endif
 		diag = rte_pmd_ixgbe_set_vf_vlan_insert( port_id, vf_id, vlan_id );
