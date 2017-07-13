@@ -899,6 +899,10 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 
 				if( vf->num >= 0 ) {
 					if( parms->forreal ) {
+						if (get_nic_type(port->rte_port_number) == VFD_BNXT) {
+							bleat_printf( 2, "%s vf: %d set keep stats", port->name, vf->num);
+							rte_pmd_bnxt_set_vf_persist_stats(port->rte_port_number, vf->num, 1);
+						}
 						bleat_printf( 2, "port: %d vf: %d set anti-spoof to %d", port->rte_port_number, vf->num, vf->vlan_anti_spoof );
 						set_vf_vlan_anti_spoofing(port->rte_port_number, vf->num, vf->vlan_anti_spoof);
 	
