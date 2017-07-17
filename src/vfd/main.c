@@ -843,7 +843,7 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 					}
 
 					if( port->mirrors[y].dir != MIRROR_OFF ) {												// stop the mirror on delete
-						set_mirror( port->rte_port_number, y, port->mirrors[y].id, -1, MIRROR_OFF );		// turn off, no target needed (-1)
+						set_mirror( port->rte_port_number, vf->num, port->mirrors[y].id, -1, MIRROR_OFF );		// turn off, no target needed (-1)
 						port->mirrors[y].dir = MIRROR_OFF;
 						idm_return( conf->mir_id_mgr, port->mirrors[y].id );								// mark the id as unused in allocator
 					}
