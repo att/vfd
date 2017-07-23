@@ -105,8 +105,8 @@ vfd_i40e_set_vf_multicast_promisc(uint8_t port_id, uint16_t vf_id, uint8_t on)
 int 
 vfd_i40e_set_vf_mac_addr(uint8_t port_id, uint16_t vf_id,  __attribute__((__unused__)) struct ether_addr *mac_addr)
 {
-	int diag = 0;
-	diag = rte_pmd_i40e_set_vf_mac_addr(port_id, vf_id, mac_addr);
+	/* FIXME looks like this isn't working for FVL25 ? */
+	int diag = rte_eth_dev_mac_addr_add( port_id, mac_addr, vf_id );
 		
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_i40e_set_vf_mac_addr failed: (port_pi=%d, vf_id=%d) failed rc=%d", port_id, vf_id, diag );
@@ -117,6 +117,32 @@ vfd_i40e_set_vf_mac_addr(uint8_t port_id, uint16_t vf_id,  __attribute__((__unus
 	return diag;
 }
 
+/*
+	Looks like it removes all existing MAC filters.
+	If rte_pmd_i40e_set_vf_mac_addr is called after VF driver is initialized 
+	VF stops receiving packets destined to that MAC, so we have to make sure 
+	we call it only once during VFd startup
+*/
+int 
+vfd_i40e_set_vf_default_mac_addr(uint8_t port_id, uint16_t vf, struct ether_addr *mac_addr ) {
+	int state = 0;
+
+	// set default MAC address only once
+	if (!running_config->ports[port_id].vfs[vf].default_mac_set) {
+		state = rte_pmd_i40e_set_vf_mac_addr(port_id, vf, mac_addr);
+		running_config->ports[port_id].vfs[vf].default_mac_set = 1;
+	} else {
+		bleat_printf( 3, "rte_pmd_ixgbe_set_vf_default_mac_addr already set, skipping: port_id=%d, vf_id=%d", port_id, vf );
+	}
+	
+	if( state < 0 ) {
+		bleat_printf( 0, "rte_pmd_ixgbe_set_vf_default_mac_addr failed: (port_id=%d, vf_id=%d) failed rc=%d", port_id, vf, state );
+	} else {
+		bleat_printf( 3, "rte_pmd_ixgbe_set_vf_default_mac_addr successful: port_id=%d, vf_id=%d", port_id, vf );
+	}
+
+	return state;
+}
 
 int 
 vfd_i40e_set_vf_vlan_stripq(uint8_t port_id, uint16_t vf_id, uint8_t on)

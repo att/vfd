@@ -50,6 +50,7 @@ int vfd_i40e_set_tx_loopback(uint8_t port, uint8_t on);
 int vfd_i40e_set_vf_unicast_promisc(uint8_t port, uint16_t vf_id, uint8_t on);
 int vfd_i40e_set_vf_multicast_promisc(uint8_t port, uint16_t vf_id, uint8_t on);
 int vfd_i40e_set_vf_mac_addr(uint8_t port, uint16_t vf_id, struct ether_addr *mac_addr);
+int vfd_i40e_set_vf_default_mac_addr(uint8_t port_id, uint16_t vf, struct ether_addr *mac_addr );
 int vfd_i40e_set_vf_vlan_stripq(uint8_t port, uint16_t vf, uint8_t on);
 int vfd_i40e_set_vf_vlan_insert(uint8_t port, uint16_t vf_id, uint16_t vlan_id);
 int vfd_i40e_set_vf_broadcast(uint8_t port, uint16_t vf_id, uint8_t on);

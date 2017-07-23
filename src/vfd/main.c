@@ -1105,8 +1105,8 @@ restore_vf_setings(uint8_t port_id, int vf_id) {
 		dump_sriov_config(running_config);
 	}
 
-	bleat_printf( 2, "drop any untagged packets for all VFs: port %d vf %d", port_id, vf_id );
-	set_vf_allow_untagged(port_id, vf_id, 0);	
+	//bleat_printf( 2, "drop any untagged packets for all VFs: port %d vf %d", port_id, vf_id );
+	//set_vf_allow_untagged(port_id, vf_id, 0);	
 	
 	bleat_printf( 3, "restore settings begins" );
 	for (i = 0; i < running_config->num_ports; ++i){

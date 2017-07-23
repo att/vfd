@@ -217,6 +217,7 @@ struct vf_s
   int     vlans[MAX_VF_VLANS];
   char    macs[MAX_VF_MACS][18];
 	int     rx_q_ready;
+	int 	default_mac_set;
 
 	uid_t	owner;					// user id which 'owns' the VF (owner of the config file from stat())
 	char*	start_cb;				// user commands driven just after initialisation and just before termination

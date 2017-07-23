@@ -467,7 +467,7 @@ void set_vf_default_mac( portid_t port_id, const char* mac, uint32_t vf ) {
 			break;
 			
 		case VFD_FVL25:		
-			diag = vfd_i40e_set_vf_mac_addr(port_id, vf, &mac_addr );
+			diag = vfd_i40e_set_vf_default_mac_addr(port_id, vf, &mac_addr );
 			break;
 
 		case VFD_BNXT:	
