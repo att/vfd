@@ -871,7 +871,7 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 					int v;
 
 					if( port->mirrors[y].dir != MIRROR_OFF ) {						// setup the mirror
-						set_mirror( port->rte_port_number, y, port->mirrors[y].id, port->mirrors[y].target, port->mirrors[y].dir );		// set target and type (in/out/both)
+						set_mirror( port->rte_port_number, vf->num, port->mirrors[y].id, port->mirrors[y].target, port->mirrors[y].dir );		// set target and type (in/out/both)
 					}
 
 					for(v = 0; v < vf->num_vlans; ++v) {
@@ -880,6 +880,7 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 						if( parms->forreal )
 							set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, on );		// add the vlan id to the list
 					}
+				}
 
 				if( vf->last_updated == DELETED ) {				// delete the macs
 					for( m = vf->first_mac; m <= vf->num_macs; ++m ) {
@@ -890,7 +891,6 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 							set_vf_rx_mac(port->rte_port_number, mac, vf->num, SET_OFF );
 					}
 				} else {
-					//for( m = vf->first_mac; m <= vf->num_macs; ++m ) {			// if guest pushed a default, first will be [0], else first is [1]
 					bleat_printf( 2, "configuring %d mac addresses: port: %d vf: %d firstmac=%d", vf->num_macs, port->rte_port_number, vf->num, vf->first_mac );
 					for( m = vf->num_macs; m >= vf->first_mac; m-- ) {				// must run in reverse order because of FV oddness
 						mac = vf->macs[m];

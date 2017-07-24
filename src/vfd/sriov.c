@@ -623,7 +623,7 @@ void set_mirror( portid_t port_id, uint32_t vf, uint8_t id, uint8_t target, uint
 	int state = 0;
 
 	memset( &mconf, 0, sizeof( mconf ) );
-	mconf.dst_pool = 1 << target;
+	mconf.dst_pool = target;					// assume 1:1 vf to pool mapping
 	mconf.pool_mask = 1 << vf;
 
 	switch( direction ) {
@@ -648,8 +648,8 @@ void set_mirror( portid_t port_id, uint32_t vf, uint8_t id, uint8_t target, uint
 	
 	state = rte_eth_mirror_rule_set( port_id, &mconf, id, on_off );
 	if( state < 0 ) {
-		bleat_printf( 0, "WRN: set mirror for pf=%d vf=%d target=%d dir=%d on/off=%d failed: %d (%s)", 
-				(int) port_id, (int) vf, (int) target, (int) direction, (int) on_off, state, strerror( -state ) );
+		bleat_printf( 0, "WRN: set mirror for pf=%d vf=%d mid=%d target=%d dir=%d on/off=%d failed: %d (%s)", 
+				(int) port_id, (int) vf, (int) id, (int) target, (int) direction, (int) on_off, state, strerror( -state ) );
 	} else {
 		bleat_printf( 0, "set mirror for pf=%d vf=%d target=%d dir=%d on/off=%d ok", (int) port_id, (int) vf, (int) target, (int) direction, (int) on_off );
 	}
