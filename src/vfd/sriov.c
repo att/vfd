@@ -1029,7 +1029,7 @@ nic_stats_display(uint8_t port_id, char * buff, int bsize)
 	struct rte_eth_stats stats;
 	struct rte_eth_link link;
 	rte_eth_link_get_nowait(port_id, &link);
-	rte_eth_stats_get(port_id, &stats);
+	rte_eth_stats_get(port_id, &stats);	
 
 	uint dev_type = get_nic_type(port_id);
 	switch (dev_type) {
@@ -1038,7 +1038,7 @@ nic_stats_display(uint8_t port_id, char * buff, int bsize)
 			break;
 			
 		case VFD_FVL25:		
-			spoffed[port_id] += vfd_i40e_get_pf_spoof_stats(port_id);
+			spoffed[port_id] = vfd_i40e_get_pf_spoof_stats(port_id);  // FVL25 doesn't reset counters on read, so no adding here
 			break;
 
 		case VFD_BNXT:

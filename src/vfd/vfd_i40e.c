@@ -225,12 +225,6 @@ vfd_i40e_get_vf_stats(uint8_t port_id, uint16_t vf_id, struct rte_eth_stats *sta
 		bleat_printf( 3, "rte_pmd_i40e_set_vf_stats successful: (port_id=%d, vf=%d)", port_id, vf_id);
 	}
 	
-	
-	
-	//printf("dropped: stats->oerrors: %15"PRIu64"\n", port_pci_reg_read(port_id, 0x00344000));
-	
-	//printf("dropped: stats->oerrors: %d\n", port_pci_reg_read(port_id, 0x00074000));
-	
 	return diag;			
 }
 
@@ -594,11 +588,25 @@ vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 uint32_t 
 vfd_i40e_get_pf_spoof_stats(uint8_t port_id)
 {
+	uint32_t spoofed = 0;
+	struct rte_eth_stats stats;
+	int diag;
+	int i;
+	int vf_num = get_num_vfs( port_id );
+
 	bleat_printf( 3, "vfd_i40e_get_pf_spoof_stats: port_id=%d", port_id);
 	
-	/* TODO */
-	//return port_pci_reg_read(port_id, 0x08780);
-	return 0;
+	for (i = 0; i < vf_num; i++)
+	{
+		diag = rte_pmd_i40e_get_vf_stats(port_id, i, &stats);
+		if (diag < 0) {
+			bleat_printf( 0, "rte_pmd_i40e_get_vf_stats failed: (port_pi=%d, vf_id=%d) failed rc=%d", port_id, i, diag );
+			continue;
+		}		
+		spoofed += stats.oerrors;
+	}
+
+	return spoofed;
 }
 
 

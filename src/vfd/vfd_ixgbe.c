@@ -239,9 +239,9 @@ vfd_ixgbe_get_vf_stats(uint8_t port_id, uint16_t vf_id, struct rte_eth_stats *st
 
 	
 	if (diag < 0) {
-		bleat_printf( 0, "rte_pmd_ixgbe_set_vf_stats failed: (port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, diag );
+		bleat_printf( 0, "rte_pmd_ixgbe_get_vf_stats failed: (port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, diag );
 	} else {
-		bleat_printf( 3, "rte_pmd_ixgbe_set_vf_stats successful: port_id=%d, vf_id=%d", port_id, vf_id);
+		bleat_printf( 3, "rte_pmd_ixgbe_get_vf_stats successful: port_id=%d, vf_id=%d", port_id, vf_id);
 	}
 	
 	return diag;			
