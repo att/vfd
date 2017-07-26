@@ -220,9 +220,9 @@ vfd_bnxt_get_vf_stats(uint8_t port_id, uint16_t vf_id, struct rte_eth_stats *sta
 {
 	int diag = rte_pmd_bnxt_get_vf_stats(port_id, vf_id, stats);
 	if (diag < 0) {
-		bleat_printf( 0, "rte_pmd_bnxt_set_vf_stats failed: port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, diag );
+		bleat_printf( 0, "rte_pmd_bnxt_get_vf_stats failed: port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, diag );
 	} else {
-		bleat_printf( 3, "rte_pmd_bnxt_set_vf_stats successful: port_id=%d, vf=%d on=%d", port_id, vf_id);
+		bleat_printf( 3, "rte_pmd_bnxt_get_vf_stats successful: port_id=%d, vf=%d on=%d", port_id, vf_id);
 	}
 	
 	return diag;	
@@ -507,22 +507,69 @@ vfd_bnxt_set_all_queues_drop_en(uint8_t port_id, uint8_t on)
 }
 
 
-uint32_t 
+uint32_t
 vfd_bnxt_get_pf_spoof_stats(uint8_t port_id)
 {
+	uint64_t spoffed = 0;
 	bleat_printf( 3, "vfd_bnxt_get_pf_spoof_stats: port_id=%d", port_id);
-	/* TODO */
-	return 0;
+
+	struct rte_eth_xstat *xstats;
+	int cnt_xstats, idx_xstat;
+	struct rte_eth_xstat_name *xstats_names;
+
+	/* Get count */
+	cnt_xstats = rte_eth_xstats_get_names(port_id, NULL, 0);
+	if (cnt_xstats  < 0) {
+		printf("Error: Cannot get count of xstats\n");
+		return 0;
+	}
+
+	/* Get id-name lookup table */
+	xstats_names = malloc(sizeof(struct rte_eth_xstat_name) * cnt_xstats);
+	if (xstats_names == NULL) {
+		printf("Cannot allocate memory for xstats lookup\n");
+		return 0;
+	}
+	if (cnt_xstats != rte_eth_xstats_get_names(
+		port_id, xstats_names, cnt_xstats)) {
+		printf("Error: Cannot get xstats lookup\n");
+		free(xstats_names);
+		return 0;
+	}
+
+	/* Get stats themselves */
+	xstats = malloc(sizeof(struct rte_eth_xstat) * cnt_xstats);
+	if (xstats == NULL) {
+		printf("Cannot allocate memory for xstats\n");
+		free(xstats_names);
+		return 0;
+	}
+	if (cnt_xstats != rte_eth_xstats_get(port_id, xstats, cnt_xstats)) {
+		printf("Error: Unable to get xstats\n");
+		free(xstats_names);
+		free(xstats);
+		return 0;
+	}
+
+	/* Display xstats */
+	for (idx_xstat = 0; idx_xstat < cnt_xstats; idx_xstat++) {
+		if (memcmp(&xstats_names[idx_xstat].name, "tx_drop_pkts",
+		    strlen("tx_drop_pkts")) == 0)
+			spoffed = xstats[idx_xstat].value;
+	}
+	free(xstats_names);
+	free(xstats);
+	return spoffed;
 }
 
-
-uint32_t 
+uint32_t
 vfd_bnxt_get_vf_spoof_stats(uint8_t port_id, uint16_t vf_id)
 {
-	/* not implemented */
+	uint64_t vf_spoffed = 0;
 	bleat_printf( 3, "vfd_bnxt_get_vf_spoof_stats not implemented: port_id=%d, on=%d", port_id, vf_id);
-	/* TODO */
-	return 0;
+	rte_pmd_bnxt_get_vf_tx_drop_count(port_id, vf_id, &vf_spoffed);
+
+	return vf_spoffed;
 }
 
 int 
