@@ -1042,7 +1042,7 @@ nic_stats_display(uint8_t port_id, char * buff, int bsize)
 			break;
 
 		case VFD_BNXT:
-			spoffed[port_id] += vfd_bnxt_get_pf_spoof_stats(port_id); 
+			spoffed[port_id] = vfd_bnxt_get_pf_spoof_stats(port_id);  // BNXT counters are not-reset-on-read. No need to add.
 			break;
 			
 		default:
