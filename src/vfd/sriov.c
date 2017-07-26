@@ -1135,7 +1135,7 @@ extern void set_fcc( portid_t pf, int force ) {
 	uint32_t mask;
 
 #ifdef BNXT_SUPPORT
-	if (strcmp(rte_eth_devices[port_id].driver->pci_drv.driver.name, "net_bnxt") == 0) {
+	if (strcmp(rte_eth_devices[pf].driver->pci_drv.driver.name, "net_bnxt") == 0) {
 		return;
 	}
 #endif
