@@ -547,7 +547,7 @@ index d7c18b6..7167e8a 100644
 +        }
 +        self.assertEqual(result, expected_result)
 diff --git a/nova/virt/libvirt/vif.py b/nova/virt/libvirt/vif.py
-index 54a445f..01c4c1c 100644
+index 54a445f..705f633 100644
 --- a/nova/virt/libvirt/vif.py
 +++ b/nova/virt/libvirt/vif.py
 @@ -23,6 +23,7 @@ import os
@@ -654,7 +654,7 @@ index 54a445f..01c4c1c 100644
          if vif['vnic_type'] == network_model.VNIC_TYPE_MACVTAP:
              # The ip utility doesn't accept the MAC 00:00:00:00:00:00.
              # Therefore, keep the MAC unchanged.  Later operations on
-@@ -941,3 +981,171 @@ class LibvirtGenericVIFDriver(object):
+@@ -941,3 +981,176 @@ class LibvirtGenericVIFDriver(object):
              raise exception.NovaException(
                  _("Unexpected vif_type=%s") % vif_type)
          func(instance, vif)
@@ -714,6 +714,11 @@ index 54a445f..01c4c1c 100644
 +                "vf_agent_name": "mac_anti_spoof",
 +                "default": True,
 +            },
++            "RATE_LIMIT": {
++                "vf_agent_name": "rate",
++                "default": 0,
++            },
++
 +        }
 +
 +        # this parameters are not in binding:profile

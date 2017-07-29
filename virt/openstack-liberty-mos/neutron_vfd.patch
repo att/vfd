@@ -1,5 +1,5 @@
 diff --git a/neutron/api/v2/attributes.py b/neutron/api/v2/attributes.py
-index 56beac9..ecadf58 100644
+index 56beac9..861e521 100644
 --- a/neutron/api/v2/attributes.py
 +++ b/neutron/api/v2/attributes.py
 @@ -15,6 +15,7 @@
@@ -10,7 +10,7 @@ index 56beac9..ecadf58 100644
  import netaddr
  from oslo_log import log as logging
  from oslo_utils import uuidutils
-@@ -594,6 +595,141 @@ def convert_to_list(data):
+@@ -594,6 +595,144 @@ def convert_to_list(data):
      else:
          return [data]
  
@@ -105,6 +105,9 @@ index 56beac9..ecadf58 100644
 +            "type": "string",
 +            "pattern": r"^auto|on|off$"
 +        },
++        "RATE_LIMIT": {
++            "type": ["number"]
++        },
 +    },
 +    "required": [
 +        "ATT_VF_VLAN_FILTER"
@@ -152,7 +155,7 @@ index 56beac9..ecadf58 100644
  
  HEX_ELEM = '[0-9A-Fa-f]'
  UUID_PATTERN = '-'.join([HEX_ELEM + '{8}', HEX_ELEM + '{4}',
-@@ -634,7 +770,8 @@ validators = {'type:dict': _validate_dict,
+@@ -634,7 +773,8 @@ validators = {'type:dict': _validate_dict,
                'type:uuid_or_none': _validate_uuid_or_none,
                'type:uuid_list': _validate_uuid_list,
                'type:values': _validate_values,
