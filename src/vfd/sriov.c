@@ -1230,11 +1230,17 @@ static void apply_rx_restrictions(uint8_t port_id, uint16_t vf, struct hwrm_cfa_
 		    HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_PROMISCUOUS);
 		return;
 	}
-	if (!vf_cfg->allow_bcast)
-		mi->mask &= ~HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_BCAST;
-	if (!vf_cfg->allow_mcast)
+	if (!vf_cfg->allow_bcast) {
 		mi->mask &= ~(HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_BCAST |
-		    HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_ALL_MCAST);
+		    HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_PROMISCUOUS);
+	}
+	if (!vf_cfg->allow_mcast) {
+		mi->mask &= ~(HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_BCAST |
+		    HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_ALL_MCAST |
+		    HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_PROMISCUOUS);
+		mi->mask = HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_MCAST;
+		mi->num_mc_entries = 0;
+	}
 	if (!vf_cfg->allow_un_ucast)
 		mi->mask &= ~HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_PROMISCUOUS;
 }
