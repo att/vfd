@@ -413,6 +413,7 @@ extern void free_parms( parms_t* parms ) {
 extern vf_config_t*	read_config( char* fname ) {
 	vf_config_t*	vfc = NULL;
 	void*		jblob;			// parsed json
+	void*		mirror;			// mirror blob in the tree
 	char*		buf;			// buffer read from file (nil terminated)
 	char*		stuff;
 	int			val;
@@ -545,7 +546,38 @@ extern vf_config_t*	read_config( char* fname ) {
 			}
 		}
 		
-		// TODO -- add code which picks up mirror stuff (jwrapper must be enhanced first)
+		// ----- pick up mirror info --------------------------------
+		vfc->mirror_dir = MIRROR_OFF;
+		vfc->mirror_target = -1;
+
+		if( (mirror = jw_blob( jblob, "mirror" )) != NULL ) {
+			char *direction;
+
+			if( (vfc->mirror_target = jw_missing( mirror, "target" ) ? -1 : (int) jw_value( mirror, "target" )) >= 0 ) {
+				vfc->mirror_dir = MIRROR_ALL;			// if target given, default is all
+
+				direction = jw_missing( mirror, "direction" ) ? "all" : jw_string( mirror, "direction" );
+
+				switch( *direction ) {
+					case 'b':					// both or all
+					case 'a':
+						vfc->mirror_dir = MIRROR_ALL;
+						break;
+						
+					case 'o':
+						if( strcmp( direction, "out" ) == 0 ) {
+							vfc->mirror_dir = MIRROR_OUT;
+						} else {
+							vfc->mirror_dir = MIRROR_OFF;
+						}
+						break;
+						
+					case 'i':
+						vfc->mirror_dir = MIRROR_IN;
+						break;
+				}
+			}
+		}
 
 		jw_nuke( jblob );
 	} else {

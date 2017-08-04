@@ -193,29 +193,29 @@ struct itvl_stats
 */
 struct vf_s
 {
-  int     num;
-  int     last_updated;        
-  /**
-    *     no app m->ol_flags | PKT_TX_VLAN_PKT   |  app does m->ol_flags | PKT_TX_VLAN_PKT
-    *     strip_stag  = 0 Y, 1 strip, 1 Y                                             | 0 NO, 1 Y, 1 Y
-    *     insert_stag = 0 Y (q & qinq), xxx same as vlan filter (Y single tag only)   | 0 NO, 0 Y (q & qinq), xxx same as vlan filter (Y single tag only)
-    *
-   **/
-  int     strip_stag;          
-  int     insert_stag;         
-  int     vlan_anti_spoof;      // if use VLAN filter then set VLAN anti spoofing
-  int     mac_anti_spoof;       // set MAC anti spoofing when MAC filter is in use
-  int     allow_bcast;
-  int     allow_mcast;
-  int     allow_un_ucast;
-  int     allow_untagged;
-  double  rate;
-  int     link;                 /* -1 = down, 0 = mirror PF, 1 = up  */
-  int     num_vlans;
-  int     num_macs;
+	int     num;
+	int     last_updated;        
+	/**
+	*     no app m->ol_flags | PKT_TX_VLAN_PKT   |  app does m->ol_flags | PKT_TX_VLAN_PKT
+	*     strip_stag  = 0 Y, 1 strip, 1 Y                                             | 0 NO, 1 Y, 1 Y
+	*     insert_stag = 0 Y (q & qinq), xxx same as vlan filter (Y single tag only)   | 0 NO, 0 Y (q & qinq), xxx same as vlan filter (Y single tag only)
+	*
+	**/
+	int     strip_stag;          
+	int     insert_stag;         
+	int     vlan_anti_spoof;      // if use VLAN filter then set VLAN anti spoofing
+	int     mac_anti_spoof;       // set MAC anti spoofing when MAC filter is in use
+	int     allow_bcast;
+	int     allow_mcast;
+	int     allow_un_ucast;
+	int     allow_untagged;
+	double  rate;
+	int     link;                 /* -1 = down, 0 = mimic PF, 1 = up  */
+	int     num_vlans;
+	int     num_macs;
 	int		first_mac;				// index of first mac in list (1 if VF has not changed their mac, 0 if they've pushed one down)
-  int     vlans[MAX_VF_VLANS];
-  char    macs[MAX_VF_MACS][18];
+	int     vlans[MAX_VF_VLANS];
+	char    macs[MAX_VF_MACS][18];
 	int     rx_q_ready;
 	int 	default_mac_set;
 
@@ -226,10 +226,14 @@ struct vf_s
 };
 
 
+/*
+	Represent a mirror added to the PF.
+*/
 struct mirror_s
 {
-  int     vlan;
-  int     vf_id;
+	uint8_t	target;		// vf where trafiic is being sent
+	int dir;			// traffic direction: in, out, both, off
+	uint8_t	id;			// the id we assigned to the mirror (size limited by dpdk lib calls)
 };
 
 
@@ -248,7 +252,7 @@ typedef struct sriov_port_s
 	int			nvfs_config;			// actual number of configured vfs; could be less than max
 	int			ntcs;					// number traffic clases (must be 4 or 8)
 	int     	num_vfs;
-	struct  	mirror_s mirror[MAX_VFS];
+	struct  	mirror_s mirrors[MAX_VFS];		// mirror info for each VF
 	struct  	vf_s vfs[MAX_VFS];
 	tc_class_t*	tc_config[MAX_TCS];		// configuration information (max/min lsp/gsp) for the TC	(set from config)
 	int*		vftc_qshares;			// queue percentages arranged by vf/tc (computed with each add/del of a vf)
@@ -267,6 +271,7 @@ typedef struct sriov_conf_c
 	int     num_ports;						// number of ports actually used in ports array
 	struct sriov_port_s ports[MAX_PORTS];	// ports; CAUTION: order may not be device id order
 	rte_spinlock_t update_lock;				// we lock the config during update and deployment
+	void*	mir_id_mgr;							// reference point for the id manager to allocate mirror ids
 } sriov_conf_t;
 
 
@@ -379,6 +384,7 @@ int  rx_vft_set(portid_t port_id, uint16_t vlan_id, int on);
 void init_port_config(void);
 
 int get_split_ctlreg( portid_t port_id, uint16_t vf_id );
+void set_mirror( portid_t port_id, uint32_t vf, uint8_t id, uint8_t target, uint8_t direction );
 void set_queue_drop( portid_t port_id, int state );
 void set_split_erop( portid_t port_id, uint16_t vf_id, int state );
 

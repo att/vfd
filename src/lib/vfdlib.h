@@ -17,6 +17,11 @@
 #define JWFMT_FLOAT		3
 
 //----------------- config.c --------------------------------------------------------------------------
+#define MIRROR_OFF			0		// mirror directions
+#define MIRROR_IN			1		// mirror just inbound traffic
+#define MIRROR_OUT			2		// mirror just outbound traffic
+#define MIRROR_ALL			3		// mirror both directions
+
                                     // tc_class_t struct flags
 #define TCF_LOW_LATENCY 0x01
 #define TCF_BW_STRICTP  0x02
@@ -120,6 +125,8 @@ typedef struct {
 	char**	macs;					// array of mac addresses (filter)
 	int		nmacs;					// number of mac addresses
 	float	rate;					// percentage of the total link speed this to be confined to (rate limiting)
+	int		mirror_target;			// vf number of the target for mirroring
+	int		mirror_dir;				// direction (in/out/both/off)
 	uint8_t	qshare[MAX_TCS];		// share (percentage) of each traffic class
 	// ignoring mirrors right now
 	/*
@@ -197,5 +204,14 @@ extern float get_value( void* jblob, char const* field_name, float def_value );
 extern int get_ivalue( void* jblob, char const* field_name, int def_value );
 extern char* get_value_as_str( void* jblob, char const* field_name, char const* def_value, int  fmt );
 extern char* get_str( void* jblob, char const* field_name, char const* def_value );
+
+//----------------- idmgr -----------------------------------------------------------------------------------
+extern void* mk_idm( int num_ids );
+extern int idm_alloc( void* vid );
+extern int idm_use( void* vid, int id_val );
+extern int idm_is_used( void* vid, int id_val );
+extern void idm_return( void* vid, int id_val );
+extern void idm_free( void* vid );
+
 
 #endif

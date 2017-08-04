@@ -402,7 +402,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		vidx = i;
 	}
 
-	if( vidx >= MAX_VFS || vfc->vfid < 0 || vfc->vfid > 31) {							// something is out of range
+	if( vidx >= MAX_VFS || vfc->vfid < 0 || vfc->vfid > 31 ) {				// something is out of range TODO: replace 31 with actual number of VFs?
 		snprintf( mbuf, sizeof( mbuf ), "max VFs already defined or vfid %d is out of range", vfc->vfid );
 		bleat_printf( 1, "vf not added: %s", mbuf );
 		if( reason ) {
@@ -602,6 +602,18 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		return 0;
 	}
 
+	if( vfc->mirror_dir != MIRROR_OFF ) {
+		if( vfc->mirror_target == vidx ||  vfc->mirror_target < 0 || vfc->mirror_target > port->num_vfs ) {
+			snprintf( mbuf, sizeof( mbuf ), "mirror target is out of range or is the same as this VF: %d", vfc->mirror_target );
+			if( reason ) {
+				*reason = strdup( mbuf );
+			}
+			free_config( vfc );
+			return 0;
+		}
+
+	}
+
 	// -------------------------------------------------------------------------------------------------------------
 	// CAUTION: if we fail because of a parm error it MUST happen before here!
 
@@ -622,6 +634,14 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	vf->allow_bcast = vfc->allow_bcast;
 	vf->allow_mcast = vfc->allow_mcast;
 	vf->allow_un_ucast = vfc->allow_un_ucast;
+
+	port->mirrors[vidx].dir = vfc->mirror_dir;						// mirrors are added to the port list
+	if( vfc->mirror_dir != MIRROR_OFF ) {
+		port->mirrors[vidx].target = vfc->mirror_target;
+		port->mirrors[vidx].id = idm_alloc( conf->mir_id_mgr );		// alloc an unused id value
+	} else {
+		port->mirrors[vidx].target = -1;
+	}
 
 	vf->allow_untagged = 0;					// for now these cannot be set by the config file data
 	vf->vlan_anti_spoof = 1;
