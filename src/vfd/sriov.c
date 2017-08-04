@@ -628,10 +628,16 @@ void set_mirror( portid_t port_id, uint32_t vf, uint8_t id, uint8_t target, uint
 
 	switch( direction ) {
 		case MIRROR_IN:
+			mconf.rule_type = ETH_MIRROR_DOWNLINK_PORT;
+			rte_eth_mirror_rule_set( port_id, &mconf, id, 0 );		// ensure out is off
+
 			mconf.rule_type = ETH_MIRROR_UPLINK_PORT;
 			break;
 
 		case MIRROR_OUT:
+			mconf.rule_type = ETH_MIRROR_UPLINK_PORT;
+			rte_eth_mirror_rule_set( port_id, &mconf, id, 0 );		// ensure in is off
+
 			mconf.rule_type = ETH_MIRROR_DOWNLINK_PORT;
 			break;
 
@@ -641,8 +647,7 @@ void set_mirror( portid_t port_id, uint32_t vf, uint8_t id, uint8_t target, uint
 
 		default:			// MIRROR_OFF
 			on_off = SET_OFF;
-			mconf.dst_pool = 0;
-			mconf.pool_mask = 0;
+			mconf.rule_type = ETH_MIRROR_UPLINK_PORT | ETH_MIRROR_DOWNLINK_PORT;
 			break;
 	}
 	
@@ -651,7 +656,7 @@ void set_mirror( portid_t port_id, uint32_t vf, uint8_t id, uint8_t target, uint
 		bleat_printf( 0, "WRN: set mirror for pf=%d vf=%d mid=%d target=%d dir=%d on/off=%d failed: %d (%s)", 
 				(int) port_id, (int) vf, (int) id, (int) target, (int) direction, (int) on_off, state, strerror( -state ) );
 	} else {
-		bleat_printf( 0, "set mirror for pf=%d vf=%d target=%d dir=%d on/off=%d ok", (int) port_id, (int) vf, (int) target, (int) direction, (int) on_off );
+		bleat_printf( 0, "set mirror for pf=%d vf=%d target=%d dir=%d on/off=%d  rt=%d ok", (int) port_id, (int) vf, (int) target, (int) direction, (int) on_off, (int) mconf.rule_type );
 	}
 }	
 
