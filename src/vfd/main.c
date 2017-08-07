@@ -1241,6 +1241,7 @@ main(int argc, char **argv)
 
 	uint16_t	cfg_offset = 0x100;
 	int		enable_fc = 0;				// enable flow control (-F sets)
+	u_int16_t portid;
 
 
   const char * main_help =
@@ -1378,7 +1379,6 @@ main(int argc, char **argv)
 
 	if( g_parms->forreal ) {										// begin dpdk setup and device discovery
 		int ret;					// returned value from some call
-		u_int16_t portid;
 		uint32_t pci_control_r;
 
 		bleat_printf( 1, "starting rte initialisation" );
@@ -1555,11 +1555,23 @@ main(int argc, char **argv)
 
 	free( parm_file );			// now it's safe to free the parm file
 
+#define MAX_PKT_BURST	32
 	while(!terminated)
 	{
+		struct rte_mbuf *pkts_burst[MAX_PKT_BURST];
 		usleep(50000);			// .5s
 
 		while( vfd_req_if( g_parms, running_config, 0 ) ); 				// process _all_ pending requests before going on
+		// Discard any RX traffic...
+		for (portid = 0; portid < n_ports; portid++) {
+			uint16_t nb_pkts;
+			while ( (nb_pkts = rte_eth_rx_burst(portid, 0, pkts_burst, MAX_PKT_BURST)) > 0 ) {
+				uint16_t idx;
+				for (idx = 0; idx < nb_pkts; idx++)
+					rte_pktmbuf_free(pkts_burst[idx]);
+			}
+			bleat_printf( 4, "Discarded %hu PF %d frames", nb_pkts, portid);
+		}
 
 	}		// end !terminated while
 
