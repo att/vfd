@@ -1569,8 +1569,8 @@ main(int argc, char **argv)
 				uint16_t idx;
 				for (idx = 0; idx < nb_pkts; idx++)
 					rte_pktmbuf_free(pkts_burst[idx]);
+				bleat_printf( 4, "Discarded %hu PF %d frames", nb_pkts, portid);
 			}
-			bleat_printf( 4, "Discarded %hu PF %d frames", nb_pkts, portid);
 		}
 
 	}		// end !terminated while
