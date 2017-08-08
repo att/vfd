@@ -59,11 +59,7 @@ vfd_bnxt_set_tx_loopback(uint8_t port_id, uint8_t on)
 int 
 vfd_bnxt_set_vf_unicast_promisc(uint8_t port_id, uint16_t vf_id, uint8_t on)
 {
-	bleat_printf( 0, "vfd_bnxt_set_vf_unicast_promisc(): not implemented for port=%d, vf=%d, qstart=%d, on/off=%d", port_id, vf_id, !!on );
-	return 0;
-	
-	/*
-	int diag = rte_pmd_bnxt_set_vf_unicast_promisc(port_id, vf_id, on);
+	int diag = rte_pmd_bnxt_set_vf_rxmode(port_id, vf_id, ETH_VMDQ_ACCEPT_HASH_UC,(uint8_t) on);
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_bnxt_set_vf_unicast_promisc failed: port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, on, diag );
 	} else {
@@ -71,18 +67,13 @@ vfd_bnxt_set_vf_unicast_promisc(uint8_t port_id, uint16_t vf_id, uint8_t on)
 	}
 	
 	return diag;
-	*/
 }
 
 
 int 
 vfd_bnxt_set_vf_multicast_promisc(uint8_t port_id, uint16_t vf_id, uint8_t on)
 {
-	bleat_printf( 0, "vfd_bnxt_set_vf_multicast_promisc(): not implemented for port=%d, vf=%d, qstart=%d, on/off=%d", port_id, vf_id, !!on );
-	return 0;
-	
-	/*
-	int diag = rte_pmd_bnxt_set_vf_multicast_promisc(port_id, vf_id, on);
+	int diag = rte_pmd_bnxt_set_vf_rxmode(port_id, vf_id, ETH_VMDQ_ACCEPT_MULTICAST,(uint8_t) on);
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_bnxt_set_vf_multicast_promisc failed: port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, on, diag );
 	} else {
@@ -90,7 +81,6 @@ vfd_bnxt_set_vf_multicast_promisc(uint8_t port_id, uint16_t vf_id, uint8_t on)
 	}
 	
 	return diag;
-	*/
 }
 
 
@@ -162,11 +152,7 @@ vfd_bnxt_set_vf_vlan_insert(uint8_t port_id, uint16_t vf_id, uint16_t vlan_id)
 int 
 vfd_bnxt_set_vf_broadcast(uint8_t port_id, uint16_t vf_id, uint8_t on)
 {
-	
-	bleat_printf( 0, "vfd_bnxt_set_vf_broadcast(): not implemented for port=%d, vf=%d, on/off=%d", port_id, vf_id, !!on );
-	return 0;
-	/*
-	int diag = rte_pmd_bnxt_set_vf_broadcast(port_id, vf_id, on);
+	int diag = rte_pmd_bnxt_set_vf_rxmode(port_id, vf_id, ETH_VMDQ_ACCEPT_BROADCAST,(uint8_t) on);
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_bnxt_set_vf_broadcas failed: port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, on, diag );
 	} else {
@@ -174,7 +160,6 @@ vfd_bnxt_set_vf_broadcast(uint8_t port_id, uint16_t vf_id, uint8_t on)
 	}
 	
 	return diag;	
-	*/
 }
 
 
@@ -275,7 +260,6 @@ static bool verify_mac_address(uint8_t port_id, uint16_t vf, void *mac, void *ma
 	return false;
 }
 
-
 static void apply_rx_restrictions(uint8_t port_id, uint16_t vf, struct hwrm_cfa_l2_set_rx_mask_input *mi)
 {
 	struct vf_s *vf_cfg = suss_vf(port_id, vf);
@@ -288,14 +272,21 @@ static void apply_rx_restrictions(uint8_t port_id, uint16_t vf, struct hwrm_cfa_
 		    HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_PROMISCUOUS);
 		return;
 	}
-	if (!vf_cfg->allow_bcast)
-		mi->mask &= ~HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_BCAST;
-	if (!vf_cfg->allow_mcast)
+	if (!vf_cfg->allow_bcast) {
 		mi->mask &= ~(HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_BCAST |
-		    HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_ALL_MCAST);
+		    HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_PROMISCUOUS);
+	}
+	if (!vf_cfg->allow_mcast) {
+		mi->mask &= ~(HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_BCAST |
+		    HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_ALL_MCAST |
+		    HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_PROMISCUOUS);
+		mi->mask |= HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_MCAST;
+		mi->num_mc_entries = 0;
+	}
 	if (!vf_cfg->allow_un_ucast)
 		mi->mask &= ~HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_PROMISCUOUS;
 }
+
 
 int
 vfd_bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *data, void *param)
