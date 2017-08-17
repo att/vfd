@@ -519,6 +519,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	char mbuf[BUF_1K];					// message buffer if we fail
 	int tot_vlans = 0;					// must count vlans and macs to ensure limit not busted
 	int tot_macs = 0;
+	float tot_min_rate = 0;
 	
 
 	if( conf == NULL || fname == NULL ) {
@@ -588,6 +589,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 
 			tot_vlans += port->vfs[i].num_vlans;
 			tot_macs += port->vfs[i].num_macs;
+			tot_min_rate += port->vfs[i].min_rate;
 		}
 	}
 
@@ -615,6 +617,16 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 			*reason = strdup( mbuf );
 		}
 
+		free_config( vfc );
+		return 0;
+	}
+
+	if( vfc->min_rate + tot_min_rate > 1 ) {	// Rate oversubscription
+		snprintf( mbuf, sizeof( mbuf ), "total guaranteed rate exceeds link speed" );
+		bleat_printf( 1, "vf not added: %s", mbuf );
+		if( reason ) {
+			*reason = strdup( mbuf );
+		}
 		free_config( vfc );
 		return 0;
 	}
@@ -845,6 +857,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	vf->default_mac_set = 0;
 
 	vf->rate = vfc->rate;
+	vf->min_rate = vfc->min_rate;
 	
 	if( vfc->start_cb != NULL ) {
 		vf->start_cb = strdup( vfc->start_cb );

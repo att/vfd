@@ -203,11 +203,11 @@ struct vf_s
 	int     num;
 	int     last_updated;        
 	/**
-	*     no app m->ol_flags | PKT_TX_VLAN_PKT   |  app does m->ol_flags | PKT_TX_VLAN_PKT
-	*     strip_stag  = 0 Y, 1 strip, 1 Y                                             | 0 NO, 1 Y, 1 Y
-	*     insert_stag = 0 Y (q & qinq), xxx same as vlan filter (Y single tag only)   | 0 NO, 0 Y (q & qinq), xxx same as vlan filter (Y single tag only)
-	*
-	**/
+	 *     no app m->ol_flags | PKT_TX_VLAN_PKT   |  app does m->ol_flags | PKT_TX_VLAN_PKT
+	 *     strip_stag  = 0 Y, 1 strip, 1 Y                                             | 0 NO, 1 Y, 1 Y
+	 *     insert_stag = 0 Y (q & qinq), xxx same as vlan filter (Y single tag only)   | 0 NO, 0 Y (q & qinq), xxx same as vlan filter (Y single tag only)
+	 *
+	 **/
 	int     strip_stag;          
 	int     insert_stag;         
 	int     vlan_anti_spoof;      // if use VLAN filter then set VLAN anti spoofing
@@ -217,7 +217,8 @@ struct vf_s
 	int     allow_un_ucast;
 	int     allow_untagged;
 	double  rate;
-	int     link;                 /* -1 = down, 0 = mimic PF, 1 = up  */
+	double  min_rate;
+	int     link;                 /* -1 = down, 0 = mirror PF, 1 = up  */
 	int     num_vlans;
 	int     num_macs;
 	int		first_mac;				// index of first mac in list (1 if VF has not changed their mac, 0 if they've pushed one down)
@@ -408,6 +409,7 @@ void set_vf_vlan_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on);
 void set_vf_mac_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on);
 
 int set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk);
+int set_vf_min_rate(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk);
 int set_vf_link_status(portid_t port_id, uint16_t vf, int status);
 
 void nic_stats_clear(portid_t port_id);

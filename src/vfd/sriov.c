@@ -188,6 +188,41 @@ set_vf_link_status(portid_t port_id, uint16_t vf, int status)
 }
 
 int
+set_vf_min_rate(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk)
+{
+	int diag = 0;
+
+	if (q_msk == 0)
+		return 0;
+
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			break;
+			
+		case VFD_FVL25:
+			break;
+
+		case VFD_BNXT:
+			break;
+			
+		case VFD_MLX5:
+			diag = vfd_mlx5_set_vf_min_rate(port_id, vf, rate);
+			break;
+
+		default:
+			bleat_printf( 0, "set_vf_min_rate: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
+	}
+
+	if (diag != 0) {
+		bleat_printf( 0, "set_vf_min_rate: unable to set value %u: (%d) %s", rate, diag, strerror( -diag ) );
+	}
+
+	return diag;
+}
+
+int
 set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk)
 {
 	int diag = 0;

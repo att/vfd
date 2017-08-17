@@ -164,6 +164,27 @@ vfd_mlx5_set_vf_vlan_insert(uint8_t port_id, uint16_t vf_id, uint16_t vlan_id)
 }
 
 int
+vfd_mlx5_set_vf_min_rate(uint8_t port_id, uint16_t vf_id, uint16_t rate)
+{
+	char ifname[IF_NAMESIZE];
+	char cmd[128] = "";
+	int ret;
+
+	if (vfd_mlx5_get_ifname(port_id, ifname))
+		return -1;
+
+	sprintf(cmd, "echo %d > /sys/class/net/%s/device/sriov/%d/min_tx_rate", rate, ifname, vf_id);
+	
+	ret = system(cmd);
+
+	if (ret < 0) {
+	//	printf("cmd exec returned %d\n", ret);
+	}
+
+	return 0;
+}
+
+int
 vfd_mlx5_set_vf_rate_limit(uint8_t port_id, uint16_t vf_id, uint16_t rate)
 {
 	char ifname[IF_NAMESIZE];

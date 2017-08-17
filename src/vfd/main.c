@@ -970,19 +970,32 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 					}
 				}
 
-				if( vf->rate > 0 ) {
+				if( vf->rate || vf->min_rate ) {
 					struct rte_eth_link link;
 
 					rte_eth_link_get_nowait(port->rte_port_number, &link);
-					bleat_printf( 1, "setting rate: %d", (int)  ( (float)link.link_speed * vf->rate ) );
-					set_vf_rate_limit( port->rte_port_number, vf->num, (uint16_t)( (float)link.link_speed * vf->rate ), 0x01 );
+
+					if( vf->rate ) {
+						bleat_printf( 1, "setting rate: %d", (int)  ( (float)link.link_speed * vf->rate ) );
+						set_vf_rate_limit( port->rte_port_number, vf->num, (uint16_t)( (float)link.link_speed * vf->rate ), 0x01 );
+					}
+
+					if( vf->min_rate ) {
+						bleat_printf( 1, "setting min_rate: %d", (int)  ( (float)link.link_speed * vf->min_rate ) );
+						set_vf_min_rate( port->rte_port_number, vf->num, (uint16_t)( (float)link.link_speed * vf->min_rate ), 0x01 );
+					}
 				}
 
 				if( vf->last_updated == DELETED ) {				// do this last!
 					if( parms->forreal ) { 
 						if( vf->rate > 0 ) { //disable rate limit
-							bleat_printf( 1, "setting rate: %d", (int)  ( 10000 * vf->rate ) );
+							bleat_printf( 1, "disabling rate limit");
 							set_vf_rate_limit( port->rte_port_number, vf->num, 0, 0x01 );
+						}
+
+						if( vf->min_rate > 0 ) { //disable rate guarantee
+							bleat_printf( 1, "disabling min rate guarantee");
+							set_vf_min_rate( port->rte_port_number, vf->num, 0, 0x01 );
 						}
 						vfd_set_ins_strip( port, vf );
 
@@ -1290,6 +1303,7 @@ dump_sriov_config( sriov_conf_t* sriov_config)
 					sriov_config->ports[i].vfs[y].allow_mcast,
 					sriov_config->ports[i].vfs[y].allow_untagged,
 					sriov_config->ports[i].vfs[y].rate,
+					sriov_config->ports[i].vfs[y].min_rate,
 					sriov_config->ports[i].vfs[y].link,
 					sriov_config->ports[i].vfs[y].num_vlans,
 					sriov_config->ports[i].vfs[y].num_macs,

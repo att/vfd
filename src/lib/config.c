@@ -456,6 +456,7 @@ extern vf_config_t*	read_config( char* fname ) {
 		vfc->vfid = !jw_is_value( jblob, "vfid" ) ? -1 : (int) jw_value( jblob, "vfid" );			// there is no real default value, so set to invalid
 
 		vfc->rate = jw_missing( jblob, "rate" ) ? 0 : (float) jw_value( jblob, "rate" );
+		vfc->min_rate = jw_missing( jblob, "min_rate" ) ? 0 : (float) jw_value( jblob, "min_rate" );
 
 		if(  (stuff = jw_string( jblob, "name" )) ) {
 			vfc->name = strdup( stuff );
