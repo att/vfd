@@ -574,6 +574,14 @@ vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 			bleat_printf(3, "Port: %d, VF: %d, _T: %s", port_id, vf, "I40E_VIRTCHNL_OP_SET_RSS_HENA");
 			p->retval = RTE_PMD_I40E_MB_EVENT_PROCEED;
 			break;			
+		case I40E_VIRTCHNL_OP_ENABLE_VLAN_STRIPPING:
+			bleat_printf(3, "Port: %d, VF: %d, _T: %s", port_id, vf, "I40E_VIRTCHNL_OP_ENABLE_VLAN_STRIPPING");
+			p->retval = RTE_PMD_I40E_MB_EVENT_PROCEED;
+			break;			
+		case I40E_VIRTCHNL_OP_DISABLE_VLAN_STRIPPING:
+			bleat_printf(3, "Port: %d, VF: %d, _T: %s", port_id, vf, "I40E_VIRTCHNL_OP_DISABLE_VLAN_STRIPPING");
+			p->retval = RTE_PMD_I40E_MB_EVENT_PROCEED;
+			break;	
 			
 		default:
 			bleat_printf( 1, "unknown  event request received: port=%d (responding nop+nak)", port_id );

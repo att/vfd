@@ -38,7 +38,9 @@ enum i40e_virtchnl_ops {
 	I40E_VIRTCHNL_OP_CONFIG_RSS_LUT = 24,
 	I40E_VIRTCHNL_OP_GET_RSS_HENA_CAPS = 25,
 	I40E_VIRTCHNL_OP_SET_RSS_HENA = 26,
-
+	I40E_VIRTCHNL_OP_ENABLE_VLAN_STRIPPING = 27,
+	I40E_VIRTCHNL_OP_DISABLE_VLAN_STRIPPING = 28,
+	I40E_VIRTCHNL_OP_REQUEST_QUEUES = 29,
 };
 	
 // ------------- prototypes ----------------------------------------------
