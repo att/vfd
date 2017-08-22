@@ -9,9 +9,9 @@ command line interface tool which is used to interact with the daemon.
 
 
 Some requirements:
-   - DPDK version 16.11
+   - DPDK version v17.08
 	  1) clone http://dpdk.org/git/dpdk
-	  2) run 'git checkout v16.11
+	  2) run 'git checkout v17.08
 	  3) build DPDK
 
    - Linux kernel version  3.13 or later.  (VFd may execute on earlier kernels,
