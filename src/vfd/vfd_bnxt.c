@@ -257,6 +257,13 @@ static bool verify_mac_address(uint8_t port_id, uint16_t vf, void *mac, void *ma
 			return true;
 	}
 
+	// must run in reverse order because of FV oddness
+	for( i = vf_cfg->num_macs; i >= vf_cfg->first_mac; i-- ) {
+		ether_aton_r(vf_cfg->macs[i], &mac_addr);
+		if (memcmp(&mac_addr, mac, sizeof(mac_addr)) == 0)
+			return true;
+	}
+
 	return false;
 }
 
