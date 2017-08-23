@@ -1,0 +1,44 @@
+From 88daed5b4e61bb6a87089120a86ddaca799fd3e3 Mon Sep 17 00:00:00 2001
+From: Qi Zhang <qi.z.zhang@intel.com>
+Date: Tue, 8 Aug 2017 18:04:57 +0800
+Subject: [PATCH] net/i40e: take port register for PF packet count.
+
+Previously, for PF statistics we use VSI register for packet count
+but use port's register for packet bytes, that cause inconsistent
+situation of PF statistics when some VF is active,  since it will
+cover VF's packet bytes but not packet count.
+The patch will take port register only for PF statistics only.
+
+Signed-off-by: Qi Zhang <qi.z.zhang@intel.com>
+---
+ drivers/net/i40e/i40e_ethdev.c | 14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/net/i40e/i40e_ethdev.c b/drivers/net/i40e/i40e_ethdev.c
+index 5f26e24..2f80611 100644
+--- a/drivers/net/i40e/i40e_ethdev.c
++++ b/drivers/net/i40e/i40e_ethdev.c
+@@ -2664,13 +2664,13 @@ i40e_dev_stats_get(struct rte_eth_dev *dev, struct rte_eth_stats *stats)
+ 	/* call read registers - updates values, now write them to struct */
+ 	i40e_read_stats_registers(pf, hw);
+ 
+-	stats->ipackets = pf->main_vsi->eth_stats.rx_unicast +
+-			pf->main_vsi->eth_stats.rx_multicast +
+-			pf->main_vsi->eth_stats.rx_broadcast -
+-			pf->main_vsi->eth_stats.rx_discards;
+-	stats->opackets = pf->main_vsi->eth_stats.tx_unicast +
+-			pf->main_vsi->eth_stats.tx_multicast +
+-			pf->main_vsi->eth_stats.tx_broadcast;
++	stats->ipackets = ns->eth.rx_unicast +
++			ns->eth.rx_multicast +
++			ns->eth.rx_broadcast -
++			ns->eth.rx_discards;
++	stats->opackets = ns->eth.tx_unicast +
++			ns->eth.tx_multicast +
++			ns->eth.tx_broadcast;
+ 	stats->ibytes   = ns->eth.rx_bytes;
+ 	stats->obytes   = ns->eth.tx_bytes;
+ 	stats->oerrors  = ns->eth.tx_errors +
+-- 
+2.9.4
+
