@@ -1,0 +1,139 @@
+diff --git a/drivers/net/i40e/i40e_ethdev.c b/drivers/net/i40e/i40e_ethdev.c
+index 5f26e24..4e58195 100644
+--- a/drivers/net/i40e/i40e_ethdev.c
++++ b/drivers/net/i40e/i40e_ethdev.c
+@@ -1594,7 +1594,8 @@ i40e_vsi_queues_unbind_intr(struct i40e_vsi *vsi)
+ 
+ static void
+ __vsi_queues_bind_intr(struct i40e_vsi *vsi, uint16_t msix_vect,
+-		       int base_queue, int nb_queue)
++		       int base_queue, int nb_queue,
++		       uint16_t itr_idx)
+ {
+ 	int i;
+ 	uint32_t val;
+@@ -1603,7 +1604,7 @@ __vsi_queues_bind_intr(struct i40e_vsi *vsi, uint16_t msix_vect,
+ 	/* Bind all RX queues to allocated MSIX interrupt */
+ 	for (i = 0; i < nb_queue; i++) {
+ 		val = (msix_vect << I40E_QINT_RQCTL_MSIX_INDX_SHIFT) |
+-			I40E_QINT_RQCTL_ITR_INDX_MASK |
++			itr_idx << I40E_QINT_RQCTL_ITR_INDX_SHIFT |
+ 			((base_queue + i + 1) <<
+ 			 I40E_QINT_RQCTL_NEXTQ_INDX_SHIFT) |
+ 			(0 << I40E_QINT_RQCTL_NEXTQ_TYPE_SHIFT) |
+@@ -1666,7 +1667,7 @@ __vsi_queues_bind_intr(struct i40e_vsi *vsi, uint16_t msix_vect,
+ }
+ 
+ void
+-i40e_vsi_queues_bind_intr(struct i40e_vsi *vsi)
++i40e_vsi_queues_bind_intr(struct i40e_vsi *vsi, uint16_t itr_idx)
+ {
+ 	struct rte_eth_dev *dev = vsi->adapter->eth_dev;
+ 	struct rte_pci_device *pci_dev = RTE_ETH_DEV_TO_PCI(dev);
+@@ -1694,7 +1695,8 @@ i40e_vsi_queues_bind_intr(struct i40e_vsi *vsi)
+ 	/* VF bind interrupt */
+ 	if (vsi->type == I40E_VSI_SRIOV) {
+ 		__vsi_queues_bind_intr(vsi, msix_vect,
+-				       vsi->base_queue, vsi->nb_qps);
++				       vsi->base_queue, vsi->nb_qps,
++				       itr_idx);
+ 		return;
+ 	}
+ 
+@@ -1720,7 +1722,8 @@ i40e_vsi_queues_bind_intr(struct i40e_vsi *vsi)
+ 			/* no enough msix_vect, map all to one */
+ 			__vsi_queues_bind_intr(vsi, msix_vect,
+ 					       vsi->base_queue + i,
+-					       vsi->nb_used_qps - i);
++					       vsi->nb_used_qps - i,
++					       itr_idx);
+ 			for (; !!record && i < vsi->nb_used_qps; i++)
+ 				intr_handle->intr_vec[queue_idx + i] =
+ 					msix_vect;
+@@ -1728,7 +1731,8 @@ i40e_vsi_queues_bind_intr(struct i40e_vsi *vsi)
+ 		}
+ 		/* 1:1 queue/msix_vect mapping */
+ 		__vsi_queues_bind_intr(vsi, msix_vect,
+-				       vsi->base_queue + i, 1);
++				       vsi->base_queue + i, 1,
++				       itr_idx);
+ 		if (!!record)
+ 			intr_handle->intr_vec[queue_idx + i] = msix_vect;
+ 
+@@ -1957,19 +1961,21 @@ i40e_dev_start(struct rte_eth_dev *dev)
+ 	/* Map queues with MSIX interrupt */
+ 	main_vsi->nb_used_qps = dev->data->nb_rx_queues -
+ 		pf->nb_cfg_vmdq_vsi * RTE_LIBRTE_I40E_QUEUE_NUM_PER_VM;
+-	i40e_vsi_queues_bind_intr(main_vsi);
++	i40e_vsi_queues_bind_intr(main_vsi, I40E_ITR_INDEX_DEFAULT);
+ 	i40e_vsi_enable_queues_intr(main_vsi);
+ 
+ 	/* Map VMDQ VSI queues with MSIX interrupt */
+ 	for (i = 0; i < pf->nb_cfg_vmdq_vsi; i++) {
+ 		pf->vmdq[i].vsi->nb_used_qps = RTE_LIBRTE_I40E_QUEUE_NUM_PER_VM;
+-		i40e_vsi_queues_bind_intr(pf->vmdq[i].vsi);
++		i40e_vsi_queues_bind_intr(pf->vmdq[i].vsi,
++					  I40E_ITR_INDEX_DEFAULT);
+ 		i40e_vsi_enable_queues_intr(pf->vmdq[i].vsi);
+ 	}
+ 
+ 	/* enable FDIR MSIX interrupt */
+ 	if (pf->fdir.fdir_vsi) {
+-		i40e_vsi_queues_bind_intr(pf->fdir.fdir_vsi);
++		i40e_vsi_queues_bind_intr(pf->fdir.fdir_vsi,
++					  I40E_ITR_INDEX_NONE);
+ 		i40e_vsi_enable_queues_intr(pf->fdir.fdir_vsi);
+ 	}
+ 
+diff --git a/drivers/net/i40e/i40e_ethdev.h b/drivers/net/i40e/i40e_ethdev.h
+index 48abc05..ad80f0f 100644
+--- a/drivers/net/i40e/i40e_ethdev.h
++++ b/drivers/net/i40e/i40e_ethdev.h
+@@ -186,9 +186,9 @@ enum i40e_flxpld_layer_idx {
+ 
+ /* Default queue interrupt throttling time in microseconds */
+ #define I40E_ITR_INDEX_DEFAULT          0
++#define I40E_ITR_INDEX_NONE             3
+ #define I40E_QUEUE_ITR_INTERVAL_DEFAULT 32 /* 32 us */
+ #define I40E_QUEUE_ITR_INTERVAL_MAX     8160 /* 8160 us */
+-
+ /* Special FW support this floating VEB feature */
+ #define FLOATING_VEB_SUPPORTED_FW_MAJ 5
+ #define FLOATING_VEB_SUPPORTED_FW_MIN 0
+@@ -919,7 +919,7 @@ void i40e_update_vsi_stats(struct i40e_vsi *vsi);
+ void i40e_pf_disable_irq0(struct i40e_hw *hw);
+ void i40e_pf_enable_irq0(struct i40e_hw *hw);
+ int i40e_dev_link_update(struct rte_eth_dev *dev, int wait_to_complete);
+-void i40e_vsi_queues_bind_intr(struct i40e_vsi *vsi);
++void i40e_vsi_queues_bind_intr(struct i40e_vsi *vsi, uint16_t itr_idx);
+ void i40e_vsi_queues_unbind_intr(struct i40e_vsi *vsi);
+ int i40e_vsi_vlan_pvid_set(struct i40e_vsi *vsi,
+ 			   struct i40e_vsi_vlan_pvid_info *info);
+diff --git a/drivers/net/i40e/i40e_pf.c b/drivers/net/i40e/i40e_pf.c
+index 100f8dc..01e3575 100644
+--- a/drivers/net/i40e/i40e_pf.c
++++ b/drivers/net/i40e/i40e_pf.c
+@@ -714,7 +714,7 @@ i40e_pf_host_process_cmd_config_irq_map(struct i40e_pf_vf *vf,
+ 	    (struct virtchnl_irq_map_info *)msg;
+ 	struct virtchnl_vector_map *map;
+ 	int i;
+-	uint16_t vector_id;
++	uint16_t vector_id, itr_idx;
+ 	unsigned long qbit_max;
+ 
+ 	if (!b_op) {
+@@ -741,12 +741,13 @@ i40e_pf_host_process_cmd_config_irq_map(struct i40e_pf_vf *vf,
+ 		vf->vsi->msix_intr = irqmap->vecmap[0].vector_id;
+ 		vf->vsi->nb_msix = irqmap->num_vectors;
+ 		vf->vsi->nb_used_qps = vf->vsi->nb_qps;
++		itr_idx = irqmap->vecmap[0].rxitr_idx;
+ 
+ 		/* Don't care how the TX/RX queue mapping with this vector.
+ 		 * Link all VF RX queues together. Only did mapping work.
+ 		 * VF can disable/enable the intr by itself.
+ 		 */
+-		i40e_vsi_queues_bind_intr(vf->vsi);
++		i40e_vsi_queues_bind_intr(vf->vsi, itr_idx);
+ 		goto send_msg;
+ 	}
+ 
