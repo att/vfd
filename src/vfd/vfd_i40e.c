@@ -107,6 +107,7 @@ vfd_i40e_set_vf_mac_addr(uint8_t port_id, uint16_t vf_id,  __attribute__((__unus
 {
 	/* FIXME looks like this isn't working for FVL25 ? */
 	int diag = rte_eth_dev_mac_addr_add( port_id, mac_addr, vf_id );
+	//diag = rte_pmd_i40e_set_vf_mac_addr(port_id, vf_id, mac_addr);
 		
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_i40e_set_vf_mac_addr failed: (port_pi=%d, vf_id=%d) failed rc=%d", port_id, vf_id, diag );
@@ -224,6 +225,10 @@ vfd_i40e_get_vf_stats(uint8_t port_id, uint16_t vf_id, struct rte_eth_stats *sta
 	} else {
 		bleat_printf( 3, "rte_pmd_i40e_set_vf_stats successful: (port_id=%d, vf=%d)", port_id, vf_id);
 	}
+	
+	//printf("dropped: stats->oerrors: %15"PRIu64"\n", port_pci_reg_read(port_id, 0x00344000));
+	
+	//printf("dropped: stats->oerrors: %d\n", port_pci_reg_read(port_id, 0x00074000));
 	
 	return diag;			
 }
