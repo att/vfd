@@ -111,6 +111,11 @@
 #define VFD_NIANTIC		0x1
 #define VFD_FVL25		0x2
 #define VFD_BNXT		0x3
+#define VFD_MLX5		0x4
+
+#define VF_LINK_ON	1
+#define VF_LINK_OFF	-1
+#define VF_LINK_AUTO 0
 
 #define TOGGLE(i) ((i+ 1) & 1)
 //#define TV_TO_US(tv) ((tv)->tv_sec * 1000000 + (tv)->tv_usec)
@@ -401,6 +406,7 @@ void set_vf_vlan_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on);
 void set_vf_mac_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on);
 
 int set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk);
+int set_vf_link_status(portid_t port_id, uint16_t vf, int status);
 
 void nic_stats_clear(portid_t port_id);
 int nic_stats_display(uint8_t port_id, char * buff, int blen);

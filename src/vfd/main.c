@@ -83,6 +83,7 @@
 #include <vfdlib.h>		// if vfdlib.h needs an include it must be included there, can't be include prior
 #include "vfd_rif.h"	// request interface stuff
 #include "vfd_dcb.h"	// dcb related stuff
+#include "vfd_mlx5.h"
 
 //#include "ixgbe_ethdev.h"
 //#include "ixgbe_ethdev.h"
@@ -715,7 +716,7 @@ static int vfd_set_ins_strip( struct sriov_port_s *port, struct vf_s *vf ) {
 		bleat_printf( 2, "pf: %s vf: %d set strip vlan tag %d", port->name, vf->num, vf->strip_stag );
 		rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag );			// if just one in the list, push through user strip option
 
-		if( vf->insert_stag ) {																// when stripping, we must also insert
+			if( vf->strip_stag && (vf->last_updated != DELETED)) {							// when stripping, we must also insert
 			bleat_printf( 2, "%s vf: %d set insert vlan tag with id %d", port->name, vf->num, vf->vlans[0] );
 			tx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->vlans[0] );
 		} else {
@@ -849,7 +850,7 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 					}
 
 					//AZif (get_nic_type(port->rte_port_number) == VFD_NIANTIC)
-					//	set_vf_rx_vlan(port->rte_port_number, 0, vf_mask, 0);		// remove vlan id 0 do we need it here for i40e?
+					//set_vf_rx_vlan(port->rte_port_number, 0, vf_mask, 0);		// remove vlan id 0 do we need it here for i40e?
 					
 					for(v = 0; v < vf->num_vlans; ++v) {
 						int vlan = vf->vlans[v];
@@ -866,7 +867,6 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 							set_vf_rx_mac(port->rte_port_number, mac, vf->num, SET_OFF );
 					}
 
-					vf->num = -1;				//DO THIS LAST --  must reset this so an add request with the now deleted number will succeed
 				} else {
 					int v;
 
@@ -882,7 +882,12 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 					}
 				}
 
-				if( vf->last_updated == DELETED ) {				// delete the macs
+				if( vf->last_updated == DELETED ) {				// delete the macs (need to disable anti-spoof first
+					if (vf->mac_anti_spoof) {
+						bleat_printf( 2, "port: %d vf: %d set mac-anti-spoof to %d", port->rte_port_number, vf->num, 0 );
+						set_vf_mac_anti_spoofing(port->rte_port_number, vf->num, SET_OFF);
+					}
+
 					for( m = vf->first_mac; m <= vf->num_macs; ++m ) {
 						mac = vf->macs[m];
 						bleat_printf( 2, "delete mac: port: %d vf: %d mac: %s", port->rte_port_number, vf->num, mac );
@@ -901,16 +906,34 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 								set_vf_rx_mac( port->rte_port_number, mac, vf->num, SET_ON );	// set in whitelist
 							} else {
 								set_vf_default_mac( port->rte_port_number, mac, vf->num );		// first is set as default
+								bleat_printf( 2, "Setting default mac was succesfull");
 							}
 						}
 					}
 				}
 
 				if( vf->rate > 0 ) {
-					bleat_printf( 1, "setting rate: %d", (int)  ( 10000 * vf->rate ) );
-					set_vf_rate_limit( port->rte_port_number, vf->num, (uint16_t)( 10000 * vf->rate ), 0x01 );
+					struct rte_eth_link link;
+
+					rte_eth_link_get_nowait(port->rte_port_number, &link);
+					bleat_printf( 1, "setting rate: %d", (int)  ( (float)link.link_speed * vf->rate ) );
+					set_vf_rate_limit( port->rte_port_number, vf->num, (uint16_t)( (float)link.link_speed * vf->rate ), 0x01 );
 				}
 
+				if( vf->last_updated == DELETED ) {				// do this last!
+					if( parms->forreal ) { 
+						if( vf->rate > 0 ) { //disable rate limit
+							bleat_printf( 1, "setting rate: %d", (int)  ( 10000 * vf->rate ) );
+							set_vf_rate_limit( port->rte_port_number, vf->num, 0, 0x01 );
+						}
+						vfd_set_ins_strip( port, vf );
+
+						bleat_printf( 2, "port: %d vf: %d set link status to %d", port->rte_port_number, vf->num, VF_LINK_AUTO);
+						set_vf_link_status( port->rte_port_number, vf->num, VF_LINK_AUTO);
+					}
+					vf->num = -1;								// must reset this so an add request with the now deleted number will succeed
+					// TODO -- is there anything else that we need to clean up in the struct?
+				}
 
 				if( vf->num >= 0 ) {
 					if( parms->forreal ) {
@@ -934,19 +957,26 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 
 						bleat_printf( 2, "port: %d vf: %d set allow un-ucast to %d", port->rte_port_number, vf->num, vf->allow_un_ucast );
 						set_vf_allow_un_ucast(port->rte_port_number, vf->num, vf->allow_un_ucast);
+	
+						bleat_printf( 2, "port: %d vf: %d set link status to %d", port->rte_port_number, vf->num, vf->link);
+						set_vf_link_status( port->rte_port_number, vf->num, vf->link);
 					} else {
 						bleat_printf( 1, "update vf skipping setup for spoofing, bcast, mcast, etc; forreal is off: %d vf=%d", port->rte_port_number, vf->num );
 					}
 				}
 
+
+
 				vf->last_updated = UNCHANGED;				// mark processed
 			}
 
 			if( change2port && (g_parms->rflags & RF_ENABLE_QOS) ) {		// changes, we must recompute queue shares and push to nic
-				//uint8_t* pp;
-				gen_port_qshares( port );									// compute and save in the port struct
-				qos_set_credits( port->rte_port_number, port->mtu, port->vftc_qshares, TC_4PERQ_MODE );	// push out to nic
-				//qos_set_credits( port->rte_port_number, port->mtu, pp, TC_4PERQ_MODE );	// push out to nic
+				if (get_nic_type(port->rte_port_number) != VFD_MLX5) { // No support in mlx5 yet
+					//uint8_t* pp;
+					gen_port_qshares( port );									// compute and save in the port struct
+					qos_set_credits( port->rte_port_number, port->mtu, port->vftc_qshares, TC_4PERQ_MODE );	// push out to nic
+					//qos_set_credits( port->rte_port_number, port->mtu, pp, TC_4PERQ_MODE );	// push out to nic
+				}
 			}
 
 			if( change2port && vf->num >= 0 ) {
@@ -1229,7 +1259,7 @@ main(int argc, char **argv)
 	int 	j;
 	int		no_huge = 0;				// -H will turn on and we will flip the appropriate bit in parms
 
-	uint16_t	cfg_offset = 0x100;
+	//uint16_t	cfg_offset = 0x100;
 	int		enable_fc = 0;				// enable flow control (-F sets)
 
 
@@ -1375,10 +1405,10 @@ main(int argc, char **argv)
 		
 		rte_openlog_stream(stderr);
 		//rte_log_set_level(~RTE_LOGTYPE_PMD && ~RTE_LOGTYPE_PORT, g_parms->dpdk_init_log_level);
-		ret = rte_log_set_level(RTE_LOGTYPE_PMD, g_parms->dpdk_init_log_level);
+		//ret = rte_log_set_level(RTE_LOGTYPE_PMD, g_parms->dpdk_init_log_level);
 
 
-		bleat_printf( 2, "log level = %d, log type = %d, ret = %d", rte_log_cur_msg_loglevel(), rte_log_cur_msg_logtype(), ret);
+		//bleat_printf( 2, "log level = %d, log type = %d, ret = %d", rte_log_cur_msg_loglevel(), rte_log_cur_msg_logtype(), ret);
 		
 
 		n_ports = rte_eth_dev_count();
@@ -1431,6 +1461,8 @@ main(int argc, char **argv)
 					port2config_map[portid] = i;									// map real port to our array index
 					running_config->ports[i].rte_port_number = portid; 				// record the real pf number
 					running_config->ports[i].nvfs_config = dev_info.max_vfs;		// number of configured VFs (could be less than max)
+					if (strcmp(dev_info.driver_name, "net_mlx5") == 0)
+						running_config->ports[i].nvfs_config = vfd_mlx5_get_num_vfs(portid);
 					break;
 				}
 			}
@@ -1473,12 +1505,12 @@ main(int argc, char **argv)
 			
 			
 			// read PCI config to get VM offset and stride
-			struct rte_eth_dev_info pf_dev;
-			rte_eth_dev_info_get(portid, &pf_dev);
+			//struct rte_eth_dev_info pf_dev;
+			//rte_eth_dev_info_get(portid, &pf_dev);
 							
 			// Find the SR-IOV extended capability structure
 			
-			if (get_nic_type(portid) == VFD_BNXT){ 
+			/*if (get_nic_type(portid) == VFD_BNXT){ 
 				do {
 					rte_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, cfg_offset);
 					bleat_printf(4, "Header: %08x (%04x)", pci_control_r, cfg_offset);
@@ -1497,10 +1529,13 @@ main(int argc, char **argv)
 				rte_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, cfg_offset + 20);
 			} else {
 				rte_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, 0x174);					// Intel NIC's
-			}
+			}*/
 			
 			
 			struct sriov_port_s *port = &running_config->ports[portid];
+			
+			pci_control_r = vfd_mlx5_pf_vf_offset(port->pciid) | (1 << 16);
+
 			port->vf_offset = pci_control_r & 0x0ffff;
 			port->vf_stride = pci_control_r >> 16;
 					
@@ -1540,7 +1575,7 @@ main(int argc, char **argv)
 	bleat_printf( 1, "initialisation complete, setting bleat level to %d; starting to loop", g_parms->log_level );
 	bleat_set_lvl( g_parms->log_level );					// initialisation finished, set log level to running level
 	if( forreal ) {
-		rte_log_set_level(g_parms->dpdk_init_log_level, RTE_LOGTYPE_PMD && RTE_LOGTYPE_PORT);
+		//rte_log_set_level(g_parms->dpdk_init_log_level, RTE_LOGTYPE_PMD && RTE_LOGTYPE_PORT);
 	}
 
 	free( parm_file );			// now it's safe to free the parm file
