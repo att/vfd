@@ -661,3 +661,4 @@ vfd_ixgbe_dump_all_vlans(uint8_t port_id)
 
 	return count;
 }
+

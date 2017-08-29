@@ -608,4 +608,3 @@ vfd_bnxt_dump_all_vlans(uint8_t port_id)
 	bleat_printf( 0, "vfd_bnxt_dump_all_vlans(): not implemented for port=%d", port_id );	
 	return 0;
 }
-

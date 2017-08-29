@@ -327,14 +327,14 @@ extern parms_t* read_parms( char* fname ) {
 											parms->pciids[i].tcs[priority]->flags &= ~TCF_LOW_LATENCY;
 										}
 										if( !jw_is_bool( tcobj, "lsp" ) ? 0 : (int) jw_value( tcobj, "lsp" ) ) {
-											parms->pciids[i].tcs[priority]->flags |= TCF_BW_STRICTP;
-										} else {
-											parms->pciids[i].tcs[priority]->flags &= ~TCF_BW_STRICTP;
-										}
-										if( !jw_is_bool( tcobj, "bsp" ) ? 0 : (int) jw_value( tcobj, "bsp" ) ) {
 											parms->pciids[i].tcs[priority]->flags |= TCF_LNK_STRICTP;
 										} else {
 											parms->pciids[i].tcs[priority]->flags &= ~TCF_LNK_STRICTP;
+										}
+										if( !jw_is_bool( tcobj, "bsp" ) ? 0 : (int) jw_value( tcobj, "bsp" ) ) {
+											parms->pciids[i].tcs[priority]->flags |= TCF_BW_STRICTP;
+										} else {
+											parms->pciids[i].tcs[priority]->flags &= ~TCF_BW_STRICTP;
 										}
 										parms->pciids[i].tcs[priority]->max_bw = !jw_is_value( tcobj, "max_bw" ) ? 100 : IBOUND( (int)jw_value( tcobj, "max_bw" ), 1, 100 );
 										parms->pciids[i].tcs[priority]->min_bw = !jw_is_value( tcobj, "min_bw" ) ? 1 : IBOUND( (int)jw_value( tcobj, "min_bw" ), 1, 100 );
@@ -444,8 +444,8 @@ extern vf_config_t*	read_config( char* fname ) {
 		vfc->antispoof_mac = 1;				
 		vfc->antispoof_vlan = 1;	// these are forced to 1 regardless of what was in json
 
-		vfc->antispoof_mac = jw_missing( jblob, "antispoof_mac" ) ? 0 : (int) jw_value( jblob, "antispoof_mac" );
-		//vfc->antispoof_vlan = jw_missing( jblob, "antispoof_vlan" ) ? 0 : (int) jw_value( jblob, "antispoof_vlan" );
+		vfc->antispoof_mac = jw_missing( jblob, "mac_anti_spoof" ) ? 0 : (int) jw_value( jblob, "mac_anti_spoof" );
+		vfc->antispoof_vlan = jw_missing( jblob, "vlan_anti_spoof" ) ? 0 : (int) jw_value( jblob, "vlan_anti_spoof" );
 
 		vfc->allow_untagged = !jw_is_bool( jblob, "allow_untagged" ) ? 0 : (int) jw_value( jblob, "allow_untagged" );
 
