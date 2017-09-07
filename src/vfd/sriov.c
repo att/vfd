@@ -1399,6 +1399,7 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 	const uint16_t tx_rings = 1;
 	int retval;
 	uint16_t q;
+	int i;
 
 	port_conf.rxmode.max_rx_pkt_len = pf->mtu;
 	port_conf.rxmode.jumbo_frame = pf->mtu >= 1500;
@@ -1493,6 +1494,11 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 	// Enable RX in promiscuous mode for the Ethernet device.
 	rte_eth_promiscuous_enable(port);
 
+	// don't allow untagged packets to any VF
+	for(i = 0; i < get_num_vfs(port); i++) {
+		set_vf_allow_untagged(port, i, 0);   
+	}
+	
 	nic_stats_clear(port);
 	
 	return 0;
