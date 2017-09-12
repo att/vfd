@@ -396,7 +396,7 @@ vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, v
 
 			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
 
-			//bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_VLAN");
+			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_VLAN");
 			//bleat_printf( 3, "setting vlan id = %d", p[1]);
 			break;
 
@@ -410,6 +410,7 @@ vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, v
 				p->retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     /* noop & nack */
 			}
 			
+			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p->retval, "IXGBE_VF_SET_LPE");
 			restore_vf_setings(port_id, vf);
 			set_fc_on( port_id, !FORCE );							// enable flow control if allowed (force off)
 			tx_set_loopback( port_id, suss_loopback( port_id ) );	// enable loopback if set (could be reset if link was down)
@@ -446,7 +447,7 @@ vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, v
 		case IXGBE_VF_UPDATE_XCAST_MODE:
 			bleat_printf( 1, "update xcast mode event received: port=%d (responding proceed)", port_id );
 			p->retval =  RTE_PMD_IXGBE_MB_EVENT_PROCEED;   /* do what's needed */
-			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p->retval, "IXGBE_VF_GET_QUEUES");
+			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p->retval, "IXGBE_VF_UPDATE_XCAST");
 
 			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
 			break;
