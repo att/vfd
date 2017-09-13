@@ -794,8 +794,15 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 					bleat_printf( 1, "enabling promiscuous mode for port %d", port->rte_port_number );
 					rte_eth_promiscuous_enable(port->rte_port_number);
 				}
+				else {
+					bleat_printf( 1, "disabling promiscuous mode for port %d", port->rte_port_number );
+					rte_eth_promiscuous_disable(port->rte_port_number);
+				}
 				
-				rte_eth_allmulticast_enable(port->rte_port_number);	
+				if (get_nic_type(port->rte_port_number) == VFD_BNXT)
+					rte_eth_allmulticast_disable(port->rte_port_number);
+				else
+					rte_eth_allmulticast_enable(port->rte_port_number);
 			
 				if (get_nic_type(port->rte_port_number) == VFD_NIANTIC) {
 					ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
@@ -994,8 +1001,15 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 						bleat_printf( 1, "enabling promiscuous mode for port %d", port->rte_port_number );
 						rte_eth_promiscuous_enable(port->rte_port_number);
 					}
+					else {
+						bleat_printf( 1, "disabling promiscuous mode for port %d", port->rte_port_number );
+						rte_eth_promiscuous_disable(port->rte_port_number);
+					}
 					
-					rte_eth_allmulticast_enable(port->rte_port_number);
+					if (get_nic_type(port->rte_port_number) == VFD_BNXT)
+						rte_eth_allmulticast_disable(port->rte_port_number);
+					else
+						rte_eth_allmulticast_enable(port->rte_port_number);
 					
 					if (get_nic_type(port->rte_port_number) == VFD_NIANTIC) {
 						ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
