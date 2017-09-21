@@ -65,6 +65,7 @@
 				26 May 2017 - Allow promisc mode on PF to be optionally disabled via main config file.
 				08 Jun 2017 - Add support to disable huge pages.
 				23 Jun 2017 - Ensure socket mem isn't asked for if no-huge is given.
+				20 Sep 2017 - Correct potential nil pointer exception.
 */
 
 
@@ -271,7 +272,10 @@ struct vf_s *suss_vf( int port, int vfid ) {
 	struct sriov_port_s *p;
 	int		i;
 
-	p = suss_port( port );
+	if( (p = suss_port( port )) == NULL ) {
+		return NULL;
+	}
+
 	for( i = 0; i < p->num_vfs; i++ ) {
 		if( p->vfs[i].num == vfid ) {					// found it
 			return &p->vfs[i];
