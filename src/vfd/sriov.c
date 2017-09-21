@@ -1234,6 +1234,7 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 
 
 	struct rte_eth_stats stats;
+	memset( &stats, 0, sizeof( stats ) );			// not all NICs fill all data, so ensure we have 0s
 	uint dev_type = get_nic_type(port_id);
 	switch (dev_type) {
 		case VFD_NIANTIC:
