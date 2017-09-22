@@ -13,6 +13,7 @@
 				14 Feb 2017 : Correct bug in del range check on vf number.
 				21 Feb 2017 : Prevent empty vlan id list from being accepted.
 				23 Mar 2017 : Allow multiple VLAN IDs when strip == true.
+				22 Sep 2017 : Prevent hanging lock in add_ports if already called.
 */
 
 
@@ -240,8 +241,10 @@ extern void vfd_add_ports( parms_t* parms, sriov_conf_t* conf ) {
 	pfdef_t*	pfc;			// pointer to the config info for a port (pciid)
 
 	rte_spinlock_lock( &conf->update_lock );
-	if( called )
+	if( called ) {
+		rte_spinlock_unlock( &conf->update_lock );
 		return;
+	}
 	called = 1;
 	
 	for( i = 0; pidx < MAX_PORTS  && i < parms->npciids; i++, pidx++ ) {
