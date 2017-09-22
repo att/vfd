@@ -1263,7 +1263,6 @@ main(int argc, char **argv)
 	int 	j;
 	int		no_huge = 0;				// -H will turn on and we will flip the appropriate bit in parms
 
-	//uint16_t	cfg_offset = 0x100;
 	int		enable_fc = 0;				// enable flow control (-F sets)
 
 
@@ -1449,11 +1448,13 @@ main(int argc, char **argv)
 		}
 
 		bleat_printf( 1, "initialising all (%d) ports", n_ports );
-		for (portid = 0; portid < n_ports; portid++) { 								// initialize ports, but only the ports listed in our config
+		for (portid = 0; portid < n_ports; portid++) { 								// initialize ports, but ONLY the ports listed in our config
 			int i;
 			char pciid[25];
 			struct rte_eth_dev_info dev_info;
-			int	pfidx;							// port index in our array if we find it; -1 otherwise.
+			int	pfidx;																// port index in our array if we find it; -1 otherwise.
+			struct rte_eth_dev_info pf_dev;
+			struct sriov_port_s* port;
 
 			pfidx = -1;																// default to PF not in our config list
 			rte_eth_dev_info_get(portid, &dev_info);
@@ -1471,15 +1472,18 @@ main(int argc, char **argv)
 				}
 			}
 
+			// CAUTION:   port id is the dpdk port and pfidx is the index into our array of ports for; don't mix them up in this block of code!
 			if( pfidx >= 0 ) {														// initialise only if in our confilg file list (we may not manage everything)
-				for( j = 0; j < 64; j++ ) {
+				port  = &running_config->ports[pfidx];
+
+				for( j = 0; j < 64; j++ ) {						//???  hardcoded 64 seems very dodgy!
 					set_split_erop( portid, j, SET_ON );							// set the split receive drop enable for all VFs
 				}
 
 				if( g_parms->rflags & RF_ENABLE_QOS ) {
 					state = dcb_port_init( &running_config->ports[pfidx], mbuf_pool );
 				} else {
-					state = port_init(portid, mbuf_pool, g_parms->pciids[portid].hw_strip_crc, &running_config->ports[pfidx] );
+					state = port_init(portid, mbuf_pool, g_parms->pciids[pfidx].hw_strip_crc, &running_config->ports[pfidx] );  // g_parms order is same as running_config
 					set_fc_on( portid, !!(g_parms->rflags & RF_ENABLE_FC) );		// if override is set, then force our setting for fc onto nic
 				}
 
@@ -1502,48 +1506,52 @@ main(int argc, char **argv)
 				bleat_printf( 1, "driver: %s, index %d, pkts rx: %lu", dev_info.driver_name, dev_info.if_index, st.pcount);
 				bleat_printf( 1, "pci: %04X:%02X:%02X.%01X, max VF's: %d", dev_info.pci_dev->addr.domain, dev_info.pci_dev->addr.bus,
 					dev_info.pci_dev->addr.devid , dev_info.pci_dev->addr.function, dev_info.max_vfs );
+				
+				rte_eth_dev_info_get(portid, &pf_dev);
+				switch( get_nic_type( portid ) ) {		// read pci config to get a generic offset and stride of VFs
+					case VFD_BNXT:
+						{
+							uint16_t	cfg_offset = 0x100;
+
+							do {
+								rte_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, cfg_offset);
+								bleat_printf(4, "Header: %08x (%04x)", pci_control_r, cfg_offset);
+								if ((pci_control_r & 0xffff) == 0x0010)
+									break;
+								cfg_offset = (pci_control_r >> 20) & ~3;
+								if (cfg_offset == 0)
+									break;
+							} while(1);
+
+							if (cfg_offset == 0) {
+								bleat_printf(0, "Unable to locate SR-IOV configuration");
+								rte_exit( EXIT_FAILURE, "initialisation failure, see log(s) in: %s\n", g_parms->log_dir );
+								exit ( 1 );
+							}
+
+							rte_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, cfg_offset + 20);
+						}
+						break;
+
+					case VFD_NIANTIC:
+						rte_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, 0x174);
+						break;
+
+					case VFD_FVL25:
+						rte_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, 0x174);
+						break;
+
+					case VFD_MLX5:
+						pci_control_r = vfd_mlx5_pf_vf_offset(port->pciid) | (1 << 16);
+						break;
+				}
+
+				port->vf_offset = pci_control_r & 0x0ffff;
+				port->vf_stride = pci_control_r >> 16;
 			} else {
 				port2config_map[portid] = -1;					// we must not allow an interrupt to map (we shouldn't get interrupts, but be parinoid)
 				bleat_printf( 0, "pf %d (%s) is NOT in vfd config file and was not initialised", portid, pciid );
 			}
-			
-			
-			// read PCI config to get VM offset and stride
-			//struct rte_eth_dev_info pf_dev;
-			//rte_eth_dev_info_get(portid, &pf_dev);
-							
-			// Find the SR-IOV extended capability structure
-			
-			/*if (get_nic_type(portid) == VFD_BNXT){ 
-				do {
-					rte_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, cfg_offset);
-					bleat_printf(4, "Header: %08x (%04x)", pci_control_r, cfg_offset);
-					if ((pci_control_r & 0xffff) == 0x0010)
-						break;
-					cfg_offset = (pci_control_r >> 20) & ~3;
-					if (cfg_offset == 0)
-						break;
-				} while(1);
-
-				if (cfg_offset == 0) {
-					bleat_printf(0, "Unable to locate SR-IOV configuration");
-					rte_exit( EXIT_FAILURE, "initialisation failure, see log(s) in: %s\n", g_parms->log_dir );
-					exit ( 1 );
-				}
-				rte_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, cfg_offset + 20);
-			} else {
-				rte_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, 0x174);					// Intel NIC's
-			}*/
-			
-			
-			struct sriov_port_s *port = &running_config->ports[portid];
-			
-			pci_control_r = vfd_mlx5_pf_vf_offset(port->pciid) | (1 << 16);
-
-			port->vf_offset = pci_control_r & 0x0ffff;
-			port->vf_stride = pci_control_r >> 16;
-					
-			
 	  }
 		
 		bleat_printf( 2, "port initialisation complete" );
