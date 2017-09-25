@@ -1,0 +1,19 @@
+
+# plan9 mk
+
+<../master.mk
+
+fig_src = 
+
+all:V: vfd_debug.pdf  vfd_debug.md
+
+#figures:V: ${fig_src:%=figures/%.eps}
+
+vfd_debug.ps:: ../setup.im debug.xfm
+	pfm debug.xfm vfd_debug.ps
+
+vfd_debug.md:: ../setup.im debug.xfm
+	MARKDOWN=1 tfm debug.xfm vfd_debug.o
+	sed 's/^ //' vfd_debug.o >vfd_debug.md
+	rm vfd_debug.o
+
