@@ -14,6 +14,7 @@
 				21 Feb 2017 : Prevent empty vlan id list from being accepted.
 				23 Mar 2017 : Allow multiple VLAN IDs when strip == true.
 				22 Sep 2017 : Prevent hanging lock in add_ports if already called.
+				25 Sep 2017 : Fix validation of mirror target bug.
 */
 
 
@@ -606,11 +607,12 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	}
 
 	if( vfc->mirror_dir != MIRROR_OFF ) {
-		if( vfc->mirror_target == vidx ||  vfc->mirror_target < 0 || vfc->mirror_target > port->num_vfs ) {
-			snprintf( mbuf, sizeof( mbuf ), "mirror target is out of range or is the same as this VF: %d", vfc->mirror_target );
+		if( vfc->mirror_target == vfc->vfid ||  vfc->mirror_target < 0 || vfc->mirror_target > port->num_vfs ) {
+			snprintf( mbuf, sizeof( mbuf ), "mirror target is out of range or is the same as this VF (%d): %d", (int) vfc->vfid, vfc->mirror_target );
 			if( reason ) {
 				*reason = strdup( mbuf );
 			}
+			bleat_printf( 1, "vf not added: %s", mbuf );
 			free_config( vfc );
 			return 0;
 		}
