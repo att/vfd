@@ -66,6 +66,7 @@
 				08 Jun 2017 - Add support to disable huge pages.
 				23 Jun 2017 - Ensure socket mem isn't asked for if no-huge is given.
 				20 Sep 2017 - Correct potential nil pointer exception.
+				25 Sep 2017 - Correct incorrect starting point in dump output when listing macs.
 */
 
 
@@ -1237,7 +1238,7 @@ dump_sriov_config( sriov_conf_t* sriov_config)
 				}
 	
 				int z;
-				for (z = 0; z < sriov_config->ports[i].vfs[y].num_macs; z++) {
+				for (z = sriov_config->ports[i].vfs[y].first_mac; z < sriov_config->ports[i].vfs[y].num_macs; z++) {
 					bleat_printf( 2, "dump: mac[%d] %s ", z, sriov_config->ports[i].vfs[y].macs[z]);
 				}
 			} else {
