@@ -1,20 +1,27 @@
 # plan9 mk
 
+# NOTE:
+# this requires fig2dev to be installed which is used to xlate Xfig figures to .eps format for pfm
+# It's possible to generate markdown without this as no figures are required for markdown
+
 <master.mk
 
 fig_src = vfd_process
 
-all:V: vfd_hackers.pdf  vfd_hackers.md
+all:V: vfd_hackers.pdf  vfd_hackers.md vfd_users.pdf
 
 figures:V: ${fig_src:%=figures/%.eps}
+
+vfd_users.pdf::	vfd_hackers.pdf
+	cp vfd_hackers.pdf vfd_users.pdf
 
 vfd_users.ps::	vfd_hackers.ps
 	cp vfd_hackers.ps vfd_users.ps
 
-vfd_hackers.ps:: vfd_hackers.xfm appendix_a.im figures
+vfd_hackers.ps:: ../setup.im vfd_hackers.xfm appendix_a.im figures
 	pfm vfd_hackers.xfm vfd_hackers.ps
 
-vfd_hackers.md:: vfd_hackers.xfm
+vfd_hackers.md:: ../setup.im vfd_hackers.xfm
 	MARKDOWN=1 tfm vfd_hackers.xfm vfd_hackers.o
 	sed 's/^ //' vfd_hackers.o >vfd_hackers.md
 	rm vfd_hackers.o
