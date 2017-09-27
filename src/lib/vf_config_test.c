@@ -57,6 +57,8 @@ int main( int argc, char** argv ) {
 		fprintf( stderr, "\tantispoof_vlan: %d\n", vfc->antispoof_vlan );
 		fprintf( stderr, "\tvm_mac: %s\n", vfc->vm_mac );
 		fprintf( stderr, "\tlink_status: %s\n", vfc->link_status );
+		fprintf( stderr, "\tmirror_dir: %d\n", vfc->mirror_dir );
+		fprintf( stderr, "\tmirror_target: %d\n", vfc->mirror_target );
 
 		fprintf( stderr, "\tnvlans: %d\n", vfc->nvlans );
 		for( i = 0; i < vfc->nvlans; i++ ) {

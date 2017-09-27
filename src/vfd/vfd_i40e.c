@@ -105,9 +105,9 @@ vfd_i40e_set_vf_multicast_promisc(uint8_t port_id, uint16_t vf_id, uint8_t on)
 int 
 vfd_i40e_set_vf_mac_addr(uint8_t port_id, uint16_t vf_id,  __attribute__((__unused__)) struct ether_addr *mac_addr)
 {
-	int diag = 0;
-	//int diag = rte_pmd_i40e_set_vf_mac_addr(port_id, vf_id, mac_addr);
-	bleat_printf( 3, "rte_pmd_i40e_set_vf_mac_addr (skip setting mac address): port_id=%d, vf=%d", port_id, vf_id);
+	/* FIXME looks like this isn't working for FVL25 ? */
+	int diag = rte_eth_dev_mac_addr_add( port_id, mac_addr, vf_id );
+	//diag = rte_pmd_i40e_set_vf_mac_addr(port_id, vf_id, mac_addr);
 		
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_i40e_set_vf_mac_addr failed: (port_pi=%d, vf_id=%d) failed rc=%d", port_id, vf_id, diag );
@@ -118,6 +118,35 @@ vfd_i40e_set_vf_mac_addr(uint8_t port_id, uint16_t vf_id,  __attribute__((__unus
 	return diag;
 }
 
+/*
+	Looks like it removes all existing MAC filters.
+	If rte_pmd_i40e_set_vf_mac_addr is called after VF driver is initialized 
+	VF stops receiving packets destined to that MAC, so we have to make sure 
+	we call it only once during VFd startup
+*/
+int 
+vfd_i40e_set_vf_default_mac_addr(uint8_t port_id, uint16_t vf, struct ether_addr *mac_addr ) {
+	int state = 0;
+	struct vf_s* vfp;
+
+	vfp = suss_vf( port_id, vf );		// find our vf structure matching this vf
+
+	// set default MAC address only once
+	if ( ! vfp->default_mac_set ) {
+		state = rte_pmd_i40e_set_vf_mac_addr(port_id, vf, mac_addr);
+		vfp->default_mac_set = 1;
+	} else {
+		bleat_printf( 3, "rte_pmd_ixgbe_set_vf_default_mac_addr already set, skipping: port_id=%d, vf_id=%d", port_id, vf );
+	}
+	
+	if( state < 0 ) {
+		bleat_printf( 0, "rte_pmd_ixgbe_set_vf_default_mac_addr failed: (port_id=%d, vf_id=%d) failed rc=%d", port_id, vf, state );
+	} else {
+		bleat_printf( 3, "rte_pmd_ixgbe_set_vf_default_mac_addr successful: port_id=%d, vf_id=%d", port_id, vf );
+	}
+
+	return state;
+}
 
 int 
 vfd_i40e_set_vf_vlan_stripq(uint8_t port_id, uint16_t vf_id, uint8_t on)
@@ -199,8 +228,6 @@ vfd_i40e_get_vf_stats(uint8_t port_id, uint16_t vf_id, struct rte_eth_stats *sta
 	} else {
 		bleat_printf( 3, "rte_pmd_i40e_set_vf_stats successful: (port_id=%d, vf=%d)", port_id, vf_id);
 	}
-	
-	
 	
 	//printf("dropped: stats->oerrors: %15"PRIu64"\n", port_pci_reg_read(port_id, 0x00344000));
 	
@@ -311,7 +338,9 @@ struct i40e_virtchnl_promisc_info {
 int
 vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *data, void *param) {
 
+	struct vf_s* vfp;
 	struct rte_pmd_ixgbe_mb_event_param *p;
+	uint16_t cport;			// the index of this port in our config list
 	uint16_t vf;
 	uint16_t mbox_type;
 	uint32_t *msgbuf;
@@ -321,13 +350,15 @@ vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 	if( p == NULL ) {
 		return 0;
 	}
+	cport = port2config_map[port_id];			// index into the running config
 	vf = p->vfid;
+	vfp = suss_vf( port_id, vf );		// find our vf structure matching this vf
 	mbox_type = p->msg_type;
 	msgbuf = (uint32_t *) p->msg;
 
 	RTE_SET_USED(data);
 
-	//AZprintf("------------------- MBOX port: %d, vf: %d, configured: %d box_type: %d-------------------\n", port_id, vf, running_config->ports[port_id].vfs[vf].num_vlans, mbox_type );
+	//fprintf( stderr, "------------------- MBOX port: %d, vf: %d, configured: %d box_type: %d-------------------\n", port_id, vf, vfp->num_vlans, mbox_type );
 			
 
 	/* check & process VF to PF mailbox message */
@@ -336,7 +367,8 @@ vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 			bleat_printf( 1, "reset event received: port=%d", port_id );
 
 			rte_spinlock_lock( &running_config->update_lock );
-			running_config->ports[port_id].vfs[vf].rx_q_ready = 0;		// set queue ready flag off
+			//running_config->ports[cport].vfs[vf].rx_q_ready = 0;		// set queue ready flag off
+			vfp->rx_q_ready = 0;		// set queue ready flag off
 			rte_spinlock_unlock( &running_config->update_lock );
 			
 			set_vf_allow_untagged(port_id, vf, 0);
@@ -471,23 +503,23 @@ vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 			bleat_printf(3, "Port: %d, VF: %d, _T: %s", port_id, vf, "I40E_VIRTCHNL_OP_ENABLE_QUEUES");
 			
 			rte_spinlock_lock( &running_config->update_lock );
-			running_config->ports[port_id].vfs[vf].rx_q_ready = 1;		// set queue ready flag on
+			vfp->rx_q_ready = 1;										// set queue ready flag on
 			rte_spinlock_unlock( &running_config->update_lock );			
 			
 			add_refresh_queue(port_id, vf);
 					
-			// return NACK when VF isnt configured
-			if (running_config->ports[port_id].vfs[vf].num_vlans < 1) 
+			if ( vfp->num < 0 )  {								// unconfigured vf will have -1 here; nack this request
 				p->retval = RTE_PMD_I40E_MB_EVENT_NOOP_NACK;
-			else
+			} else {
 				p->retval = RTE_PMD_I40E_MB_EVENT_PROCEED;
+			}
 			
 			break;
 		case I40E_VIRTCHNL_OP_DISABLE_QUEUES:
 			bleat_printf(3, "Port: %d, VF: %d, _T: %s", port_id, vf, "I40E_VIRTCHNL_OP_DISABLE_QUEUES");
 			
 			rte_spinlock_lock( &running_config->update_lock );
-			running_config->ports[port_id].vfs[vf].rx_q_ready = 0;		// set queue ready flag off
+			vfp->rx_q_ready = 0;										// set queue ready flag off
 			rte_spinlock_unlock( &running_config->update_lock );		
 			p->retval = RTE_PMD_I40E_MB_EVENT_PROCEED;
 			break;
@@ -497,7 +529,7 @@ vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 			// return allowed promisc modes based on specified in config
 			struct i40e_virtchnl_promisc_info *promisc = (struct i40e_virtchnl_promisc_info *)p->msg;
 						
-			if (running_config->ports[port_id].vfs[vf].allow_un_ucast) {
+			if ( vfp->allow_un_ucast) {
 				promisc->flags &= I40E_FLAG_VF_UNICAST_PROMISC;
 				bleat_printf(3, "Port: %d, VF: %d, _T: %s", port_id, vf, "UCAST PROM ENABLE");
 			} else {
@@ -505,7 +537,7 @@ vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 				bleat_printf(3, "Port: %d, VF: %d, _T: %s", port_id, vf, "UCAST PROM DISABLE");
 			}
 			
-			if (running_config->ports[port_id].vfs[vf].allow_mcast) {
+			if ( vfp->allow_mcast) {
 				promisc->flags &= I40E_FLAG_VF_MULTICAST_PROMISC;
 				bleat_printf(3, "Port: %d, VF: %d, _T: %s", port_id, vf, "MCAST PROM ENABLE");
 			} else {
@@ -515,12 +547,11 @@ vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 			
 			
 			
-			bleat_printf(3, "Port: %d, VF: %d, _T: %s PCI: %s, PORT # %d", port_id, vf, "-----------------", running_config->ports[port_id].pciid, running_config->ports[port_id].rte_port_number);
+			bleat_printf(3, "Port: %d, VF: %d, _T: %s PCI: %s, PORT # %d", port_id, vf, "-----------------", running_config->ports[cport].pciid, running_config->ports[cport].rte_port_number);
 
 			add_refresh_queue(port_id, vf);
 			
-			// return NACK when VF isn't configured
-			if (running_config->ports[port_id].vfs[vf].num_vlans < 1) {
+			if( vfp->num < 0 ) {									// unconfigured vf will have -1 in num; nack if not configured
 				p->retval = RTE_PMD_I40E_MB_EVENT_NOOP_NACK;
 				bleat_printf(3, "Port: %d, VF: %d, _T: %s", port_id, vf, "PROM VF NOT CONFIGURED");
 			} else {
@@ -555,6 +586,14 @@ vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 			bleat_printf(3, "Port: %d, VF: %d, _T: %s", port_id, vf, "I40E_VIRTCHNL_OP_SET_RSS_HENA");
 			p->retval = RTE_PMD_I40E_MB_EVENT_PROCEED;
 			break;			
+		case I40E_VIRTCHNL_OP_ENABLE_VLAN_STRIPPING:
+			bleat_printf(3, "Port: %d, VF: %d, _T: %s", port_id, vf, "I40E_VIRTCHNL_OP_ENABLE_VLAN_STRIPPING");
+			p->retval = RTE_PMD_I40E_MB_EVENT_PROCEED;
+			break;			
+		case I40E_VIRTCHNL_OP_DISABLE_VLAN_STRIPPING:
+			bleat_printf(3, "Port: %d, VF: %d, _T: %s", port_id, vf, "I40E_VIRTCHNL_OP_DISABLE_VLAN_STRIPPING");
+			p->retval = RTE_PMD_I40E_MB_EVENT_PROCEED;
+			break;	
 			
 		default:
 			bleat_printf( 1, "unknown  event request received: port=%d (responding nop+nak)", port_id );
@@ -569,11 +608,25 @@ vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 uint32_t 
 vfd_i40e_get_pf_spoof_stats(uint8_t port_id)
 {
+	uint32_t spoofed = 0;
+	struct rte_eth_stats stats;
+	int diag;
+	int i;
+	int vf_num = get_num_vfs( port_id );
+
 	bleat_printf( 3, "vfd_i40e_get_pf_spoof_stats: port_id=%d", port_id);
 	
-	/* TODO */
-	//return port_pci_reg_read(port_id, 0x08780);
-	return 0;
+	for (i = 0; i < vf_num; i++)
+	{
+		diag = rte_pmd_i40e_get_vf_stats(port_id, i, &stats);
+		if (diag < 0) {
+			bleat_printf( 0, "rte_pmd_i40e_get_vf_stats failed: (port_pi=%d, vf_id=%d) failed rc=%d", port_id, i, diag );
+			continue;
+		}		
+		spoofed += stats.oerrors;
+	}
+
+	return spoofed;
 }
 
 
@@ -590,10 +643,12 @@ vfd_i40e_get_vf_spoof_stats(uint8_t port_id, uint16_t vf_id)
 int 
 vfd_i40e_is_rx_queue_on(uint8_t port_id, uint16_t vf_id, __attribute__((__unused__)) int* mcounter)
 {
+	struct vf_s* vfp;
+	vfp = suss_vf( port_id, vf_id );		// find our vf structure matching this vf
 
-	bleat_printf( 5, "vfd_i40e_is_rx_queue_on:  port=%d  vfid_id=%d, on=%d)",  port_id, vf_id, running_config->ports[port_id].vfs[vf_id].rx_q_ready);
+	bleat_printf( 5, "vfd_i40e_is_rx_queue_on:  port=%d  vfid_id=%d, on=%d)",  port_id, vf_id, vfp->rx_q_ready);
 
-	if( running_config->ports[port_id].vfs[vf_id].rx_q_ready) {
+	if( vfp->rx_q_ready ) {
   		bleat_printf( 3, "i40e queue active:  port=%d vfid_id=%d)", port_id, vf_id);
 		return 1;
 	} else {

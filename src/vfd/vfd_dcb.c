@@ -18,6 +18,7 @@
 #include <vfdlib.h>		// if vfdlib.h needs an include it must be included there, can't be include prior
 #include "sriov.h"
 #include "vfd_dcb.h"
+#include "vfd_mlx5.h"
 
 /*
 	Default dcb settings.
@@ -90,10 +91,15 @@ extern int vfd_dcb_config( sriov_port_t *pf ) {
 		tc_pctgs[i] = pf->tc_config[i]->min_bw;		// snag min bandwidth percentage for the tc
 	}
 
-	ixgbe_configure_dcb( pf_dev );											// set up dcb
-	qos_set_tdplane( port, tc_pctgs, pf->tc2bwg, pf->ntcs, pf->mtu );		// configure tc plane with our percentages
-	qos_set_txpplane( port, tc_pctgs, pf->tc2bwg, pf->ntcs, pf->mtu );		// configure packet plane with our percentages
-	qos_enable_arb( port );													// finally turn arbitors on
+	if (get_nic_type(port) != VFD_MLX5) { // No support in mlx5 yet
+		ixgbe_configure_dcb( pf_dev );											// set up dcb
+		qos_set_tdplane( port, tc_pctgs, pf->tc2bwg, pf->ntcs, pf->mtu );		// configure tc plane with our percentages
+		qos_set_txpplane( port, tc_pctgs, pf->tc2bwg, pf->ntcs, pf->mtu );		// configure packet plane with our percentages
+		qos_enable_arb( port );													// finally turn arbitors on
+	} else {
+		vfd_mlx5_set_prio_trust(port);
+		vfd_mlx5_set_qos_pf(port, pf);
+	}
 
 	return 0;			// for now constant; but in future it will report an error if needed
 }

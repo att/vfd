@@ -102,10 +102,17 @@ vfd_ixgbe_set_vf_multicast_promisc(uint8_t port_id, uint16_t vf_id, uint8_t on)
 }
 
 
+/*
+	Add a MAC address to the white list. When more than one address is added to the list
+	AND a default has not been set with a call to vfd_ixgbe_set_vf_default_mac_addr(),
+	it seems the niantic picks one to report to the driver when the VF user requests
+	the address; it is not clear how this is determined. The call to the set default
+	should be made after all calls to this function have been made. 
+*/
 int 
 vfd_ixgbe_set_vf_mac_addr(uint8_t port_id, uint16_t vf_id, struct ether_addr *mac_addr)
 {
-	int diag = rte_pmd_ixgbe_set_vf_mac_addr(port_id, vf_id, mac_addr);
+ 	int diag = rte_eth_dev_mac_addr_add( port_id, mac_addr, vf_id );			// add to whitelist
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_ixgbe_set_vf_mac_addr failed: (port_id=%d, vf_id=%d) failed rc=%d", port_id, vf_id, diag );
 	} else {
@@ -113,6 +120,24 @@ vfd_ixgbe_set_vf_mac_addr(uint8_t port_id, uint16_t vf_id, struct ether_addr *ma
 	}
 	
 	return diag;
+}
+
+/*
+	Set the 'default' MAC address for the VF. This is different than the set_vf_rx_mac() function
+	inasmuch as the address should be what the driver reports to a DPDK application when the 
+	MAC address is 'read' from the device.
+*/
+int vfd_ixgbe_set_vf_default_mac_addr( portid_t port_id, uint16_t vf, struct ether_addr *mac_addr ) {
+	int state;
+
+	state =  rte_pmd_ixgbe_set_vf_mac_addr( port_id, vf, mac_addr );
+	if( state < 0 ) {
+		bleat_printf( 0, "rte_pmd_ixgbe_set_vf_default_mac_addr failed: (port_id=%d, vf_id=%d) failed rc=%d", port_id, vf, state );
+	} else {
+		bleat_printf( 3, "rte_pmd_ixgbe_set_vf_default_mac_addr successful: port_id=%d, vf_id=%d", port_id, vf );
+	}
+
+	return state;
 }
 
 
@@ -214,9 +239,9 @@ vfd_ixgbe_get_vf_stats(uint8_t port_id, uint16_t vf_id, struct rte_eth_stats *st
 
 	
 	if (diag < 0) {
-		bleat_printf( 0, "rte_pmd_ixgbe_set_vf_stats failed: (port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, diag );
+		bleat_printf( 0, "rte_pmd_ixgbe_get_vf_stats failed: (port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, diag );
 	} else {
-		bleat_printf( 3, "rte_pmd_ixgbe_set_vf_stats successful: port_id=%d, vf_id=%d", port_id, vf_id);
+		bleat_printf( 3, "rte_pmd_ixgbe_get_vf_stats successful: port_id=%d, vf_id=%d", port_id, vf_id);
 	}
 	
 	return diag;			
@@ -345,15 +370,13 @@ vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, v
 				type, port_id, vf, p->retval, "IXGBE_VF_SET_MULTICAST");
 
 			new_mac = (struct ether_addr *) (&msgbuf[1]);
-
-			if (is_valid_assigned_ether_addr(new_mac)) {
-				bleat_printf( 3, "setting mac, vf %u, MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
+			bleat_printf( 3, "multicast mac set, pf %u vf %u, MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
 					" %02" PRIx8 " %02" PRIx8 " %02" PRIx8,
+					(uint) port_id,
 					(uint32_t)vf,
 					new_mac->addr_bytes[0], new_mac->addr_bytes[1],
 					new_mac->addr_bytes[2], new_mac->addr_bytes[3],
 					new_mac->addr_bytes[4], new_mac->addr_bytes[5]);
-			}
 
 			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
 
@@ -371,7 +394,7 @@ vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, v
 
 			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
 
-			//bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_VLAN");
+			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_VLAN");
 			//bleat_printf( 3, "setting vlan id = %d", p[1]);
 			break;
 
@@ -385,6 +408,7 @@ vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, v
 				p->retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     /* noop & nack */
 			}
 			
+			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p->retval, "IXGBE_VF_SET_LPE");
 			restore_vf_setings(port_id, vf);
 			set_fc_on( port_id, !FORCE );							// enable flow control if allowed (force off)
 			tx_set_loopback( port_id, suss_loopback( port_id ) );	// enable loopback if set (could be reset if link was down)
@@ -421,7 +445,7 @@ vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, v
 		case IXGBE_VF_UPDATE_XCAST_MODE:
 			bleat_printf( 1, "update xcast mode event received: port=%d (responding proceed)", port_id );
 			p->retval =  RTE_PMD_IXGBE_MB_EVENT_PROCEED;   /* do what's needed */
-			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p->retval, "IXGBE_VF_GET_QUEUES");
+			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p->retval, "IXGBE_VF_UPDATE_XCAST");
 
 			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
 			break;
@@ -636,3 +660,4 @@ vfd_ixgbe_dump_all_vlans(uint8_t port_id)
 
 	return count;
 }
+

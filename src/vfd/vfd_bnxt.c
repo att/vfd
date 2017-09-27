@@ -59,11 +59,7 @@ vfd_bnxt_set_tx_loopback(uint8_t port_id, uint8_t on)
 int 
 vfd_bnxt_set_vf_unicast_promisc(uint8_t port_id, uint16_t vf_id, uint8_t on)
 {
-	bleat_printf( 0, "vfd_bnxt_set_vf_unicast_promisc(): not implemented for port=%d, vf=%d, qstart=%d, on/off=%d", port_id, vf_id, !!on );
-	return 0;
-	
-	/*
-	int diag = rte_pmd_bnxt_set_vf_unicast_promisc(port_id, vf_id, on);
+	int diag = rte_pmd_bnxt_set_vf_rxmode(port_id, vf_id, ETH_VMDQ_ACCEPT_HASH_UC,(uint8_t) on);
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_bnxt_set_vf_unicast_promisc failed: port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, on, diag );
 	} else {
@@ -71,18 +67,13 @@ vfd_bnxt_set_vf_unicast_promisc(uint8_t port_id, uint16_t vf_id, uint8_t on)
 	}
 	
 	return diag;
-	*/
 }
 
 
 int 
 vfd_bnxt_set_vf_multicast_promisc(uint8_t port_id, uint16_t vf_id, uint8_t on)
 {
-	bleat_printf( 0, "vfd_bnxt_set_vf_multicast_promisc(): not implemented for port=%d, vf=%d, qstart=%d, on/off=%d", port_id, vf_id, !!on );
-	return 0;
-	
-	/*
-	int diag = rte_pmd_bnxt_set_vf_multicast_promisc(port_id, vf_id, on);
+	int diag = rte_pmd_bnxt_set_vf_rxmode(port_id, vf_id, ETH_VMDQ_ACCEPT_MULTICAST,(uint8_t) on);
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_bnxt_set_vf_multicast_promisc failed: port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, on, diag );
 	} else {
@@ -90,22 +81,44 @@ vfd_bnxt_set_vf_multicast_promisc(uint8_t port_id, uint16_t vf_id, uint8_t on)
 	}
 	
 	return diag;
-	*/
 }
 
 
+/*
+	This adds a MAC address to the Rx whitelist.  See vfd_bnxt_set_vf_default_mac_addr() 
+	for adding a MAC as the default (guest visible) MAC address.
+*/
 int 
 vfd_bnxt_set_vf_mac_addr(uint8_t port_id, uint16_t vf_id, struct ether_addr *mac_addr)
 {
-	int diag = rte_pmd_bnxt_set_vf_mac_addr(port_id, vf_id, mac_addr);
+	int diag = rte_pmd_bnxt_mac_addr_add(port_id, mac_addr, vf_id );
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_bnxt_set_vf_mac_addr failed: port_pi=%d, vf_id=%d) failed rc=%d", port_id, vf_id, diag );
 	} else {
 		bleat_printf( 3, "rte_pmd_bnxt_set_vf_mac_addr successful: port_id=%d, vf=%d", port_id, vf_id);
 	}
+
+	return diag;
+}
+
+/*
+	Set the default rx MAC address for the pf/vf. This is the address that will be visible into the guest.
+*/
+int vfd_bnxt_set_vf_default_mac_addr( uint8_t port_id, uint16_t vf_id, struct ether_addr *mac_addr ) {
+	int diag;
+
+	diag  = rte_pmd_bnxt_set_vf_mac_addr(port_id, vf_id, mac_addr);
+
+	if (diag < 0) {
+		bleat_printf( 0, "rte_pmd_bnxt_set_vf_default_mac_addr failed: port_pi=%d, vf_id=%d) failed rc=%d", port_id, vf_id, diag );
+	} else {
+		bleat_printf( 3, "rte_pmd_bnxt_set_vf_default_mac_addr successful: port_id=%d, vf=%d", port_id, vf_id);
+	}
 	
 	return diag;
 }
+
+
 
 
 int 
@@ -139,11 +152,7 @@ vfd_bnxt_set_vf_vlan_insert(uint8_t port_id, uint16_t vf_id, uint16_t vlan_id)
 int 
 vfd_bnxt_set_vf_broadcast(uint8_t port_id, uint16_t vf_id, uint8_t on)
 {
-	
-	bleat_printf( 0, "vfd_bnxt_set_vf_broadcast(): not implemented for port=%d, vf=%d, on/off=%d", port_id, vf_id, !!on );
-	return 0;
-	/*
-	int diag = rte_pmd_bnxt_set_vf_broadcast(port_id, vf_id, on);
+	int diag = rte_pmd_bnxt_set_vf_rxmode(port_id, vf_id, ETH_VMDQ_ACCEPT_BROADCAST,(uint8_t) on);
 	if (diag < 0) {
 		bleat_printf( 0, "rte_pmd_bnxt_set_vf_broadcas failed: port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, on, diag );
 	} else {
@@ -151,7 +160,6 @@ vfd_bnxt_set_vf_broadcast(uint8_t port_id, uint16_t vf_id, uint8_t on)
 	}
 	
 	return diag;	
-	*/
 }
 
 
@@ -197,9 +205,9 @@ vfd_bnxt_get_vf_stats(uint8_t port_id, uint16_t vf_id, struct rte_eth_stats *sta
 {
 	int diag = rte_pmd_bnxt_get_vf_stats(port_id, vf_id, stats);
 	if (diag < 0) {
-		bleat_printf( 0, "rte_pmd_bnxt_set_vf_stats failed: port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, diag );
+		bleat_printf( 0, "rte_pmd_bnxt_get_vf_stats failed: port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, diag );
 	} else {
-		bleat_printf( 3, "rte_pmd_bnxt_set_vf_stats successful: port_id=%d, vf=%d on=%d", port_id, vf_id);
+		bleat_printf( 3, "rte_pmd_bnxt_get_vf_stats successful: port_id=%d, vf=%d on=%d", port_id, vf_id);
 	}
 	
 	return diag;	
@@ -249,9 +257,15 @@ static bool verify_mac_address(uint8_t port_id, uint16_t vf, void *mac, void *ma
 			return true;
 	}
 
+	// must run in reverse order because of FV oddness
+	for( i = vf_cfg->num_macs; i >= vf_cfg->first_mac; i-- ) {
+		ether_aton_r(vf_cfg->macs[i], &mac_addr);
+		if (memcmp(&mac_addr, mac, sizeof(mac_addr)) == 0)
+			return true;
+	}
+
 	return false;
 }
-
 
 static void apply_rx_restrictions(uint8_t port_id, uint16_t vf, struct hwrm_cfa_l2_set_rx_mask_input *mi)
 {
@@ -265,14 +279,21 @@ static void apply_rx_restrictions(uint8_t port_id, uint16_t vf, struct hwrm_cfa_
 		    HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_PROMISCUOUS);
 		return;
 	}
-	if (!vf_cfg->allow_bcast)
-		mi->mask &= ~HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_BCAST;
-	if (!vf_cfg->allow_mcast)
+	if (!vf_cfg->allow_bcast) {
 		mi->mask &= ~(HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_BCAST |
-		    HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_ALL_MCAST);
+		    HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_PROMISCUOUS);
+	}
+	if (!vf_cfg->allow_mcast) {
+		mi->mask &= ~(HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_BCAST |
+		    HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_ALL_MCAST |
+		    HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_PROMISCUOUS);
+		mi->mask |= HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_MCAST;
+		mi->num_mc_entries = 0;
+	}
 	if (!vf_cfg->allow_un_ucast)
 		mi->mask &= ~HWRM_CFA_L2_SET_RX_MASK_INPUT_MASK_PROMISCUOUS;
 }
+
 
 int
 vfd_bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *data, void *param)
@@ -362,7 +383,6 @@ vfd_bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 		case HWRM_FUNC_QCAPS:
 		case HWRM_FUNC_QCFG:
 		case HWRM_FUNC_QSTATS:
-		case HWRM_FUNC_CLR_STATS:
 		case HWRM_FUNC_DRV_QVER:
 		case HWRM_PORT_PHY_QCFG:
 		case HWRM_PORT_MAC_QCFG:
@@ -384,7 +404,6 @@ vfd_bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 		case HWRM_VNIC_QCAPS:
 		case HWRM_STAT_CTX_ALLOC:
 		case HWRM_STAT_CTX_FREE:
-		case HWRM_STAT_CTX_CLR_STATS:
 		//case 0xc8:
 			p->retval = RTE_PMD_BNXT_MB_EVENT_PROCEED;
 			break;
@@ -441,6 +460,8 @@ vfd_bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 		case HWRM_NVM_READ:
 		case HWRM_NVM_WRITE:
 		case HWRM_NVM_RAW_WRITE_BLK:
+		case HWRM_FUNC_CLR_STATS:
+		case HWRM_STAT_CTX_CLR_STATS:
 		default:
 			p->retval = RTE_PMD_BNXT_MB_EVENT_NOOP_NACK;     // VM should see failure
 			break;
@@ -484,22 +505,69 @@ vfd_bnxt_set_all_queues_drop_en(uint8_t port_id, uint8_t on)
 }
 
 
-uint32_t 
+uint32_t
 vfd_bnxt_get_pf_spoof_stats(uint8_t port_id)
 {
+	uint64_t spoffed = 0;
 	bleat_printf( 3, "vfd_bnxt_get_pf_spoof_stats: port_id=%d", port_id);
-	/* TODO */
-	return 0;
+
+	struct rte_eth_xstat *xstats;
+	int cnt_xstats, idx_xstat;
+	struct rte_eth_xstat_name *xstats_names;
+
+	/* Get count */
+	cnt_xstats = rte_eth_xstats_get_names(port_id, NULL, 0);
+	if (cnt_xstats  < 0) {
+		printf("Error: Cannot get count of xstats\n");
+		return 0;
+	}
+
+	/* Get id-name lookup table */
+	xstats_names = malloc(sizeof(struct rte_eth_xstat_name) * cnt_xstats);
+	if (xstats_names == NULL) {
+		printf("Cannot allocate memory for xstats lookup\n");
+		return 0;
+	}
+	if (cnt_xstats != rte_eth_xstats_get_names(
+		port_id, xstats_names, cnt_xstats)) {
+		printf("Error: Cannot get xstats lookup\n");
+		free(xstats_names);
+		return 0;
+	}
+
+	/* Get stats themselves */
+	xstats = malloc(sizeof(struct rte_eth_xstat) * cnt_xstats);
+	if (xstats == NULL) {
+		printf("Cannot allocate memory for xstats\n");
+		free(xstats_names);
+		return 0;
+	}
+	if (cnt_xstats != rte_eth_xstats_get(port_id, xstats, cnt_xstats)) {
+		printf("Error: Unable to get xstats\n");
+		free(xstats_names);
+		free(xstats);
+		return 0;
+	}
+
+	/* Display xstats */
+	for (idx_xstat = 0; idx_xstat < cnt_xstats; idx_xstat++) {
+		if (memcmp(&xstats_names[idx_xstat].name, "tx_drop_pkts",
+		    strlen("tx_drop_pkts")) == 0)
+			spoffed = xstats[idx_xstat].value;
+	}
+	free(xstats_names);
+	free(xstats);
+	return spoffed;
 }
 
-
-uint32_t 
+uint32_t
 vfd_bnxt_get_vf_spoof_stats(uint8_t port_id, uint16_t vf_id)
 {
-	/* not implemented */
+	uint64_t vf_spoffed = 0;
 	bleat_printf( 3, "vfd_bnxt_get_vf_spoof_stats not implemented: port_id=%d, on=%d", port_id, vf_id);
-	/* TODO */
-	return 0;
+	rte_pmd_bnxt_get_vf_tx_drop_count(port_id, vf_id, &vf_spoffed);
+
+	return vf_spoffed;
 }
 
 int 
@@ -538,4 +606,3 @@ vfd_bnxt_dump_all_vlans(uint8_t port_id)
 	bleat_printf( 0, "vfd_bnxt_dump_all_vlans(): not implemented for port=%d", port_id );	
 	return 0;
 }
-

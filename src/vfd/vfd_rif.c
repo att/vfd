@@ -13,6 +13,8 @@
 				14 Feb 2017 : Correct bug in del range check on vf number.
 				21 Feb 2017 : Prevent empty vlan id list from being accepted.
 				23 Mar 2017 : Allow multiple VLAN IDs when strip == true.
+				22 Sep 2017 : Prevent hanging lock in add_ports if already called.
+				25 Sep 2017 : Fix validation of mirror target bug.
 */
 
 
@@ -240,8 +242,10 @@ extern void vfd_add_ports( parms_t* parms, sriov_conf_t* conf ) {
 	pfdef_t*	pfc;			// pointer to the config info for a port (pciid)
 
 	rte_spinlock_lock( &conf->update_lock );
-	if( called )
+	if( called ) {
+		rte_spinlock_unlock( &conf->update_lock );
 		return;
+	}
 	called = 1;
 	
 	for( i = 0; pidx < MAX_PORTS  && i < parms->npciids; i++, pidx++ ) {
@@ -402,7 +406,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		vidx = i;
 	}
 
-	if( vidx >= MAX_VFS || vfc->vfid < 0 || vfc->vfid > 31) {							// something is out of range
+	if( vidx >= MAX_VFS || vfc->vfid < 0 || vfc->vfid > 31 ) {				// something is out of range TODO: replace 31 with actual number of VFs?
 		snprintf( mbuf, sizeof( mbuf ), "max VFs already defined or vfid %d is out of range", vfc->vfid );
 		bleat_printf( 1, "vf not added: %s", mbuf );
 		if( reason ) {
@@ -602,6 +606,19 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		return 0;
 	}
 
+	if( vfc->mirror_dir != MIRROR_OFF ) {
+		if( vfc->mirror_target == vfc->vfid ||  vfc->mirror_target < 0 || vfc->mirror_target > port->num_vfs ) {
+			snprintf( mbuf, sizeof( mbuf ), "mirror target is out of range or is the same as this VF (%d): %d", (int) vfc->vfid, vfc->mirror_target );
+			if( reason ) {
+				*reason = strdup( mbuf );
+			}
+			bleat_printf( 1, "vf not added: %s", mbuf );
+			free_config( vfc );
+			return 0;
+		}
+
+	}
+
 	// -------------------------------------------------------------------------------------------------------------
 	// CAUTION: if we fail because of a parm error it MUST happen before here!
 
@@ -623,9 +640,18 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	vf->allow_mcast = vfc->allow_mcast;
 	vf->allow_un_ucast = vfc->allow_un_ucast;
 
+	port->mirrors[vidx].dir = vfc->mirror_dir;						// mirrors are added to the port list
+	if( vfc->mirror_dir != MIRROR_OFF ) {
+		port->mirrors[vidx].target = vfc->mirror_target;
+		port->mirrors[vidx].id = idm_alloc( conf->mir_id_mgr );		// alloc an unused id value
+	} else {
+		port->mirrors[vidx].target = -1;
+	}
+
 	vf->allow_untagged = 0;					// for now these cannot be set by the config file data
 	vf->vlan_anti_spoof = 1;
-	vf->mac_anti_spoof = vfc->antispoof_mac;
+	vf->mac_anti_spoof = get_mac_antispoof( port->rte_port_number );		// value depends on the nic in some cases
+	vf->default_mac_set = 0;
 
 	vf->rate = vfc->rate;
 	

@@ -16,6 +16,7 @@
 				11 Feb 2017 : Fix issues with leading spaces rather than tabs (formatting)
 				26 May 2017 : Allow promisc to be set (default is true to match original behavour)
 				08 Jun 2017 : Allow huge_pages to be set (defult is on)
+				10 Jul 2017 : We now support "mac": "addr" rather than an array.
 
 	TODO:		convert things to the new jw_xapi functions to make for easier to read code.
 */
@@ -326,14 +327,14 @@ extern parms_t* read_parms( char* fname ) {
 											parms->pciids[i].tcs[priority]->flags &= ~TCF_LOW_LATENCY;
 										}
 										if( !jw_is_bool( tcobj, "lsp" ) ? 0 : (int) jw_value( tcobj, "lsp" ) ) {
-											parms->pciids[i].tcs[priority]->flags |= TCF_BW_STRICTP;
-										} else {
-											parms->pciids[i].tcs[priority]->flags &= ~TCF_BW_STRICTP;
-										}
-										if( !jw_is_bool( tcobj, "bsp" ) ? 0 : (int) jw_value( tcobj, "bsp" ) ) {
 											parms->pciids[i].tcs[priority]->flags |= TCF_LNK_STRICTP;
 										} else {
 											parms->pciids[i].tcs[priority]->flags &= ~TCF_LNK_STRICTP;
+										}
+										if( !jw_is_bool( tcobj, "bsp" ) ? 0 : (int) jw_value( tcobj, "bsp" ) ) {
+											parms->pciids[i].tcs[priority]->flags |= TCF_BW_STRICTP;
+										} else {
+											parms->pciids[i].tcs[priority]->flags &= ~TCF_BW_STRICTP;
 										}
 										parms->pciids[i].tcs[priority]->max_bw = !jw_is_value( tcobj, "max_bw" ) ? 100 : IBOUND( (int)jw_value( tcobj, "max_bw" ), 1, 100 );
 										parms->pciids[i].tcs[priority]->min_bw = !jw_is_value( tcobj, "min_bw" ) ? 1 : IBOUND( (int)jw_value( tcobj, "min_bw" ), 1, 100 );
@@ -412,6 +413,7 @@ extern void free_parms( parms_t* parms ) {
 extern vf_config_t*	read_config( char* fname ) {
 	vf_config_t*	vfc = NULL;
 	void*		jblob;			// parsed json
+	void*		mirror;			// mirror blob in the tree
 	char*		buf;			// buffer read from file (nil terminated)
 	char*		stuff;
 	int			val;
@@ -442,8 +444,8 @@ extern vf_config_t*	read_config( char* fname ) {
 		vfc->antispoof_mac = 1;				
 		vfc->antispoof_vlan = 1;	// these are forced to 1 regardless of what was in json
 
-		vfc->antispoof_mac = jw_missing( jblob, "antispoof_mac" ) ? 0 : (int) jw_value( jblob, "antispoof_mac" );
-		//vfc->antispoof_vlan = jw_missing( jblob, "antispoof_vlan" ) ? 0 : (int) jw_value( jblob, "antispoof_vlan" );
+		vfc->antispoof_mac = jw_missing( jblob, "mac_anti_spoof" ) ? 0 : (int) jw_value( jblob, "mac_anti_spoof" );
+		vfc->antispoof_vlan = jw_missing( jblob, "vlan_anti_spoof" ) ? 0 : (int) jw_value( jblob, "vlan_anti_spoof" );
 
 		vfc->allow_untagged = !jw_is_bool( jblob, "allow_untagged" ) ? 0 : (int) jw_value( jblob, "allow_untagged" );
 
@@ -511,8 +513,14 @@ extern vf_config_t*	read_config( char* fname ) {
 				// TODO -- how to handle error? free and return nil?
 			}
 		} else {
-			vfc->nmacs = 0;		// if not set len() might return -1
-			vfc->macs = NULL;	// take no chances
+			if(  (stuff = jw_string( jblob, "mac" )) ) {							// new, going forward, just one MAC
+				vfc->nmacs = 1;
+				vfc->macs = malloc( sizeof( *vfc->macs ) * 1 );						// VFd should always support an array 
+				vfc->macs[0] = ltrim( stuff );
+			} else {
+				vfc->nmacs = 0;		// if not set len() might return -1
+				vfc->macs = NULL;	// take no chances
+			}
 		}
 
 		// ---- pick up the qos parameters --------------------------
@@ -538,7 +546,38 @@ extern vf_config_t*	read_config( char* fname ) {
 			}
 		}
 		
-		// TODO -- add code which picks up mirror stuff (jwrapper must be enhanced first)
+		// ----- pick up mirror info --------------------------------
+		vfc->mirror_dir = MIRROR_OFF;
+		vfc->mirror_target = -1;
+
+		if( (mirror = jw_blob( jblob, "mirror" )) != NULL ) {
+			char *direction;
+
+			if( (vfc->mirror_target = jw_missing( mirror, "target" ) ? -1 : (int) jw_value( mirror, "target" )) >= 0 ) {
+				vfc->mirror_dir = MIRROR_ALL;			// if target given, default is all
+
+				direction = jw_missing( mirror, "direction" ) ? "all" : jw_string( mirror, "direction" );
+
+				switch( *direction ) {
+					case 'b':					// both or all
+					case 'a':
+						vfc->mirror_dir = MIRROR_ALL;
+						break;
+						
+					case 'o':
+						if( strcmp( direction, "out" ) == 0 ) {
+							vfc->mirror_dir = MIRROR_OUT;
+						} else {
+							vfc->mirror_dir = MIRROR_OFF;
+						}
+						break;
+						
+					case 'i':
+						vfc->mirror_dir = MIRROR_IN;
+						break;
+				}
+			}
+		}
 
 		jw_nuke( jblob );
 	} else {

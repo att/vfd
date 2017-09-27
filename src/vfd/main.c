@@ -65,6 +65,8 @@
 				26 May 2017 - Allow promisc mode on PF to be optionally disabled via main config file.
 				08 Jun 2017 - Add support to disable huge pages.
 				23 Jun 2017 - Ensure socket mem isn't asked for if no-huge is given.
+				20 Sep 2017 - Correct potential nil pointer exception.
+				25 Sep 2017 - Correct incorrect starting point in dump output when listing macs.
 */
 
 
@@ -83,6 +85,7 @@
 #include <vfdlib.h>		// if vfdlib.h needs an include it must be included there, can't be include prior
 #include "vfd_rif.h"	// request interface stuff
 #include "vfd_dcb.h"	// dcb related stuff
+#include "vfd_mlx5.h"
 
 //#include "ixgbe_ethdev.h"
 //#include "ixgbe_ethdev.h"
@@ -270,7 +273,10 @@ struct vf_s *suss_vf( int port, int vfid ) {
 	struct sriov_port_s *p;
 	int		i;
 
-	p = suss_port( port );
+	if( (p = suss_port( port )) == NULL ) {
+		return NULL;
+	}
+
 	for( i = 0; i < p->num_vfs; i++ ) {
 		if( p->vfs[i].num == vfid ) {					// found it
 			return &p->vfs[i];
@@ -715,7 +721,7 @@ static int vfd_set_ins_strip( struct sriov_port_s *port, struct vf_s *vf ) {
 		bleat_printf( 2, "pf: %s vf: %d set strip vlan tag %d", port->name, vf->num, vf->strip_stag );
 		rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag );			// if just one in the list, push through user strip option
 
-		if( vf->insert_stag ) {																// when stripping, we must also insert
+			if( vf->strip_stag && (vf->last_updated != DELETED)) {							// when stripping, we must also insert
 			bleat_printf( 2, "%s vf: %d set insert vlan tag with id %d", port->name, vf->num, vf->vlans[0] );
 			tx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->vlans[0] );
 		} else {
@@ -788,8 +794,15 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 					bleat_printf( 1, "enabling promiscuous mode for port %d", port->rte_port_number );
 					rte_eth_promiscuous_enable(port->rte_port_number);
 				}
+				else {
+					bleat_printf( 1, "disabling promiscuous mode for port %d", port->rte_port_number );
+					rte_eth_promiscuous_disable(port->rte_port_number);
+				}
 				
-				rte_eth_allmulticast_enable(port->rte_port_number);	
+				if (get_nic_type(port->rte_port_number) == VFD_BNXT)
+					rte_eth_allmulticast_disable(port->rte_port_number);
+				else
+					rte_eth_allmulticast_enable(port->rte_port_number);
 			
 				if (get_nic_type(port->rte_port_number) == VFD_NIANTIC) {
 					ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
@@ -842,9 +855,14 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 						vf->stop_cb = NULL;
 					}
 
+					if( port->mirrors[y].dir != MIRROR_OFF ) {													// stop the mirror on delete
+						set_mirror( port->rte_port_number, vf->num, port->mirrors[y].id, port->mirrors[y].target, MIRROR_OFF );		// turn off, no target needed (-1)
+						port->mirrors[y].dir = MIRROR_OFF;
+						idm_return( conf->mir_id_mgr, port->mirrors[y].id );									// mark the id as unused in allocator
+					}
 
 					//AZif (get_nic_type(port->rte_port_number) == VFD_NIANTIC)
-					//	set_vf_rx_vlan(port->rte_port_number, 0, vf_mask, 0);		// remove vlan id 0 do we need it here for i40e?
+					//set_vf_rx_vlan(port->rte_port_number, 0, vf_mask, 0);		// remove vlan id 0 do we need it here for i40e?
 					
 					for(v = 0; v < vf->num_vlans; ++v) {
 						int vlan = vf->vlans[v];
@@ -852,8 +870,22 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 						if( parms->forreal )
 							set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, SET_OFF );		// remove the vlan id from the list
 					}
+
+					for( m = vf->first_mac; m <= vf->num_macs; ++m ) {				// delete MAC addresses 
+						mac = vf->macs[m];
+						bleat_printf( 2, "delete mac: port: %d vf: %d mac: %s", port->rte_port_number, vf->num, mac );
+		
+						if( parms->forreal )
+							set_vf_rx_mac(port->rte_port_number, mac, vf->num, SET_OFF );
+					}
+
 				} else {
 					int v;
+
+					if( port->mirrors[y].dir != MIRROR_OFF ) {						// setup the mirror
+						set_mirror( port->rte_port_number, vf->num, port->mirrors[y].id, port->mirrors[y].target, port->mirrors[y].dir );		// set target and type (in/out/both)
+					}
+
 					for(v = 0; v < vf->num_vlans; ++v) {
 						int vlan = vf->vlans[v];
 						bleat_printf( 2, "add vlan: port: %d vf=%d vlan=%d", port->rte_port_number, vf->num, vlan );
@@ -862,7 +894,12 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 					}
 				}
 
-				if( vf->last_updated == DELETED ) {				// delete the macs
+				if( vf->last_updated == DELETED ) {				// delete the macs (need to disable anti-spoof first
+					if (vf->mac_anti_spoof) {
+						bleat_printf( 2, "port: %d vf: %d set mac-anti-spoof to %d", port->rte_port_number, vf->num, 0 );
+						set_vf_mac_anti_spoofing(port->rte_port_number, vf->num, SET_OFF);
+					}
+
 					for( m = vf->first_mac; m <= vf->num_macs; ++m ) {
 						mac = vf->macs[m];
 						bleat_printf( 2, "delete mac: port: %d vf: %d mac: %s", port->rte_port_number, vf->num, mac );
@@ -871,7 +908,8 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 							set_vf_rx_mac(port->rte_port_number, mac, vf->num, SET_OFF );
 					}
 				} else {
-					for( m = vf->first_mac; m <= vf->num_macs; ++m ) {			// if guest pushed a default, first will be [0], else first is [1]
+					bleat_printf( 2, "configuring %d mac addresses: port: %d vf: %d firstmac=%d", vf->num_macs, port->rte_port_number, vf->num, vf->first_mac );
+					for( m = vf->num_macs; m >= vf->first_mac; m-- ) {				// must run in reverse order because of FV oddness
 						mac = vf->macs[m];
 						bleat_printf( 2, "adding mac [%d]: port: %d vf: %d mac: %s", m, port->rte_port_number, vf->num, mac );
 
@@ -880,23 +918,41 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 								set_vf_rx_mac( port->rte_port_number, mac, vf->num, SET_ON );	// set in whitelist
 							} else {
 								set_vf_default_mac( port->rte_port_number, mac, vf->num );		// first is set as default
+								bleat_printf( 2, "Setting default mac was succesfull");
 							}
 						}
 					}
 				}
 
 				if( vf->rate > 0 ) {
-					bleat_printf( 1, "setting rate: %d", (int)  ( 10000 * vf->rate ) );
-					set_vf_rate_limit( port->rte_port_number, vf->num, (uint16_t)( 10000 * vf->rate ), 0x01 );
+					struct rte_eth_link link;
+
+					rte_eth_link_get_nowait(port->rte_port_number, &link);
+					bleat_printf( 1, "setting rate: %d", (int)  ( (float)link.link_speed * vf->rate ) );
+					set_vf_rate_limit( port->rte_port_number, vf->num, (uint16_t)( (float)link.link_speed * vf->rate ), 0x01 );
 				}
 
 				if( vf->last_updated == DELETED ) {				// do this last!
+					if( parms->forreal ) { 
+						if( vf->rate > 0 ) { //disable rate limit
+							bleat_printf( 1, "setting rate: %d", (int)  ( 10000 * vf->rate ) );
+							set_vf_rate_limit( port->rte_port_number, vf->num, 0, 0x01 );
+						}
+						vfd_set_ins_strip( port, vf );
+
+						bleat_printf( 2, "port: %d vf: %d set link status to %d", port->rte_port_number, vf->num, VF_LINK_AUTO);
+						set_vf_link_status( port->rte_port_number, vf->num, VF_LINK_AUTO);
+					}
 					vf->num = -1;								// must reset this so an add request with the now deleted number will succeed
 					// TODO -- is there anything else that we need to clean up in the struct?
 				}
 
 				if( vf->num >= 0 ) {
 					if( parms->forreal ) {
+						if (get_nic_type(port->rte_port_number) == VFD_BNXT) {
+							bleat_printf( 2, "%s vf: %d set keep stats", port->name, vf->num);
+							rte_pmd_bnxt_set_vf_persist_stats(port->rte_port_number, vf->num, 1);
+						}
 						bleat_printf( 2, "port: %d vf: %d set anti-spoof to %d", port->rte_port_number, vf->num, vf->vlan_anti_spoof );
 						set_vf_vlan_anti_spoofing(port->rte_port_number, vf->num, vf->vlan_anti_spoof);
 	
@@ -913,19 +969,26 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 
 						bleat_printf( 2, "port: %d vf: %d set allow un-ucast to %d", port->rte_port_number, vf->num, vf->allow_un_ucast );
 						set_vf_allow_un_ucast(port->rte_port_number, vf->num, vf->allow_un_ucast);
+	
+						bleat_printf( 2, "port: %d vf: %d set link status to %d", port->rte_port_number, vf->num, vf->link);
+						set_vf_link_status( port->rte_port_number, vf->num, vf->link);
 					} else {
 						bleat_printf( 1, "update vf skipping setup for spoofing, bcast, mcast, etc; forreal is off: %d vf=%d", port->rte_port_number, vf->num );
 					}
 				}
 
+
+
 				vf->last_updated = UNCHANGED;				// mark processed
 			}
 
 			if( change2port && (g_parms->rflags & RF_ENABLE_QOS) ) {		// changes, we must recompute queue shares and push to nic
-				//uint8_t* pp;
-				gen_port_qshares( port );									// compute and save in the port struct
-				qos_set_credits( port->rte_port_number, port->mtu, port->vftc_qshares, TC_4PERQ_MODE );	// push out to nic
-				//qos_set_credits( port->rte_port_number, port->mtu, pp, TC_4PERQ_MODE );	// push out to nic
+				if (get_nic_type(port->rte_port_number) != VFD_MLX5) { // No support in mlx5 yet
+					//uint8_t* pp;
+					gen_port_qshares( port );									// compute and save in the port struct
+					qos_set_credits( port->rte_port_number, port->mtu, port->vftc_qshares, TC_4PERQ_MODE );	// push out to nic
+					//qos_set_credits( port->rte_port_number, port->mtu, pp, TC_4PERQ_MODE );	// push out to nic
+				}
 			}
 
 			if( change2port && vf->num >= 0 ) {
@@ -938,8 +1001,15 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 						bleat_printf( 1, "enabling promiscuous mode for port %d", port->rte_port_number );
 						rte_eth_promiscuous_enable(port->rte_port_number);
 					}
+					else {
+						bleat_printf( 1, "disabling promiscuous mode for port %d", port->rte_port_number );
+						rte_eth_promiscuous_disable(port->rte_port_number);
+					}
 					
-					rte_eth_allmulticast_enable(port->rte_port_number);
+					if (get_nic_type(port->rte_port_number) == VFD_BNXT)
+						rte_eth_allmulticast_disable(port->rte_port_number);
+					else
+						rte_eth_allmulticast_enable(port->rte_port_number);
 					
 					if (get_nic_type(port->rte_port_number) == VFD_NIANTIC) {
 						ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
@@ -1103,8 +1173,8 @@ restore_vf_setings(uint8_t port_id, int vf_id) {
 		dump_sriov_config(running_config);
 	}
 
-	bleat_printf( 2, "drop any untagged packets for all VFs: port %d vf %d", port_id, vf_id );
-	set_vf_allow_untagged(port_id, vf_id, 0);	
+	//bleat_printf( 2, "drop any untagged packets for all VFs: port %d vf %d", port_id, vf_id );
+	//set_vf_allow_untagged(port_id, vf_id, 0);	
 	
 	bleat_printf( 3, "restore settings begins" );
 	for (i = 0; i < running_config->num_ports; ++i){
@@ -1182,7 +1252,7 @@ dump_sriov_config( sriov_conf_t* sriov_config)
 				}
 	
 				int z;
-				for (z = 0; z < sriov_config->ports[i].vfs[y].num_macs; z++) {
+				for (z = sriov_config->ports[i].vfs[y].first_mac; z < sriov_config->ports[i].vfs[y].num_macs; z++) {
 					bleat_printf( 2, "dump: mac[%d] %s ", z, sriov_config->ports[i].vfs[y].macs[z]);
 				}
 			} else {
@@ -1208,8 +1278,8 @@ main(int argc, char **argv)
 	int 	j;
 	int		no_huge = 0;				// -H will turn on and we will flip the appropriate bit in parms
 
-	uint16_t	cfg_offset = 0x100;
 	int		enable_fc = 0;				// enable flow control (-F sets)
+	u_int16_t portid;
 
 
   const char * main_help =
@@ -1274,7 +1344,7 @@ main(int argc, char **argv)
 		case 'h':
 		case '?':
 			printf( "\nVFd %s %s\n", vnum, version );
-			printf( "(17608)\n" );
+			printf( "(17710)\n" );
 			printf("%s\n", main_help);
 			exit( 0 );
 			break;
@@ -1313,6 +1383,7 @@ main(int argc, char **argv)
 	}
 	memset( running_config, 0, sizeof( *running_config ) );
 	rte_spinlock_init( &running_config->update_lock );			// initialise and leave unlocked
+	running_config->mir_id_mgr = mk_idm( 256 );					// make an id manager with 256 ID 'slots' for allocating mirror IDs
 
 	snprintf( log_file, BUF_1K, "%s/vfd.log", g_parms->log_dir );
 	if( run_asynch ) {
@@ -1353,10 +1424,10 @@ main(int argc, char **argv)
 		
 		rte_openlog_stream(stderr);
 		//rte_log_set_level(~RTE_LOGTYPE_PMD && ~RTE_LOGTYPE_PORT, g_parms->dpdk_init_log_level);
-		ret = rte_log_set_level(RTE_LOGTYPE_PMD, g_parms->dpdk_init_log_level);
+		//ret = rte_log_set_level(RTE_LOGTYPE_PMD, g_parms->dpdk_init_log_level);
 
 
-		bleat_printf( 2, "log level = %d, log type = %d, ret = %d", rte_log_cur_msg_loglevel(), rte_log_cur_msg_logtype(), ret);
+		//bleat_printf( 2, "log level = %d, log type = %d, ret = %d", rte_log_cur_msg_loglevel(), rte_log_cur_msg_logtype(), ret);
 		
 
 		n_ports = rte_eth_dev_count();
@@ -1393,11 +1464,13 @@ main(int argc, char **argv)
 		}
 
 		bleat_printf( 1, "initialising all (%d) ports", n_ports );
-		for (portid = 0; portid < n_ports; portid++) { 								// initialize ports, but only the ports listed in our config
+		for (portid = 0; portid < n_ports; portid++) { 								// initialize ports, but ONLY the ports listed in our config
 			int i;
 			char pciid[25];
 			struct rte_eth_dev_info dev_info;
-			int	pfidx;							// port index in our array if we find it; -1 otherwise.
+			int	pfidx;																// port index in our array if we find it; -1 otherwise.
+			struct rte_eth_dev_info pf_dev;
+			struct sriov_port_s* port;
 
 			pfidx = -1;																// default to PF not in our config list
 			rte_eth_dev_info_get(portid, &dev_info);
@@ -1409,19 +1482,24 @@ main(int argc, char **argv)
 					port2config_map[portid] = i;									// map real port to our array index
 					running_config->ports[i].rte_port_number = portid; 				// record the real pf number
 					running_config->ports[i].nvfs_config = dev_info.max_vfs;		// number of configured VFs (could be less than max)
+					if (strcmp(dev_info.driver_name, "net_mlx5") == 0)
+						running_config->ports[i].nvfs_config = vfd_mlx5_get_num_vfs(portid);
 					break;
 				}
 			}
 
+			// CAUTION:   port id is the dpdk port and pfidx is the index into our array of ports for; don't mix them up in this block of code!
 			if( pfidx >= 0 ) {														// initialise only if in our confilg file list (we may not manage everything)
-				for( j = 0; j < 64; j++ ) {
+				port  = &running_config->ports[pfidx];
+
+				for( j = 0; j < 64; j++ ) {						//???  hardcoded 64 seems very dodgy!
 					set_split_erop( portid, j, SET_ON );							// set the split receive drop enable for all VFs
 				}
 
 				if( g_parms->rflags & RF_ENABLE_QOS ) {
 					state = dcb_port_init( &running_config->ports[pfidx], mbuf_pool );
 				} else {
-					state = port_init(portid, mbuf_pool, g_parms->pciids[portid].hw_strip_crc, &running_config->ports[pfidx] );
+					state = port_init(portid, mbuf_pool, g_parms->pciids[pfidx].hw_strip_crc, &running_config->ports[pfidx] );  // g_parms order is same as running_config
 					set_fc_on( portid, !!(g_parms->rflags & RF_ENABLE_FC) );		// if override is set, then force our setting for fc onto nic
 				}
 
@@ -1444,45 +1522,52 @@ main(int argc, char **argv)
 				bleat_printf( 1, "driver: %s, index %d, pkts rx: %lu", dev_info.driver_name, dev_info.if_index, st.pcount);
 				bleat_printf( 1, "pci: %04X:%02X:%02X.%01X, max VF's: %d", dev_info.pci_dev->addr.domain, dev_info.pci_dev->addr.bus,
 					dev_info.pci_dev->addr.devid , dev_info.pci_dev->addr.function, dev_info.max_vfs );
+				
+				rte_eth_dev_info_get(portid, &pf_dev);
+				switch( get_nic_type( portid ) ) {		// read pci config to get a generic offset and stride of VFs
+					case VFD_BNXT:
+						{
+							uint16_t	cfg_offset = 0x100;
+
+							do {
+								rte_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, cfg_offset);
+								bleat_printf(4, "Header: %08x (%04x)", pci_control_r, cfg_offset);
+								if ((pci_control_r & 0xffff) == 0x0010)
+									break;
+								cfg_offset = (pci_control_r >> 20) & ~3;
+								if (cfg_offset == 0)
+									break;
+							} while(1);
+
+							if (cfg_offset == 0) {
+								bleat_printf(0, "Unable to locate SR-IOV configuration");
+								rte_exit( EXIT_FAILURE, "initialisation failure, see log(s) in: %s\n", g_parms->log_dir );
+								exit ( 1 );
+							}
+
+							rte_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, cfg_offset + 20);
+						}
+						break;
+
+					case VFD_NIANTIC:
+						rte_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, 0x174);
+						break;
+
+					case VFD_FVL25:
+						rte_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, 0x174);
+						break;
+
+					case VFD_MLX5:
+						pci_control_r = vfd_mlx5_pf_vf_offset(port->pciid) | (1 << 16);
+						break;
+				}
+
+				port->vf_offset = pci_control_r & 0x0ffff;
+				port->vf_stride = pci_control_r >> 16;
 			} else {
 				port2config_map[portid] = -1;					// we must not allow an interrupt to map (we shouldn't get interrupts, but be parinoid)
 				bleat_printf( 0, "pf %d (%s) is NOT in vfd config file and was not initialised", portid, pciid );
 			}
-			
-			
-			// read PCI config to get VM offset and stride
-			struct rte_eth_dev_info pf_dev;
-			rte_eth_dev_info_get(portid, &pf_dev);
-							
-			// Find the SR-IOV extended capability structure
-			
-			if (get_nic_type(portid) == VFD_BNXT){ 
-				do {
-					rte_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, cfg_offset);
-					bleat_printf(4, "Header: %08x (%04x)", pci_control_r, cfg_offset);
-					if ((pci_control_r & 0xffff) == 0x0010)
-						break;
-					cfg_offset = (pci_control_r >> 20) & ~3;
-					if (cfg_offset == 0)
-						break;
-				} while(1);
-
-				if (cfg_offset == 0) {
-					bleat_printf(0, "Unable to locate SR-IOV configuration");
-					rte_exit( EXIT_FAILURE, "initialisation failure, see log(s) in: %s\n", g_parms->log_dir );
-					exit ( 1 );
-				}
-				rte_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, cfg_offset + 20);
-			} else {
-				rte_pci_read_config(pf_dev.pci_dev, &pci_control_r, 32, 0x174);					// Intel NIC's
-			}
-			
-			
-			struct sriov_port_s *port = &running_config->ports[portid];
-			port->vf_offset = pci_control_r & 0x0ffff;
-			port->vf_stride = pci_control_r >> 16;
-					
-			
 	  }
 		
 		bleat_printf( 2, "port initialisation complete" );
@@ -1518,7 +1603,7 @@ main(int argc, char **argv)
 	bleat_printf( 1, "initialisation complete, setting bleat level to %d; starting to loop", g_parms->log_level );
 	bleat_set_lvl( g_parms->log_level );					// initialisation finished, set log level to running level
 	if( forreal ) {
-		rte_log_set_level(g_parms->dpdk_init_log_level, RTE_LOGTYPE_PMD && RTE_LOGTYPE_PORT);
+		//rte_log_set_level(g_parms->dpdk_init_log_level, RTE_LOGTYPE_PMD && RTE_LOGTYPE_PORT);
 	}
 
 	free( parm_file );			// now it's safe to free the parm file
@@ -1528,6 +1613,9 @@ main(int argc, char **argv)
 		usleep(50000);			// .5s
 
 		while( vfd_req_if( g_parms, running_config, 0 ) ); 				// process _all_ pending requests before going on
+		// Discard any RX traffic...
+		for (portid = 0; portid < n_ports; portid++)
+			discard_pf_traffic(portid);
 
 	}		// end !terminated while
 

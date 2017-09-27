@@ -38,7 +38,9 @@ enum i40e_virtchnl_ops {
 	I40E_VIRTCHNL_OP_CONFIG_RSS_LUT = 24,
 	I40E_VIRTCHNL_OP_GET_RSS_HENA_CAPS = 25,
 	I40E_VIRTCHNL_OP_SET_RSS_HENA = 26,
-
+	I40E_VIRTCHNL_OP_ENABLE_VLAN_STRIPPING = 27,
+	I40E_VIRTCHNL_OP_DISABLE_VLAN_STRIPPING = 28,
+	I40E_VIRTCHNL_OP_REQUEST_QUEUES = 29,
 };
 	
 // ------------- prototypes ----------------------------------------------
@@ -50,6 +52,7 @@ int vfd_i40e_set_tx_loopback(uint8_t port, uint8_t on);
 int vfd_i40e_set_vf_unicast_promisc(uint8_t port, uint16_t vf_id, uint8_t on);
 int vfd_i40e_set_vf_multicast_promisc(uint8_t port, uint16_t vf_id, uint8_t on);
 int vfd_i40e_set_vf_mac_addr(uint8_t port, uint16_t vf_id, struct ether_addr *mac_addr);
+int vfd_i40e_set_vf_default_mac_addr(uint8_t port_id, uint16_t vf, struct ether_addr *mac_addr );
 int vfd_i40e_set_vf_vlan_stripq(uint8_t port, uint16_t vf, uint8_t on);
 int vfd_i40e_set_vf_vlan_insert(uint8_t port, uint16_t vf_id, uint16_t vlan_id);
 int vfd_i40e_set_vf_broadcast(uint8_t port, uint16_t vf_id, uint8_t on);

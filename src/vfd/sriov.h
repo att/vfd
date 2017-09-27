@@ -111,6 +111,11 @@
 #define VFD_NIANTIC		0x1
 #define VFD_FVL25		0x2
 #define VFD_BNXT		0x3
+#define VFD_MLX5		0x4
+
+#define VF_LINK_ON	1
+#define VF_LINK_OFF	-1
+#define VF_LINK_AUTO 0
 
 #define TOGGLE(i) ((i+ 1) & 1)
 //#define TV_TO_US(tv) ((tv)->tv_sec * 1000000 + (tv)->tv_usec)
@@ -193,30 +198,31 @@ struct itvl_stats
 */
 struct vf_s
 {
-  int     num;
-  int     last_updated;        
-  /**
-    *     no app m->ol_flags | PKT_TX_VLAN_PKT   |  app does m->ol_flags | PKT_TX_VLAN_PKT
-    *     strip_stag  = 0 Y, 1 strip, 1 Y                                             | 0 NO, 1 Y, 1 Y
-    *     insert_stag = 0 Y (q & qinq), xxx same as vlan filter (Y single tag only)   | 0 NO, 0 Y (q & qinq), xxx same as vlan filter (Y single tag only)
-    *
-   **/
-  int     strip_stag;          
-  int     insert_stag;         
-  int     vlan_anti_spoof;      // if use VLAN filter then set VLAN anti spoofing
-  int     mac_anti_spoof;       // set MAC anti spoofing when MAC filter is in use
-  int     allow_bcast;
-  int     allow_mcast;
-  int     allow_un_ucast;
-  int     allow_untagged;
-  double  rate;
-  int     link;                 /* -1 = down, 0 = mirror PF, 1 = up  */
-  int     num_vlans;
-  int     num_macs;
+	int     num;
+	int     last_updated;        
+	/**
+	*     no app m->ol_flags | PKT_TX_VLAN_PKT   |  app does m->ol_flags | PKT_TX_VLAN_PKT
+	*     strip_stag  = 0 Y, 1 strip, 1 Y                                             | 0 NO, 1 Y, 1 Y
+	*     insert_stag = 0 Y (q & qinq), xxx same as vlan filter (Y single tag only)   | 0 NO, 0 Y (q & qinq), xxx same as vlan filter (Y single tag only)
+	*
+	**/
+	int     strip_stag;          
+	int     insert_stag;         
+	int     vlan_anti_spoof;      // if use VLAN filter then set VLAN anti spoofing
+	int     mac_anti_spoof;       // set MAC anti spoofing when MAC filter is in use
+	int     allow_bcast;
+	int     allow_mcast;
+	int     allow_un_ucast;
+	int     allow_untagged;
+	double  rate;
+	int     link;                 /* -1 = down, 0 = mimic PF, 1 = up  */
+	int     num_vlans;
+	int     num_macs;
 	int		first_mac;				// index of first mac in list (1 if VF has not changed their mac, 0 if they've pushed one down)
-  int     vlans[MAX_VF_VLANS];
-  char    macs[MAX_VF_MACS][18];
+	int     vlans[MAX_VF_VLANS];
+	char    macs[MAX_VF_MACS][18];
 	int     rx_q_ready;
+	int 	default_mac_set;
 
 	uid_t	owner;					// user id which 'owns' the VF (owner of the config file from stat())
 	char*	start_cb;				// user commands driven just after initialisation and just before termination
@@ -225,10 +231,14 @@ struct vf_s
 };
 
 
+/*
+	Represent a mirror added to the PF.
+*/
 struct mirror_s
 {
-  int     vlan;
-  int     vf_id;
+	uint8_t	target;		// vf where trafiic is being sent
+	int dir;			// traffic direction: in, out, both, off
+	uint8_t	id;			// the id we assigned to the mirror (size limited by dpdk lib calls)
 };
 
 
@@ -247,7 +257,7 @@ typedef struct sriov_port_s
 	int			nvfs_config;			// actual number of configured vfs; could be less than max
 	int			ntcs;					// number traffic clases (must be 4 or 8)
 	int     	num_vfs;
-	struct  	mirror_s mirror[MAX_VFS];
+	struct  	mirror_s mirrors[MAX_VFS];		// mirror info for each VF
 	struct  	vf_s vfs[MAX_VFS];
 	tc_class_t*	tc_config[MAX_TCS];		// configuration information (max/min lsp/gsp) for the TC	(set from config)
 	int*		vftc_qshares;			// queue percentages arranged by vf/tc (computed with each add/del of a vf)
@@ -266,6 +276,7 @@ typedef struct sriov_conf_c
 	int     num_ports;						// number of ports actually used in ports array
 	struct sriov_port_s ports[MAX_PORTS];	// ports; CAUTION: order may not be device id order
 	rte_spinlock_t update_lock;				// we lock the config during update and deployment
+	void*	mir_id_mgr;							// reference point for the id manager to allocate mirror ids
 } sriov_conf_t;
 
 
@@ -378,6 +389,7 @@ int  rx_vft_set(portid_t port_id, uint16_t vlan_id, int on);
 void init_port_config(void);
 
 int get_split_ctlreg( portid_t port_id, uint16_t vf_id );
+void set_mirror( portid_t port_id, uint32_t vf, uint8_t id, uint8_t target, uint8_t direction );
 void set_queue_drop( portid_t port_id, int state );
 void set_split_erop( portid_t port_id, uint16_t vf_id, int state );
 
@@ -394,6 +406,7 @@ void set_vf_vlan_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on);
 void set_vf_mac_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on);
 
 int set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk);
+int set_vf_link_status(portid_t port_id, uint16_t vf, int status);
 
 void nic_stats_clear(portid_t port_id);
 int nic_stats_display(uint8_t port_id, char * buff, int blen);
@@ -424,8 +437,8 @@ int cmp_vfs (const void * a, const void * b);
 void disable_default_pool(portid_t port_id);
 
 int lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param, void* data );
-//void ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
-//void bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
+void ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
+void bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param);
 void restore_vf_setings(uint8_t port_id, int vf);
 
 // callback validation support
@@ -447,8 +460,10 @@ int vfd_init_fifo( parms_t* parms );
 int is_valid_mac_str( char* mac );
 char*  gen_stats( sriov_conf_t* conf, int pf_only, int pf );
 int get_nic_type(portid_t port_id);
+int get_mac_antispoof( portid_t port_id );
 int get_max_qpp( uint32_t port_id );
 int get_num_vfs( uint32_t port_id );
+void discard_pf_traffic( portid_t portid );
 
 //-- testing --
 extern void set_fc_on( portid_t pf, int force );
@@ -478,7 +493,6 @@ extern void qos_set_txpplane( portid_t pf, uint8_t* pctgs, uint8_t *bwgs, int nt
 struct rth_eth_dev;
 extern void ixgbe_configure_dcb(struct rte_eth_dev *dev);
 extern void scott_ixgbe_configure_dcb_pctgs( struct rte_eth_dev *dev );
-
 
 
 #endif /* _SRIOV_H_ */
