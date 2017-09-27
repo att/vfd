@@ -794,8 +794,15 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 					bleat_printf( 1, "enabling promiscuous mode for port %d", port->rte_port_number );
 					rte_eth_promiscuous_enable(port->rte_port_number);
 				}
+				else {
+					bleat_printf( 1, "disabling promiscuous mode for port %d", port->rte_port_number );
+					rte_eth_promiscuous_disable(port->rte_port_number);
+				}
 				
-				rte_eth_allmulticast_enable(port->rte_port_number);	
+				if (get_nic_type(port->rte_port_number) == VFD_BNXT)
+					rte_eth_allmulticast_disable(port->rte_port_number);
+				else
+					rte_eth_allmulticast_enable(port->rte_port_number);
 			
 				if (get_nic_type(port->rte_port_number) == VFD_NIANTIC) {
 					ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
@@ -994,8 +1001,15 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 						bleat_printf( 1, "enabling promiscuous mode for port %d", port->rte_port_number );
 						rte_eth_promiscuous_enable(port->rte_port_number);
 					}
+					else {
+						bleat_printf( 1, "disabling promiscuous mode for port %d", port->rte_port_number );
+						rte_eth_promiscuous_disable(port->rte_port_number);
+					}
 					
-					rte_eth_allmulticast_enable(port->rte_port_number);
+					if (get_nic_type(port->rte_port_number) == VFD_BNXT)
+						rte_eth_allmulticast_disable(port->rte_port_number);
+					else
+						rte_eth_allmulticast_enable(port->rte_port_number);
 					
 					if (get_nic_type(port->rte_port_number) == VFD_NIANTIC) {
 						ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
@@ -1265,6 +1279,7 @@ main(int argc, char **argv)
 	int		no_huge = 0;				// -H will turn on and we will flip the appropriate bit in parms
 
 	int		enable_fc = 0;				// enable flow control (-F sets)
+	u_int16_t portid;
 
 
   const char * main_help =
@@ -1598,6 +1613,9 @@ main(int argc, char **argv)
 		usleep(50000);			// .5s
 
 		while( vfd_req_if( g_parms, running_config, 0 ) ); 				// process _all_ pending requests before going on
+		// Discard any RX traffic...
+		for (portid = 0; portid < n_ports; portid++)
+			discard_pf_traffic(portid);
 
 	}		// end !terminated while
 
