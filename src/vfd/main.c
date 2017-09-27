@@ -1279,6 +1279,7 @@ main(int argc, char **argv)
 	int		no_huge = 0;				// -H will turn on and we will flip the appropriate bit in parms
 
 	int		enable_fc = 0;				// enable flow control (-F sets)
+	u_int16_t portid;
 
 
   const char * main_help =
@@ -1612,6 +1613,9 @@ main(int argc, char **argv)
 		usleep(50000);			// .5s
 
 		while( vfd_req_if( g_parms, running_config, 0 ) ); 				// process _all_ pending requests before going on
+		// Discard any RX traffic...
+		for (portid = 0; portid < n_ports; portid++)
+			discard_pf_traffic(portid);
 
 	}		// end !terminated while
 

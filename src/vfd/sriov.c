@@ -1735,3 +1735,26 @@ void dump_dev_info( int num_ports  ) {
 		dump_port_stats( i  );
 	}
 }
+
+void discard_pf_traffic (portid_t port_id)
+{
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_BNXT:
+		{
+#define MAX_PKT_BURST	32
+			struct rte_mbuf *pkts_burst[MAX_PKT_BURST];
+			uint16_t nb_pkts;
+
+			while ( (nb_pkts = rte_eth_rx_burst(port_id, 0, pkts_burst, MAX_PKT_BURST)) > 0 ) {
+				uint16_t idx;
+				for (idx = 0; idx < nb_pkts; idx++)
+					rte_pktmbuf_free(pkts_burst[idx]);
+				bleat_printf( 4, "Discarded %hu frames on PF %d", nb_pkts, port_id);
+			}
+		}
+		break;
+		default:
+		return;
+	}
+}

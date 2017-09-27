@@ -463,6 +463,7 @@ int get_nic_type(portid_t port_id);
 int get_mac_antispoof( portid_t port_id );
 int get_max_qpp( uint32_t port_id );
 int get_num_vfs( uint32_t port_id );
+void discard_pf_traffic( portid_t portid );
 
 //-- testing --
 extern void set_fc_on( portid_t pf, int force );
@@ -492,7 +493,6 @@ extern void qos_set_txpplane( portid_t pf, uint8_t* pctgs, uint8_t *bwgs, int nt
 struct rth_eth_dev;
 extern void ixgbe_configure_dcb(struct rte_eth_dev *dev);
 extern void scott_ixgbe_configure_dcb_pctgs( struct rte_eth_dev *dev );
-
 
 
 #endif /* _SRIOV_H_ */
