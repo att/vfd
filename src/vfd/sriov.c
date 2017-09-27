@@ -1527,11 +1527,9 @@ extern void set_fc_on( portid_t pf, int force ) {
 	if( force ) {
 		allowed = 1;
 		show = 1;
-	} else {
-		if( ! allowed ) {
-			return;
-		}
 	}
+	else
+		show = 1;
 
 	if( (state = rte_eth_dev_flow_ctrl_get( pf, &fcstate )) < 0 ) {		// get current settings; we'll keep high/low thresolds the same
 		if( show ) {
@@ -1545,7 +1543,10 @@ extern void set_fc_on( portid_t pf, int force ) {
 				(int) pf, (int) fcstate.high_water, (int) fcstate.low_water, (int) fcstate.pause_time, (int) fcstate.send_xon, (int) fcstate.mode, (int) fcstate.autoneg );
 	}
 
-	fcstate.mode = RTE_FC_FULL;									// enable both Tx and Rx
+	if (allowed)
+		fcstate.mode = RTE_FC_FULL;								// enable both Tx and Rx
+	else
+		fcstate.mode = RTE_FC_NONE;								// disable both Tx and Rx
 	rte_eth_dev_flow_ctrl_set( pf, &fcstate );
 }
 
