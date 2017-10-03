@@ -14,7 +14,8 @@ struct mlx5_tc_cfg {
 // ------------- prototypes ----------------------------------------------
 int vfd_mlx5_get_ifname(uint8_t port_id, char *ifname);
 
-int vfd_mlx5_set_vf_mac_addr(uint8_t port, uint16_t vf_id, const char *mac_addr);
+int vfd_mlx5_set_vf_mac_addr(uint8_t port_id, uint16_t vf_id, const char* mac, uint8_t on);
+int vfd_mlx5_set_vf_def_mac_addr(uint8_t port, uint16_t vf_id, const char *mac_addr);
 int vfd_mlx5_vf_mac_remove(uint8_t port_id, uint16_t vf_id);
 int vfd_mlx5_set_vf_vlan_stripq(uint8_t port, uint16_t vf, uint8_t on);
 int vfd_mlx5_set_vf_vlan_insert(uint8_t port, uint16_t vf_id, uint16_t vlan_id);

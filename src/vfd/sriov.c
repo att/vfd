@@ -504,7 +504,7 @@ set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  uint8_t on)
 				break;
 				
 			case VFD_MLX5:	
-				diag = vfd_mlx5_set_vf_mac_addr(port_id, vf, mac);
+				diag = vfd_mlx5_set_vf_mac_addr(port_id, vf, mac, on);
 				break;
 
 			default:
@@ -519,7 +519,7 @@ set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  uint8_t on)
 	} else {
 		switch (dev_type) {
 			case VFD_MLX5:
-				diag = vfd_mlx5_vf_mac_remove(port_id, vf);
+				diag = vfd_mlx5_set_vf_mac_addr(port_id, vf, mac, on);
 				break;
 			default:
 				diag = rte_eth_dev_mac_addr_remove( port_id, &mac_addr );
@@ -565,7 +565,7 @@ void set_vf_default_mac( portid_t port_id, const char* mac, uint32_t vf ) {
 			break;
 			
 		case VFD_MLX5:	
-			diag = vfd_mlx5_set_vf_mac_addr(port_id, vf, mac);
+			diag = vfd_mlx5_set_vf_def_mac_addr(port_id, vf, mac);
 			break;
 
 		default:

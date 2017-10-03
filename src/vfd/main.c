@@ -69,6 +69,8 @@
 				25 Sep 2017 - Correct incorrect starting point in dump output when listing macs.
 				10 Oct 2017 - Add mirror information to dump output.
 				16 Oct 2017 - mlx5: Add vlan list support.
+				16 Oct 2017 - mlx5: Add vlan list support.
+				16 Oct 2017 - mlx5: Add mac list support.
 */
 
 
@@ -953,8 +955,12 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 						mac = vf->macs[m];
 						bleat_printf( 2, "delete mac: port: %d vf: %d mac: %s", port->rte_port_number, vf->num, mac );
 		
-						if( parms->forreal )
-							set_vf_rx_mac(port->rte_port_number, mac, vf->num, SET_OFF );
+						if( parms->forreal ) {
+							if ((get_nic_type(port->rte_port_number) == VFD_MLX5) && (m == vf->first_mac))
+								vfd_mlx5_vf_mac_remove(port->rte_port_number, vf->num);
+							else
+								set_vf_rx_mac(port->rte_port_number, mac, vf->num, SET_OFF );
+						}
 					}
 				} else {
 					bleat_printf( 2, "configuring %d mac addresses: port: %d vf: %d firstmac=%d", vf->num_macs, port->rte_port_number, vf->num, vf->first_mac );

@@ -83,7 +83,28 @@ vfd_mlx5_set_vf_link_status(uint8_t port_id, uint16_t vf_id, int status)
 }
 
 int 
-vfd_mlx5_set_vf_mac_addr(uint8_t port_id, uint16_t vf_id, const char* mac)
+vfd_mlx5_set_vf_mac_addr(uint8_t port_id, uint16_t vf_id, const char* mac, uint8_t on)
+{
+	char ifname[IF_NAMESIZE];
+	char cmd[128] = "";
+	int ret;
+
+	if (vfd_mlx5_get_ifname(port_id, ifname))
+		return -1;
+
+	sprintf(cmd, "echo \"%s %s\" > /sys/class/net/%s/device/sriov/%d/mac_list", on ? "add" : "rem", mac, ifname, vf_id);
+
+	ret = system(cmd);
+
+	if (ret < 0) {
+	//	printf("cmd exec returned %d\n", ret);
+	}
+
+	return 0;
+}
+
+int 
+vfd_mlx5_set_vf_def_mac_addr(uint8_t port_id, uint16_t vf_id, const char* mac)
 {
 	char ifname[IF_NAMESIZE];
 	char cmd[128] = "";
