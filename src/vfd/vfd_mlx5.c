@@ -419,3 +419,27 @@ vfd_mlx5_set_qos_pf(uint8_t port_id, sriov_port_t *pf)
 
 	return 0;
 }
+
+int
+vfd_mlx5_set_vf_vlan_filter(uint8_t port_id, uint16_t vlan_id, uint64_t vf_mask, uint8_t on)
+{
+	char ifname[IF_NAMESIZE];
+	char cmd[256] = "";
+	int vf_num;
+	int ret;
+
+	if (vfd_mlx5_get_ifname(port_id, ifname))
+		return -1;
+
+	vf_num = ffs(vf_mask) - 1;
+
+	sprintf(cmd, "echo %s %d %d > /sys/class/net/%s/device/sriov/%d/trunk", on ? "add" : "rem", vlan_id, vlan_id, ifname, vf_num);
+
+	ret = system(cmd);
+
+	if (ret < 0) {
+	//	printf("cmd exec returned %d\n", ret);
+	}
+
+	return 0;
+}

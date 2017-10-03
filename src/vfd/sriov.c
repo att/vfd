@@ -459,8 +459,7 @@ set_vf_allow_untagged(portid_t port_id, uint16_t vf_id, int on)
 			ret = vfd_bnxt_allow_untagged(port_id, vf_id, on);
 			break;
 		case VFD_MLX5:
-			if (on) //when allowing untagged we go back to VGT mode. When !on it should be configured via insert_vlan
-				ret = vfd_mlx5_set_vf_vlan_insert(port_id, vf_id, 0);
+			ret = vfd_mlx5_set_vf_vlan_filter(port_id, 0, VFN2MASK(vf_id), on);
 			break;
 			
 		default:
@@ -605,7 +604,8 @@ set_vf_rx_vlan(portid_t port_id, uint16_t vlan_id, uint64_t vf_mask, uint8_t on)
 			diag = vfd_bnxt_set_vf_vlan_filter(port_id, vlan_id, vf_mask, on);
 			break;
 
-		case VFD_MLX5:
+		case VFD_MLX5:	
+			diag = vfd_mlx5_set_vf_vlan_filter(port_id, vlan_id, vf_mask, on);
 			break;
 			
 		default:

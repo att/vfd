@@ -68,6 +68,7 @@
 				20 Sep 2017 - Correct potential nil pointer exception.
 				25 Sep 2017 - Correct incorrect starting point in dump output when listing macs.
 				10 Oct 2017 - Add mirror information to dump output.
+				16 Oct 2017 - mlx5: Add vlan list support.
 */
 
 
@@ -761,7 +762,7 @@ static int vfd_set_ins_strip( struct sriov_port_s *port, struct vf_s *vf ) {
 		bleat_printf( 2, "pf: %s vf: %d set strip vlan tag %d", port->name, vf->num, vf->strip_stag );
 		rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag );			// if just one in the list, push through user strip option
 
-			if( vf->strip_stag && (vf->last_updated != DELETED)) {							// when stripping, we must also insert
+		if( vf->strip_stag && (vf->last_updated != DELETED)) {							// when stripping, we must also insert
 			bleat_printf( 2, "%s vf: %d set insert vlan tag with id %d", port->name, vf->num, vf->vlans[0] );
 			tx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->vlans[0] );
 		} else {
@@ -914,7 +915,8 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 						int vlan = vf->vlans[v];
 						bleat_printf( 2, "delete vlan: port: %d vf: %d vlan: %d", port->rte_port_number, vf->num, vlan );
 						if( parms->forreal )
-							set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, SET_OFF );		// remove the vlan id from the list
+							if ((get_nic_type(port->rte_port_number) != VFD_MLX5) || !vf->strip_stag) // strip/insert vlan is set differently in mlx5
+								set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, SET_OFF );		// remove the vlan id from the list
 					}
 
 					for( m = vf->first_mac; m <= vf->num_macs; ++m ) {				// delete MAC addresses 
@@ -936,7 +938,8 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 						int vlan = vf->vlans[v];
 						bleat_printf( 2, "add vlan: port: %d vf=%d vlan=%d", port->rte_port_number, vf->num, vlan );
 						if( parms->forreal )
-							set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, on );		// add the vlan id to the list
+							if ((get_nic_type(port->rte_port_number) != VFD_MLX5) || !vf->strip_stag) // strip/insert vlan is set differently in mlx5
+								set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, on );		// add the vlan id to the list
 					}
 				}
 
@@ -1076,7 +1079,7 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 						if (ret < 0)
 							bleat_printf( 0, "ERR: bad unicast hash table parameter, return code = %d", ret);
 					}					
-						
+					
 					
 					// don't accept untagged frames
 					set_vf_allow_untagged(port->rte_port_number, vf->num, !on);

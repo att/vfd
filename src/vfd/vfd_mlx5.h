@@ -31,5 +31,6 @@ uint64_t vfd_mlx5_get_vf_spoof_stats(uint8_t port_id, uint16_t vf_id);
 int vfd_mlx5_pf_vf_offset(char *pciid);
 int vfd_mlx5_set_qos_pf(uint8_t port_id, sriov_port_t *pf);
 int vfd_mlx5_set_prio_trust(uint8_t port_id);
+int vfd_mlx5_set_vf_vlan_filter(uint8_t port_id, uint16_t vlan_id, uint64_t vf_mask, uint8_t on);
 
 #endif
