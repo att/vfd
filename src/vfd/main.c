@@ -8,6 +8,7 @@
 	Date:		February 2016
 	Authors:	Alex Zelezniak (original code)
 				E. Scott Daniels (extensions)
+				Ariel Levkovich - Mellanox Technologies (mlx5 extentions)
 
 	Mods:		25 Mar 2016 - Corrected bug preventing vfid 0 from being added.
 							Added initial support for getting mtu from config.
@@ -71,6 +72,7 @@
 				16 Oct 2017 - mlx5: Add vlan list support.
 				16 Oct 2017 - mlx5: Add vlan list support.
 				16 Oct 2017 - mlx5: Add mac list support.
+				16 Oct 2017 - mlx5: Add unknown unicast (promisc mode) for vf support.
 */
 
 
@@ -1006,10 +1008,18 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 							bleat_printf( 1, "disabling min rate guarantee");
 							set_vf_min_rate( port->rte_port_number, vf->num, 0, 0x01 );
 						}
+
+						/* retoring VF cfg to default */
 						vfd_set_ins_strip( port, vf );
 
 						bleat_printf( 2, "port: %d vf: %d set link status to %d", port->rte_port_number, vf->num, VF_LINK_AUTO);
 						set_vf_link_status( port->rte_port_number, vf->num, VF_LINK_AUTO);
+
+						bleat_printf( 2, "port: %d vf: %d set allow un-ucast to %d", port->rte_port_number, vf->num, SET_OFF );
+						set_vf_allow_un_ucast(port->rte_port_number, vf->num, SET_OFF);
+
+						bleat_printf( 2, "port: %d vf: %d set allow mcast to %d", port->rte_port_number, vf->num, SET_OFF );
+						set_vf_allow_mcast(port->rte_port_number, vf->num, SET_OFF);
 					}
 					vf->num = -1;								// must reset this so an add request with the now deleted number will succeed
 					// TODO -- is there anything else that we need to clean up in the struct?

@@ -308,36 +308,28 @@ uint64_t
 vfd_mlx5_get_vf_spoof_stats(uint8_t port_id, uint16_t vf_id)
 {
 	char ifname[IF_NAMESIZE];
-	char tx_err_cnt[64] = "";
 
 	if (vfd_mlx5_get_ifname(port_id, ifname))
 		return -1;
 
-	sprintf(tx_err_cnt, "tx_vport%d_spoof_drop_packets", vf_id+1);
-
-	return vfd_mlx5_get_vf_ethtool_counter(ifname, tx_err_cnt);
+	return vfd_mlx5_get_vf_sysfs_counter(ifname, "tx_dropped", vf_id);;
 }
 
 int
 vfd_mlx5_get_vf_stats(uint8_t port_id, uint16_t vf_id, struct rte_eth_stats *stats)
 {
 	char ifname[IF_NAMESIZE];
-	char tx_err_cnt[64] = "";
-	char rx_err_cnt[64] = "";
 	
 	if (vfd_mlx5_get_ifname(port_id, ifname))
 		return -1;
-
-	sprintf(tx_err_cnt, "tx_vport%d_spoof_drop_packets", vf_id+1);
-	sprintf(rx_err_cnt, "rx_vport%d_drop_packets", vf_id+1);
 
 	stats->ipackets = vfd_mlx5_get_vf_sysfs_counter(ifname, "rx_packets", vf_id);
 	stats->opackets = vfd_mlx5_get_vf_sysfs_counter(ifname, "tx_packets", vf_id);
 	stats->ibytes = vfd_mlx5_get_vf_sysfs_counter(ifname, "rx_bytes", vf_id);
 	stats->obytes = vfd_mlx5_get_vf_sysfs_counter(ifname, "tx_bytes", vf_id);
 	stats->ipackets = vfd_mlx5_get_vf_sysfs_counter(ifname, "rx_packets", vf_id);
-	stats->ierrors = vfd_mlx5_get_vf_ethtool_counter(ifname, tx_err_cnt);
-	stats->oerrors = vfd_mlx5_get_vf_ethtool_counter(ifname, tx_err_cnt);
+	stats->ierrors = vfd_mlx5_get_vf_sysfs_counter(ifname, "rx_dropped", vf_id);
+	stats->oerrors = vfd_mlx5_get_vf_sysfs_counter(ifname, "tx_dropped", vf_id);
 	
 	return 0;
 }
@@ -455,6 +447,27 @@ vfd_mlx5_set_vf_vlan_filter(uint8_t port_id, uint16_t vlan_id, uint64_t vf_mask,
 	vf_num = ffs(vf_mask) - 1;
 
 	sprintf(cmd, "echo %s %d %d > /sys/class/net/%s/device/sriov/%d/trunk", on ? "add" : "rem", vlan_id, vlan_id, ifname, vf_num);
+
+	ret = system(cmd);
+
+	if (ret < 0) {
+	//	printf("cmd exec returned %d\n", ret);
+	}
+
+	return 0;
+}
+
+int 
+vfd_mlx5_set_vf_promisc(uint8_t port_id, uint16_t vf_id, uint8_t on)
+{
+	char ifname[IF_NAMESIZE];
+	char cmd[256] = "";
+	int ret;
+
+	if (vfd_mlx5_get_ifname(port_id, ifname))
+		return -1;
+
+	sprintf(cmd, "ip link set %s vf %d trust %s", ifname, vf_id, on ? "on" : "off");
 
 	ret = system(cmd);
 
