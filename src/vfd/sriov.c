@@ -691,11 +691,16 @@ tx_set_loopback(portid_t port_id, u_int8_t on)
 
 /*
 	Set mirroring on/off for a pf/vf combination. Direction is a MIRROR_ const.
+	The error message generated becomes critical (CRI) if the attempt to disable a mirror
+	fails.  This is a critical situation as hanging mirrors at shutdown have been suspected
+	of causing physcial machines to crash when DPDK reconfigures the NIC (on VFd start, or 
+	other use).
 */
 void set_mirror( portid_t port_id, uint32_t vf, uint8_t id, uint8_t target, uint8_t direction ) {
 	struct rte_eth_mirror_conf mconf;
 	uint8_t on_off = SET_ON;
 	int state = 0;
+	char const* fail_type = "WRN";
 
 	memset( &mconf, 0, sizeof( mconf ) );
 	mconf.dst_pool = target;					// assume 1:1 vf to pool mapping
@@ -721,6 +726,7 @@ void set_mirror( portid_t port_id, uint32_t vf, uint8_t id, uint8_t target, uint
 			break;
 
 		default:			// MIRROR_OFF
+			fail_type = "CRI";
 			on_off = SET_OFF;
 			mconf.rule_type = ETH_MIRROR_UPLINK_PORT | ETH_MIRROR_DOWNLINK_PORT;
 			break;
@@ -728,8 +734,8 @@ void set_mirror( portid_t port_id, uint32_t vf, uint8_t id, uint8_t target, uint
 	
 	state = rte_eth_mirror_rule_set( port_id, &mconf, id, on_off );
 	if( state < 0 ) {
-		bleat_printf( 0, "WRN: set mirror for pf=%d vf=%d mid=%d target=%d dir=%d on/off=%d failed: %d (%s)", 
-				(int) port_id, (int) vf, (int) id, (int) target, (int) direction, (int) on_off, state, strerror( -state ) );
+		bleat_printf( 0, "%s: set mirror for pf=%d vf=%d mid=%d target=%d dir=%d on/off=%d failed: %d (%s)", 
+				fail_type, (int) port_id, (int) vf, (int) id, (int) target, (int) direction, (int) on_off, state, strerror( -state ) );
 	} else {
 		bleat_printf( 0, "set mirror for pf=%d vf=%d target=%d dir=%d on/off=%d  rt=%d ok", (int) port_id, (int) vf, (int) target, (int) direction, (int) on_off, (int) mconf.rule_type );
 	}
