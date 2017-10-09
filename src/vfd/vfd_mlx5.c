@@ -162,9 +162,29 @@ vfd_mlx5_set_vf_vlan_stripq(uint8_t port_id, uint16_t vf_id, uint8_t on)
 	return 0;
 }
 
-
 int 
 vfd_mlx5_set_vf_vlan_insert(uint8_t port_id, uint16_t vf_id, uint16_t vlan_id)
+{
+	char ifname[IF_NAMESIZE];
+	char cmd[128] = "";
+	int ret;
+
+	if (vfd_mlx5_get_ifname(port_id, ifname))
+		return -1;
+
+	sprintf(cmd, "echo '%d:0:802.1ad' > /sys/class/net/%s/device/sriov/%d/vlan", vlan_id, ifname, vf_id);
+
+	ret = system(cmd);
+
+	if (ret < 0) {
+	//	printf("cmd exec returned %d\n", ret);
+	}
+
+	return 0;
+}
+
+int 
+vfd_mlx5_set_vf_cvlan_insert(uint8_t port_id, uint16_t vf_id, uint16_t vlan_id)
 {
 	char ifname[IF_NAMESIZE];
 	char cmd[128] = "";

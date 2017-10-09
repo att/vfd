@@ -358,6 +358,10 @@ extern int get_vf_setting( int portid, int vf, int what ) {
 
 		case VF_VAL_UNUCAST:
 			rval = p->allow_un_ucast;
+			break
+			;
+		case VF_VAL_STRIPCVLAN:
+			rval = p->strip_ctag;
 			break;
 	}
 
@@ -762,21 +766,31 @@ static int vfd_set_ins_strip( struct sriov_port_s *port, struct vf_s *vf ) {
 		return 0;
 	}
 
-	if( vf->num_vlans == 1 ) {
-		bleat_printf( 2, "pf: %s vf: %d set strip vlan tag %d", port->name, vf->num, vf->strip_stag );
-		rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag );			// if just one in the list, push through user strip option
+	if (vf->strip_stag && vf->strip_ctag)
+		bleat_printf( 1, "cannot set strip/insert: both ctag and stag stripping is enabled" );
 
-		if( vf->strip_stag && (vf->last_updated != DELETED)) {							// when stripping, we must also insert
+	if( vf->num_vlans == 1 ) {
+		bleat_printf( 2, "pf: %s vf: %d set strip vlan tag %d", port->name, vf->num, vf->strip_stag || vf->strip_ctag );
+		rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag );			// if just one in the list, push through user strip option
+		rx_cvlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_ctag );			// if just one in the list, push through user strip option
+
+		if( (vf->strip_stag || vf->strip_ctag) && (vf->last_updated != DELETED)) {							// when stripping, we must also insert
 			bleat_printf( 2, "%s vf: %d set insert vlan tag with id %d", port->name, vf->num, vf->vlans[0] );
-			tx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->vlans[0] );
+			if (vf->strip_stag)
+				tx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->vlans[0] );
+			else if (vf->strip_ctag)
+				tx_cvlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->vlans[0] );
 		} else {
 			bleat_printf( 2, "%s vf: %d set insert vlan tag with id 0", port->name, vf->num );
 			tx_vlan_insert_set_on_vf( port->rte_port_number, vf->num, 0 );					// no strip, so no insert
+			tx_cvlan_insert_set_on_vf( port->rte_port_number, vf->num, 0 );					// no strip, so no insert
 		}
 	} else {
 		bleat_printf( 2, "%s vf: %d vlan list contains %d entries; strip set to %d; insert turned off", port->name, vf->num, vf->num_vlans, vf->strip_stag );
 		rx_vlan_strip_set_on_vf( port->rte_port_number, vf->num, vf->strip_stag );		// strip is variable
+		rx_cvlan_strip_set_on_vf( port->rte_port_number, vf->num, vf->strip_ctag );		// strip is variable
 		tx_vlan_insert_set_on_vf( port->rte_port_number, vf->num, 0 );					// but insert must always be clear so that packet descriptor is used
+		tx_cvlan_insert_set_on_vf( port->rte_port_number, vf->num, 0 );
 	}
 
 	return 1;
@@ -917,9 +931,10 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 					
 					for(v = 0; v < vf->num_vlans; ++v) {
 						int vlan = vf->vlans[v];
+						int strip_on = (vf->strip_stag || vf->strip_ctag) ? 1 : 0;
 						bleat_printf( 2, "delete vlan: port: %d vf: %d vlan: %d", port->rte_port_number, vf->num, vlan );
 						if( parms->forreal )
-							if ((get_nic_type(port->rte_port_number) != VFD_MLX5) || !vf->strip_stag) // strip/insert vlan is set differently in mlx5
+							if ((get_nic_type(port->rte_port_number) != VFD_MLX5) || !strip_on) // strip/insert vlan is set differently in mlx5
 								set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, SET_OFF );		// remove the vlan id from the list
 					}
 
@@ -940,9 +955,10 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 
 					for(v = 0; v < vf->num_vlans; ++v) {
 						int vlan = vf->vlans[v];
+						int strip_on = (vf->strip_stag || vf->strip_ctag) ? 1 : 0;
 						bleat_printf( 2, "add vlan: port: %d vf=%d vlan=%d", port->rte_port_number, vf->num, vlan );
 						if( parms->forreal )
-							if ((get_nic_type(port->rte_port_number) != VFD_MLX5) || !vf->strip_stag) // strip/insert vlan is set differently in mlx5
+							if ((get_nic_type(port->rte_port_number) != VFD_MLX5) || !strip_on) // strip/insert vlan is set differently in mlx5
 								set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, on );		// add the vlan id to the list
 					}
 				}

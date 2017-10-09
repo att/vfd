@@ -838,6 +838,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	vf->num = vfc->vfid;
 	port->vfs[vidx].last_updated = ADDED;		// signal main code to configure the buggger
 	vf->strip_stag = vfc->strip_stag;
+	vf->strip_ctag = vfc->strip_ctag;
 	vf->insert_stag = vfc->strip_stag;			// both are pulled from same config parm
 	vf->allow_bcast = vfc->allow_bcast;
 	vf->allow_mcast = vfc->allow_mcast;

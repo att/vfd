@@ -307,6 +307,28 @@ tx_vlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id)
 	}
 }
 
+void
+tx_cvlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id)
+{
+	int diag = 0;
+			
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_MLX5:
+			diag = vfd_mlx5_set_vf_cvlan_insert( port_id, vf_id, vlan_id );
+			break;
+			
+		default:
+			bleat_printf( 0, "tx_vlan_insert_set_on_vf: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
+	}
+	
+	if (diag < 0) {
+		bleat_printf( 0, "set tx cvlan insert on vf failed: port_pi=%d, vf_id=%d, vlan_id=%d) failed rc=%d", port_id, vf_id, vlan_id, diag );
+	} else {
+		bleat_printf( 3, "set tx cvlan insert on vf successful: port=%d, vf=%d vlan=%d", port_id, vf_id, vlan_id );
+	}
+}
 
 void
 rx_vlan_strip_set_on_vf(portid_t port_id, uint16_t vf_id, int on)
@@ -343,6 +365,36 @@ rx_vlan_strip_set_on_vf(portid_t port_id, uint16_t vf_id, int on)
 	}
 }
 
+void
+rx_cvlan_strip_set_on_vf(portid_t port_id, uint16_t vf_id, int on)
+{
+	int diag = 0;
+			
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			break;
+
+		case VFD_FVL25:		
+			break;
+
+		case VFD_BNXT:
+			break;
+			
+		case VFD_MLX5:
+			break;
+
+		default:
+			bleat_printf( 0, "rx_vlan_strip_set_on_vf: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
+	}
+
+	if (diag < 0) {
+		bleat_printf( 0, "set rx vlan strip on vf failed: port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, on, diag );
+	} else {
+		bleat_printf( 3, "set rx vlan strip on vf successful: port=%d, vf_id=%d on/off=%d", port_id, vf_id, on );
+	}
+}
 
 void
 set_vf_allow_bcast(portid_t port_id, uint16_t vf_id, int on)

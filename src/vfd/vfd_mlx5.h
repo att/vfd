@@ -19,6 +19,7 @@ int vfd_mlx5_set_vf_def_mac_addr(uint8_t port, uint16_t vf_id, const char *mac_a
 int vfd_mlx5_vf_mac_remove(uint8_t port_id, uint16_t vf_id);
 int vfd_mlx5_set_vf_vlan_stripq(uint8_t port, uint16_t vf, uint8_t on);
 int vfd_mlx5_set_vf_vlan_insert(uint8_t port, uint16_t vf_id, uint16_t vlan_id);
+int vfd_mlx5_set_vf_cvlan_insert(uint8_t port_id, uint16_t vf_id, uint16_t vlan_id);
 int vfd_mlx5_set_vf_mac_anti_spoof(uint8_t port_id, uint16_t vf_id, uint8_t on);
 int vfd_mlx5_set_vf_min_rate(uint8_t port_id, uint16_t vf_id, uint16_t rate);
 int vfd_mlx5_set_vf_rate_limit(uint8_t port_id, uint16_t vf_id, uint16_t rate);

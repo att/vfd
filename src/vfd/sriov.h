@@ -89,6 +89,7 @@
 #define VF_VAL_STRIPVLAN	4
 #define VF_VAL_UNTAGGED		5
 #define VF_VAL_UNUCAST		6
+#define VF_VAL_STRIPCVLAN	7
 
 #define RX_RING_SIZE 128
 #define TX_RING_SIZE 64
@@ -208,6 +209,7 @@ struct vf_s
 	 *     insert_stag = 0 Y (q & qinq), xxx same as vlan filter (Y single tag only)   | 0 NO, 0 Y (q & qinq), xxx same as vlan filter (Y single tag only)
 	 *
 	 **/
+	int     strip_ctag;          
 	int     strip_stag;          
 	int     insert_stag;         
 	int     vlan_anti_spoof;      // if use VLAN filter then set VLAN anti spoofing
@@ -387,7 +389,9 @@ struct rq_entry *rq_list;			// reset queue list of VMs we are waiting on queue r
 void port_mtu_set(portid_t port_id, uint16_t mtu);
 
 void rx_vlan_strip_set_on_vf(portid_t port_id, uint16_t vf_id, int on);
+void rx_cvlan_strip_set_on_vf(portid_t port_id, uint16_t vf_id, int on);
 void tx_vlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id);
+void tx_cvlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id);
 int  rx_vft_set(portid_t port_id, uint16_t vlan_id, int on);
 void init_port_config(void);
 
