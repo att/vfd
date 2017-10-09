@@ -417,16 +417,35 @@ extern void push_mac( int port, int vfid, char* mac ) {
 
 // ---------------------------------------------------------------------------------------------------------------
 /*
-	Close all open PF ports. We assume this releases memory pool allocation as well.  Called by
-	signal handlerers before caling abort() to core dump, and at end of normal processing.
+	Close all open PF ports. We assume this releases memory pool allocation as well.  This will also
+	terminate any active mirror as it steems in some cases that a 'hanging mirror' will cause the machine
+	to crash on restart of VFd.  Called by signal handlerers before caling abort() to core dump, and at 
+	end of normal processing.
 */
 static void close_ports( void ) {
 	int 	i;
+	int		j;
+	struct sriov_port_s* port;
 	//char	dev_name[1024];
+
+	bleat_printf( 2, "terminating active mirrors begins" );
+	for( i = 0; i < running_config->num_ports; i++ ) {
+		port = &running_config->ports[i];
+		bleat_printf( 2, "port %d has %d mirrors", port->rte_port_number, port->num_mirrors );
+		if( port->num_mirrors > 0 ) {
+			for( j = 0; j < MAX_VFS; j++ ) {
+				if( port->mirrors[j].dir != MIRROR_OFF ) {
+					bleat_printf( 0, "terminating active mirror on shutdown: pf=%d vf=%d", port->rte_port_number,  port->vfs[i].num );
+					set_mirror( port->rte_port_number, port->vfs[i].num,  port->mirrors[j].target, port->mirrors[j].target, MIRROR_OFF );
+				}
+			}
+		}
+	}
+	bleat_printf( 2, "terminating active mirrors is complete" );
 
 	bleat_printf( 0, "closing ports" );
 	for( i = 0; i < n_ports; i++) {
-		bleat_printf( 0, "closing port: %d", i );
+		bleat_printf( 0, "closing port: %d", running_config->ports[i].rte_port_number );
 		rte_eth_dev_stop( i );
 		rte_eth_dev_close( i );
 		//rte_eth_dev_detach( i, dev_name );
@@ -1076,7 +1095,7 @@ static void sig_int( int sig ) {
 				bleat_printf( 0, "signal caught (ignored): %d", sig );
 				break;
 
-		default:
+		default:							// normal termination will be driven in main which will close ports
 				terminated = 1;
 				bleat_printf( 0, "signal caught (terminating): %d", sig );
 				break;
@@ -1101,7 +1120,7 @@ sig_ign( int sig ) {
 */
 static void set_signals( void ) {
 	struct sigaction sa;
-	int	sig_list[] = { SIGQUIT, SIGILL, SIGABRT, SIGFPE, SIGSEGV, SIGPIPE,				// list of signals we trap
+	int	sig_list[] = { SIGINT, SIGQUIT, SIGILL, SIGABRT, SIGFPE, SIGSEGV, SIGPIPE,				// list of signals we trap
        				SIGALRM, SIGTERM, SIGUSR1 , SIGUSR2, SIGBUS, SIGPROF, SIGSYS,
 					SIGTRAP, SIGURG, SIGVTALRM, SIGXCPU, SIGXFSZ, SIGIO };
 
@@ -1626,7 +1645,7 @@ main(int argc, char **argv)
 		close(fd);
 	}
 
-	close_ports();				// clean up the PFs
+	close_ports();				// clean up the PFs, terminate mirrors
 
   gettimeofday(&st.endTime, NULL);
   bleat_printf( 1, "duration %.f sec\n", timeDelta(&st.endTime, &st.startTime));
