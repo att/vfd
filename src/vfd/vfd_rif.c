@@ -15,6 +15,7 @@
 				23 Mar 2017 : Allow multiple VLAN IDs when strip == true.
 				22 Sep 2017 : Prevent hanging lock in add_ports if already called.
 				25 Sep 2017 : Fix validation of mirror target bug.
+				10 Oct 2017 : Add support for mirror update and show mirror commands.
 */
 
 
@@ -300,6 +301,196 @@ extern void vfd_add_ports( parms_t* parms, sriov_conf_t* conf ) {
 	conf->num_ports = pidx;
 	rte_spinlock_unlock( &conf->update_lock );
 }
+
+/*
+	Trapse through the mirror stuff and generate a buffer with statistics.
+	Caller must free buffer returned.
+*/
+static char* gen_mirror_stats( struct sriov_conf_c* conf, int limit ) {
+	char* buf;
+	char wbuf[128];
+	int blen = 0;
+	const_str	dir;
+	int p;
+	int v;
+	struct mirror_s* mirror;
+
+	if( (buf = (char*) malloc( sizeof( char ) * 4096 )) == NULL ) {
+		return NULL;
+	}
+
+	strcpy( buf, "\n" );			// seed with leading newline
+	for( p = 0; p < conf->num_ports; p++ ) {
+		if( limit >= 0 && conf->ports[p].rte_port_number != limit ) {		// if just displaying one, skip if not match
+			continue;
+		}
+
+		blen += snprintf( wbuf, sizeof( wbuf ), "port %d has %d mirrors:\n", conf->ports[p].rte_port_number, conf->ports[p].num_mirrors );
+		if( blen >= 4080 ) {
+			strcat( buf, "<truncated>\n" );
+			return buf;				// out of room
+		}
+		strcat( buf, wbuf );
+
+		for( v = 0; v < MAX_VFS; v++ ) {
+			if( (mirror = suss_mirror( conf->ports[p].rte_port_number, v )) != NULL ) {
+				if( mirror->target < MAX_VFS ) {		// mirror defined
+					switch( mirror->dir ) {
+						case MIRROR_IN: dir = "in"; break;
+						case MIRROR_OUT: dir = "out"; break;
+						case MIRROR_ALL: dir = "all"; break;
+					}
+
+					blen += snprintf( wbuf, sizeof( wbuf ), "  vf %d (%s) ==> vf %d\n", v, dir, mirror->target );
+					if( blen >= 4080 ) {
+						strcat( buf, "<truncated>\n" );
+						return buf;				// out of room
+					}
+					strcat( buf, wbuf );
+				}
+			}
+		}
+	}
+
+	return buf;
+}
+
+
+/*
+	Read a mirror request from iplex and update the pf/vf config if it passes 
+	vetting.  The request (req) is a string assumed to be of the form:
+		<pf> <vf> <state>
+	where pf and vf are the respective numbers and state is one of:
+		in, out, all, off.
+*/
+static int vfd_update_mirror( sriov_conf_t* conf, const_str req, char** reason ) {
+	struct vf_s*  vf;					// vf block for confirmation that pf/vf is managed
+	struct sriov_port_s* pf;			// pf info block (where mirror list is)
+	struct mirror_s* mirror;	// mirroring info for the vf
+	const_str	msg = NULL;
+	char*	raw;				// raw request we can mangle
+	char*	tok;
+	char*	tok_base = NULL;	// strtok_r() base pointer
+	int		vfid = -1;			// the vf id as known to the DPDK environment
+	int		pfid = -1;
+	int		state = 0;			// return state; 0 == fail
+	int		req_dir = MIRROR_OFF;
+	int		target;				// target vf for mirrored traffic
+
+	if( conf == NULL ) {
+		if( reason != NULL ) {
+			*reason = strdup( "no configuration" );
+		}
+		return 0;
+	}
+
+	if( req == NULL ) {
+		if( reason != NULL ) {
+			*reason = strdup( "no request string" );
+		}
+		return 0;
+	}
+
+	msg = "invalid request string";
+	raw = strdup( req );
+	if( (tok = strtok_r( raw, " ", &tok_base )) != NULL ) {
+		pfid = atoi( tok );
+
+		if( (tok = strtok_r( NULL, " ", &tok_base )) != NULL ) {
+			vfid = atoi( tok );
+
+			if( (tok = strtok_r( NULL, " ", &tok_base )) != NULL ) {
+				if( (vf = suss_vf( pfid, vfid )) != NULL ) {
+					mirror = suss_mirror( pfid, vfid );					// find the mirror block
+					pf = suss_port( pfid );
+
+					switch( *tok ) {				// set the direction and fetch pointer at target token
+						case 'i':
+							req_dir = MIRROR_IN;
+							tok = strtok_r( NULL, " ", &tok_base );		// at target
+							break;
+
+						case 'o':
+							if( strcmp( tok, "out" ) == 0 ) {		// off is the default; only set if out found
+								req_dir = MIRROR_OUT;
+								tok = strtok_r( NULL, " ", &tok_base );		// at target
+							} else {
+								if( strcmp( tok, "on" ) == 0 ) {				// not in spec, but we'll treat as all
+									req_dir = MIRROR_ALL;
+									tok = strtok_r( NULL, " ", &tok_base );		// at target
+								}
+							}
+							break;
+
+						case 'a':
+							req_dir = MIRROR_ALL;
+							tok = strtok_r( NULL, " ", &tok_base );		// at target
+							break;
+
+						default: 
+							break;			// for now silently turn off anything that is not valid
+					}
+
+					if( req_dir != MIRROR_OFF ) {
+						if( tok != NULL ) {										// target supplied (if missing it goes unchagned)
+							target = atoi( tok );
+							if( target >= 0 && target < MAX_VFS ) {				// must be in range
+								mirror->target = target;
+								if( mirror->dir == MIRROR_OFF ) {					// if mirror was previously off
+									pf->num_mirrors++;
+									mirror->id = idm_alloc( conf->mir_id_mgr );		// alloc an unused id value
+								}
+	
+								mirror->dir = req_dir;								// safe to set the direction now
+								state = 1;
+							} else {
+								msg = "target VF number is out of range";
+							}
+						} else {
+							msg = "target VF number not supplied";
+						}
+
+					} else {
+						state = 1;
+						if( mirror->dir != MIRROR_OFF ) {			// mirror for this vf existed
+							if( pf->num_mirrors > 0 ) {
+								pf->num_mirrors--;
+							}
+						}											// no harm to turn off if off, so no extra logic
+
+						mirror->dir = req_dir;
+					}
+
+					if( state ) {									// all vetted successfully
+						bleat_printf( 1, "update mirror:  setting: pf/vf=%d/%d dir=%d target=%d",  pf->rte_port_number, vf->num, req_dir, mirror->target );
+						if( set_mirror( pf->rte_port_number, vf->num, mirror->id, mirror->target, mirror->dir ) < 0 ) {		// actually do it
+							msg = "unable to update nic with mirror request";
+							state = 0;
+						} else {
+							msg = NULL;
+						}
+					}
+
+					if( mirror->dir == MIRROR_OFF ) {				// cannot reset target until after call to set_mirror()
+						mirror->target = MAX_VFS + 1;				// no target when turning off (target is unsigned, make high)
+					}
+
+				} else {
+					msg = "vf/pf combination not currently managed";
+				}
+			}
+		}
+	}
+
+	free( raw );
+	if( msg && reason != NULL ) {
+		*reason = strdup( msg );
+	}
+
+	return state;
+}
+
+
 /*
 	Add one of the virtualisation manager generated configuration files to a global
 	config struct passed in.  A small amount of error checking (vf id dup, etc) is
@@ -645,7 +836,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		port->mirrors[vidx].target = vfc->mirror_target;
 		port->mirrors[vidx].id = idm_alloc( conf->mir_id_mgr );		// alloc an unused id value
 	} else {
-		port->mirrors[vidx].target = -1;
+		port->mirrors[vidx].target = MAX_VFS + 1;					// target is unsigned -- make high
 	}
 
 	vf->allow_untagged = 0;					// for now these cannot be set by the config file data
@@ -848,7 +1039,7 @@ extern int vfd_del_vf( parms_t* parms, sriov_conf_t* conf, char* fname, char** r
 	Write to an open file des with a simple retry mechanism.  We cannot afford to block forever,
 	so we'll try only a few times if we make absolutely no progress.
 */
-extern int vfd_write( int fd, const char* buf, int len ) {
+extern int vfd_write( int fd, const_str buf, int len ) {
 	int	tries = 5;				// if we have this number of times where there is no progress we give up
 	int	nsent;					// number of bytes actually sent
 	int n2send;					// number of bytes left to send
@@ -888,9 +1079,9 @@ extern int vfd_write( int fd, const char* buf, int len ) {
 	so that it will fail immiediately if there isn't a reader or the pipe doesn't exist. We assume
 	that the requestor opens the pipe before sending the request so that if it is delayed after
 	sending the request it does not prevent us from writing to the pipe.  If we don't open in 	
-	blocked mode we could hang foever if the requestor dies/aborts.
+	non-blocked mode we could hang foever if the requestor dies/aborts.
 */
-extern void vfd_response( char* rpipe, int state, const char* msg ) {
+extern void vfd_response( char* rpipe, int state, const_str msg ) {
 	int 	fd;
 	char	buf[BUF_1K];
 
@@ -993,6 +1184,10 @@ extern req_t* vfd_read_request( parms_t* parms ) {
 			} else {
 				req->rtype = RT_DEL;
 			}
+			break;
+
+		case 'm':
+			req->rtype = RT_MIRROR;
 			break;
 
 		case 'p':					// ping
@@ -1101,7 +1296,7 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 			switch( req->rtype ) {
 				case RT_PING:
 					snprintf( mbuf, sizeof( mbuf ), "pong: %s", version );
-					vfd_response( req->resp_fifo, 0, mbuf );
+					vfd_response( req->resp_fifo, RESP_OK, mbuf );
 					break;
 
 				case RT_ADD:
@@ -1115,18 +1310,18 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 					if( vfd_add_vf( conf, req->resource, &reason ) ) {		// read the config file and add to in mem config if ok
 						if( vfd_update_nic( parms, conf ) == 0 ) {			// added to config was good, drive the nic update
 							snprintf( mbuf, sizeof( mbuf ), "vf added successfully: %s", req->resource );
-							vfd_response( req->resp_fifo, 0, mbuf );
+							vfd_response( req->resp_fifo, RESP_OK, mbuf );
 							bleat_printf( 1, "vf added: %s", mbuf );
 						} else {
 							// TODO -- must turn the vf off so that another add can be sent without forcing a delete
 							// 		update_nic always returns good now, so this waits until it catches errors and returns bad
 							snprintf( mbuf, sizeof( mbuf ), "vf add failed: unable to configure the vf for: %s", req->resource );
-							vfd_response( req->resp_fifo, 0, mbuf );
+							vfd_response( req->resp_fifo, RESP_ERROR, mbuf );
 							bleat_printf( 1, "vf add failed nic update error" );
 						}
 					} else {
 						snprintf( mbuf, sizeof( mbuf ), "unable to add vf: %s: %s", req->resource, reason );
-						vfd_response( req->resp_fifo, 1, mbuf );
+						vfd_response( req->resp_fifo, RESP_ERROR, mbuf );
 						free( reason );
 					}
 					if( bleat_will_it( 4 ) ) {					// TODO:  remove after testing
@@ -1145,12 +1340,12 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 					if( vfd_del_vf( parms, conf, req->resource, &reason ) ) {		// successfully updated internal struct
 						if( vfd_update_nic( parms, conf ) == 0 ) {			// nic update was good too
 							snprintf( mbuf, sizeof( mbuf ), "vf deleted successfully: %s", req->resource );
-							vfd_response( req->resp_fifo, 0, mbuf );
+							vfd_response( req->resp_fifo, RESP_OK, mbuf );
 							bleat_printf( 1, "vf deleted: %s", mbuf );
 						} // TODO need else -- see above
 					} else {
 						snprintf( mbuf, sizeof( mbuf ), "unable to delete vf: %s: %s", req->resource, reason );
-						vfd_response( req->resp_fifo, 1, mbuf );
+						vfd_response( req->resp_fifo, RESP_ERROR, mbuf );
 						free( reason );
 					}
 					if( bleat_will_it( 4 ) ) {					// TODO:  remove after testing
@@ -1161,7 +1356,7 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 				case RT_DUMP:									// spew everything to the log
 					dump_dev_info( conf->num_ports);			// general info about each port
   					dump_sriov_config( conf );					// pf/vf specific info
-					vfd_response( req->resp_fifo, 0, "dump captured in the log" );
+					vfd_response( req->resp_fifo, RESP_OK, "dump captured in the log" );
 
 					char*	stats_buf;
 					if( (stats_buf = (char *) malloc( sizeof( char ) * 10 * 1024 )) != NULL ) {
@@ -1171,19 +1366,35 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 					}
 					break;
 
+				case RT_MIRROR:
+					if( parms->forreal ) {
+						if( vfd_update_mirror( conf, req->resource, &reason ) ) {
+							snprintf( mbuf, sizeof( mbuf ), "mirror update successful: %s", req->resource );
+							vfd_response( req->resp_fifo, RESP_OK, mbuf );
+						} else {
+							snprintf( mbuf, sizeof( mbuf ), "mirror update failed: %s: %s", req->resource, reason ? reason : "" );
+							vfd_response( req->resp_fifo, RESP_ERROR, mbuf );
+						}
+						bleat_printf( 1, "%s", mbuf );
+
+					} else {
+						bleat_printf( 1, "mirror request received, but ignored (forreal is off): %s", req->resource == NULL ? "" : req->resource );
+					}
+					break;
+
 				case RT_SHOW:
 					if( parms->forreal ) {
 						if( req->resource == NULL ) {
-							vfd_response( req->resp_fifo, 1, "unable to generate stats: internal mishap: null resource" );
+							vfd_response( req->resp_fifo, RESP_ERROR, "unable to generate stats: internal mishap: null resource" );
 						} else {
 							switch( *req->resource ) {
 								case 'a':
 									if( strcmp( req->resource, "all" ) == 0 ) {				// dump just the VF information
 										if( (buf = gen_stats( conf, !PFS_ONLY, ALL_PFS )) != NULL )  {
-											vfd_response( req->resp_fifo, 0, buf );
+											vfd_response( req->resp_fifo, RESP_OK, buf );
 											free( buf );
 										} else {
-											vfd_response( req->resp_fifo, 1, "unable to generate stats" );
+											vfd_response( req->resp_fifo, RESP_ERROR, "unable to generate stats" );
 										}
 									}
 									break;
@@ -1192,10 +1403,21 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 									if( strncmp( req->resource, "ex", 2 ) == 0 ) {							// show extended stats
 										buf = gen_exstats( conf );						// create a buffer with stats for all ports
 										if( buf != NULL ) {
-											vfd_response( req->resp_fifo, 0, buf );
+											vfd_response( req->resp_fifo, RESP_OK, buf );
 											free( buf );
 										} else {
-											vfd_response( req->resp_fifo, 1, "unable to generate extended stats" );
+											vfd_response( req->resp_fifo, RESP_ERROR, "unable to generate extended stats" );
+										}
+									}
+									break;
+
+								case 'm':			// show mirrors for a pf
+									if( strncmp( req->resource, "mirror", 6 ) == 0 ) {
+										if( (buf = gen_mirror_stats( conf, -1 )) != NULL ) {
+											vfd_response( req->resp_fifo, RESP_OK, buf );
+											free( buf );
+										} else {
+											vfd_response( req->resp_fifo, RESP_ERROR, "unable to generate mirror stats" );
 										}
 									}
 									break;
@@ -1203,10 +1425,10 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 								case 'p':
 									if( strcmp( req->resource, "pfs" ) == 0 ) {								// dump just the PF information (skip vf)
 										if( (buf = gen_stats( conf, PFS_ONLY, ALL_PFS )) != NULL )  {
-											vfd_response( req->resp_fifo, 0, buf );
+											vfd_response( req->resp_fifo, RESP_OK, buf );
 											free( buf );
 										} else {
-											vfd_response( req->resp_fifo, 1, "unable to generate pf stats" );
+											vfd_response( req->resp_fifo, RESP_ERROR, "unable to generate pf stats" );
 										}
 									}
 										break;
@@ -1214,21 +1436,21 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 								default:
 									if( isdigit( *req->resource ) ) {						// dump just for the indicated pf
 										if( (buf = gen_stats( conf, !PFS_ONLY, atoi( req->resource ) )) != NULL )  {
-											vfd_response( req->resp_fifo, 0, buf );
+											vfd_response( req->resp_fifo, RESP_OK, buf );
 											free( buf );
 										} else {
-											vfd_response( req->resp_fifo, 1, "unable to generate pf stats" );
+											vfd_response( req->resp_fifo, RESP_ERROR, "unable to generate pf stats" );
 										}
 									} else {												// assume we dump for all
 										if( req->resource ) {
 											bleat_printf( 2, "show: unknown target supplied: %s", req->resource );
 										}
-										vfd_response( req->resp_fifo, 1, "unable to generate stats: unnown target supplied (not one of all, pfs, extended or pf-number)" );
+										vfd_response( req->resp_fifo, RESP_ERROR, "unable to generate stats: unnown target supplied (not one of all, pfs, extended or pf-number)" );
 									}
 							}
 						}
 					} else {
-						vfd_response( req->resp_fifo, 1, "VFD running in 'no harm' (-n) mode; no stats available." );
+						vfd_response( req->resp_fifo, RESP_ERROR, "VFD running in 'no harm' (-n) mode; no stats available." );
 					}
 					break;
 
@@ -1249,7 +1471,7 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 					
 
 				default:
-					vfd_response( req->resp_fifo, 1, "dummy request handler: urrecognised request." );
+					vfd_response( req->resp_fifo, RESP_ERROR, "dummy request handler: urrecognised request." );
 					break;
 			}
 

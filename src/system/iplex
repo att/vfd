@@ -15,22 +15,24 @@
                 2016 20 July - Add list pf's, per vf status functionality
 				2017 13 Jan - Allow any argument to follow show to enable show pfn[:vfn]
                       where n:m supplies a pf and vf number rather than all or pfs.
+				2017 09 Oct - Add mirror update command and support for config option.
 """
 
 __doc__ = """ iplex
     Usage:
-    iplex (add | update | delete | status) <port-id> [--loglevel=<value>]
-    iplex show <what> [--loglevel=<value>]
-    iplex verbose [--loglevel=<value>]
-    iplex (ping | dump)
+    iplex [--conf=<config>] (add | update | delete | status) <port-id> [--loglevel=<value>] 
+    iplex [--conf=<config>] mirror <pf> <vf> <dir> [<target>]  [--loglevel=<value>]
+    iplex [--conf=<config>] show <what> [--loglevel=<value>] 
+    iplex [--conf=<config>] verbose [--loglevel=<value>] 
+    iplex [--conf=<config>] (ping | dump)
     iplex -h | --help
     iplex --version
     Options:
         -h, --help      show this help message and exit
         --version       show version and exit
         --loglevel=<value>  Default logvalue [default: 0]
-
-	<what> may be one of:  all, pfs, extended, or <n> where <n> is a PF number.
+        <what> may be one of:  all, pfs, extended, or <n> where <n> is a PF number.
+        <dir> is the mirror direction: one of: {in | out | all | off}.
 """
 
 from docopt import docopt
@@ -43,7 +45,7 @@ import ast
 import time
 from logging.handlers import RotatingFileHandler
 
-VFD_CONFIG = '/etc/vfd/vfd.cfg'
+VFD_CONFIG = '/etc/vfd/vfd.cfg'		# default; --conf= overrides from command line
 
 # logging
 def setup_logging(logfile, config_data):
@@ -100,6 +102,14 @@ class Iplex(object):
         msg = self.__request_message('delete')
         self.__write_read_fifo(msg)
         return
+
+    def mirror( self ):
+        self.filename = None
+        self.resp_fifo = self.__create_fifo()
+        msg = self.__request_message( 'mirror' )
+        self.__write_read_fifo( msg )
+        return
+        
 
     def status(self, port_id):
         self.filename = self.__validate_file(port_id)
@@ -174,11 +184,15 @@ class Iplex(object):
         msg["params"] = {}
         if self.filename is not None:
             msg["params"]["filename"] = self.filename
-        #if self.options['all']:
-        #    msg["params"]["resource"] = "all"
-        #if self.options['pfs']:
-        #    msg["params"]["resource"] = "pfs"
-        msg["params"]["resource"] = self.options["<what>"]				# pick up generic option
+        
+        if action == "show":
+            msg["params"]["resource"] = self.options["<what>"]				# pick up generic option
+        else:
+            if action == "mirror":
+                msg["params"]["resource"] = self.options["<pf>"] + " " + self.options["<vf>"] + " " + self.options["<dir>"]
+                if self.options["<target>"] != None:
+                    msg["params"]["resource"] +=  " " + self.options["<target>"]
+                
         msg["params"]["loglevel"] = int(self.options["--loglevel"])
         msg["params"]["r_fifo"] = self.resp_fifo
         self.log.info("REQUEST MESSAGE: %s", msg)
@@ -187,9 +201,9 @@ class Iplex(object):
     def __read_fd(self, fd, chunksize=2048):
         buffer = []
         running = True
-        time.sleep(1)
+        time.sleep(.2)
         while running:
-            time.sleep(1)
+            time.sleep(.1)
             chunk = os.read(fd, chunksize)
             buffer.append(chunk)
             running = len(chunk) == chunksize
@@ -222,9 +236,14 @@ class Iplex(object):
 
 if __name__ == '__main__':
     options = docopt(__doc__, version='1.1')
+
+    if options["--conf"] != None:
+        VFD_CONFIG = options["--conf"]
+
     config_data = read_config()
     log = setup_logging('iplex.log', config_data)
     iplex = Iplex(config_data, options, log)
+
     if options['add']:
         iplex.add(options['<port-id>'])
     elif options['update']:
@@ -237,6 +256,8 @@ if __name__ == '__main__':
         iplex.verbose()
     elif options['dump']:
         iplex.dump()
+    elif options['mirror']:
+        iplex.mirror()
     else:
         if options['show']:
             iplex.show()
