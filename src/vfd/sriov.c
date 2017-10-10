@@ -31,6 +31,7 @@
 					are dirven.
 				06 Apr 2017 - Add set flowcontrol function, add mtu/jumbo confirmation msg to log.
 				22 May 2017 - Add ability to remove a whitelist RX mac.
+				10 Oct 2017 - Add range check on mirror target.
 
 	useful doc:
 				 http://www.intel.com/content/dam/doc/design-guide/82599-sr-iov-driver-companion-guide.pdf
@@ -696,11 +697,16 @@ tx_set_loopback(portid_t port_id, u_int8_t on)
 	of causing physcial machines to crash when DPDK reconfigures the NIC (on VFd start, or 
 	other use).
 */
-void set_mirror( portid_t port_id, uint32_t vf, uint8_t id, uint8_t target, uint8_t direction ) {
+int set_mirror( portid_t port_id, uint32_t vf, uint8_t id, uint8_t target, uint8_t direction ) {
 	struct rte_eth_mirror_conf mconf;
 	uint8_t on_off = SET_ON;
 	int state = 0;
 	char const* fail_type = "WRN";
+
+	if( target > MAX_VFS ) {
+		bleat_printf( 0, "mirror not set: target vf out of range: %d", (int) target );
+		return -1;
+	}
 
 	memset( &mconf, 0, sizeof( mconf ) );
 	mconf.dst_pool = target;					// assume 1:1 vf to pool mapping
@@ -737,8 +743,10 @@ void set_mirror( portid_t port_id, uint32_t vf, uint8_t id, uint8_t target, uint
 		bleat_printf( 0, "%s: set mirror for pf=%d vf=%d mid=%d target=%d dir=%d on/off=%d failed: %d (%s)", 
 				fail_type, (int) port_id, (int) vf, (int) id, (int) target, (int) direction, (int) on_off, state, strerror( -state ) );
 	} else {
-		bleat_printf( 0, "set mirror for pf=%d vf=%d target=%d dir=%d on/off=%d  rt=%d ok", (int) port_id, (int) vf, (int) target, (int) direction, (int) on_off, (int) mconf.rule_type );
+		bleat_printf( 0, "set mirror for pf=%d vf=%d target=%d dir=%d on/off=%d  type=%d ok", (int) port_id, (int) vf, (int) target, (int) direction, (int) on_off, (int) mconf.rule_type );
 	}
+
+	return state;
 }	
 
 /*

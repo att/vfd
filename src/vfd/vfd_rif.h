@@ -15,6 +15,9 @@
 #define UNCHANGED 0
 #define RESET	2
 
+#define RESP_ERROR	1			// states for response bundler
+#define RESP_OK		0
+
 #define RT_NOP	0				// request types
 #define RT_ADD	1
 #define RT_DEL	2
@@ -22,6 +25,7 @@
 #define RT_PING 4
 #define RT_VERBOSE 5
 #define RT_DUMP 6
+#define RT_MIRROR 7				// mirror on/off command
 
 #define BUF_1K	1024			// simple buffer size constants
 #define BUF_10K BUF_1K * 10

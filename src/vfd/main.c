@@ -67,6 +67,7 @@
 				23 Jun 2017 - Ensure socket mem isn't asked for if no-huge is given.
 				20 Sep 2017 - Correct potential nil pointer exception.
 				25 Sep 2017 - Correct incorrect starting point in dump output when listing macs.
+				10 Oct 2017 - Add mirror information to dump output.
 */
 
 
@@ -287,6 +288,28 @@ struct vf_s *suss_vf( int port, int vfid ) {
 }
 
 /*
+	Given a port and vfid, find the mirror block for that vf.
+*/
+struct mirror_s* suss_mirror( int port, int vfid ) {
+	struct sriov_port_s *p;
+	int		i;
+
+	if( (p = suss_port( port )) == NULL ) {
+		return NULL;
+	}
+
+	for( i = 0; i < p->num_vfs; i++ ) {
+		if( p->vfs[i].num == vfid ) {					// found it
+			return &p->mirrors[i];
+		}
+	}
+
+	return NULL;
+}
+
+
+
+/*
 	Given a dpdk port id and vf id, suss out the desired configuration setting.
 	What is a VF_VAL_ constant. Only settings which can be represnted by an
 	integer can be sussed out.
@@ -432,12 +455,10 @@ static void close_ports( void ) {
 	for( i = 0; i < running_config->num_ports; i++ ) {
 		port = &running_config->ports[i];
 		bleat_printf( 2, "port %d has %d mirrors", port->rte_port_number, port->num_mirrors );
-		if( port->num_mirrors > 0 ) {
-			for( j = 0; j < MAX_VFS; j++ ) {
-				if( port->mirrors[j].dir != MIRROR_OFF ) {
-					bleat_printf( 0, "terminating active mirror on shutdown: pf=%d vf=%d", port->rte_port_number,  port->vfs[i].num );
-					set_mirror( port->rte_port_number, port->vfs[i].num,  port->mirrors[j].target, port->mirrors[j].target, MIRROR_OFF );
-				}
+		for( j = 0; j < MAX_VFS; j++ ) {					// run regardless of what we think the count is!
+			if( port->mirrors[j].dir != MIRROR_OFF ) {
+				bleat_printf( 0, "terminating active mirror on shutdown: pf=%d vf=%d", port->rte_port_number,  port->vfs[i].num );
+				set_mirror( port->rte_port_number, port->vfs[i].num,  port->mirrors[j].id, port->mirrors[j].target, MIRROR_OFF );
 			}
 		}
 	}
@@ -806,6 +827,8 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 		}
 
 		if( port->last_updated == ADDED ) {								// updated since last call, reconfigure
+			port->num_mirrors = 0;
+
 			if( parms->forreal ) {
 				bleat_printf( 1, "port updated: %s/%s",  port->name, port->pciid );
 
@@ -875,9 +898,13 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 					}
 
 					if( port->mirrors[y].dir != MIRROR_OFF ) {													// stop the mirror on delete
-						set_mirror( port->rte_port_number, vf->num, port->mirrors[y].id, port->mirrors[y].target, MIRROR_OFF );		// turn off, no target needed (-1)
+						set_mirror( port->rte_port_number, vf->num, port->mirrors[y].id, port->mirrors[y].target, MIRROR_OFF );		// turn off
 						port->mirrors[y].dir = MIRROR_OFF;
+						port->mirrors[y].target = MAX_VFS + 1;													// target is unsigned -- set out of range high
 						idm_return( conf->mir_id_mgr, port->mirrors[y].id );									// mark the id as unused in allocator
+						if( port->num_mirrors > 0 ) {
+							port->num_mirrors--; 
+						}
 					}
 
 					//AZif (get_nic_type(port->rte_port_number) == VFD_NIANTIC)
@@ -897,12 +924,12 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 						if( parms->forreal )
 							set_vf_rx_mac(port->rte_port_number, mac, vf->num, SET_OFF );
 					}
-
 				} else {
 					int v;
 
 					if( port->mirrors[y].dir != MIRROR_OFF ) {						// setup the mirror
 						set_mirror( port->rte_port_number, vf->num, port->mirrors[y].id, port->mirrors[y].target, port->mirrors[y].dir );		// set target and type (in/out/both)
+						port->num_mirrors++;
 					}
 
 					for(v = 0; v < vf->num_vlans; ++v) {
@@ -1238,19 +1265,22 @@ dump_sriov_config( sriov_conf_t* sriov_config)
 	bleat_printf( 0, "dump: config has %d port(s)", sriov_config->num_ports );
 
 	for (i = 0; i < sriov_config->num_ports; i++){
-		bleat_printf( 0, "dump: port: %d, pciid: %s, pciid %s, updated %d, mtu: %d, num_mirrors: %d, num_vfs: %d",
-          i, sriov_config->ports[i].name,
-          sriov_config->ports[i].pciid,
-          sriov_config->ports[i].last_updated,
-          sriov_config->ports[i].mtu,
-          sriov_config->ports[i].num_mirrors,
-          sriov_config->ports[i].num_vfs );
+		bleat_printf( 0, "dump: port: %d, vname: %s, pciid %s, updated %d, mtu: %d, num_mirrors: %d, num_vfs: %d",
+			sriov_config->ports[i].rte_port_number, 
+			sriov_config->ports[i].name,
+			sriov_config->ports[i].pciid,
+			sriov_config->ports[i].last_updated,
+			sriov_config->ports[i].mtu,
+			sriov_config->ports[i].num_mirrors,
+			sriov_config->ports[i].num_vfs );
 
 		for (y = 0; y < sriov_config->ports[i].num_vfs; y++){
 			if( sriov_config->ports[i].vfs[y].num >= 0 ) {
 				split_ctl = get_split_ctlreg( i, sriov_config->ports[i].vfs[y].num );
-				bleat_printf( 1, "dump: vf: %d, updated: %d  strip: %d  insert: %d  vlan_aspoof: %d  mac_aspoof: %d  allow_bcast: %d  allow_ucast: %d  allow_mcast: %d  allow_untagged: %d  rate: %f  link: %d  num_vlans: %d  num_macs: %d  splitctl=0x%08x",
-					sriov_config->ports[i].vfs[y].num, sriov_config->ports[i].vfs[y].last_updated,
+				bleat_printf( 1, "dump: port: %d vf: %d  updated: %d  strip: %d  insert: %d  vlan_aspoof: %d  mac_aspoof: %d  allow_bcast: %d  allow_ucast: %d  allow_mcast: %d  allow_untagged: %d  rate: %f  link: %d  num_vlans: %d  num_macs: %d  splitctl: 0x%08x mir_t/d/i: %u/%d/%u",
+					sriov_config->ports[i].rte_port_number,
+					sriov_config->ports[i].vfs[y].num, 
+					sriov_config->ports[i].vfs[y].last_updated,
 					sriov_config->ports[i].vfs[y].strip_stag,
 					sriov_config->ports[i].vfs[y].insert_stag,
 					sriov_config->ports[i].vfs[y].vlan_anti_spoof,
@@ -1263,16 +1293,20 @@ dump_sriov_config( sriov_conf_t* sriov_config)
 					sriov_config->ports[i].vfs[y].link,
 					sriov_config->ports[i].vfs[y].num_vlans,
 					sriov_config->ports[i].vfs[y].num_macs,
-					split_ctl );
+					split_ctl,
+					sriov_config->ports[i].mirrors[y].target,
+					sriov_config->ports[i].mirrors[y].dir,
+					sriov_config->ports[i].mirrors[y].id
+					 );
 	
 				int x;
 				for (x = 0; x < sriov_config->ports[i].vfs[y].num_vlans; x++) {
-					bleat_printf( 2, "dump: vlan[%d] %d ", x, sriov_config->ports[i].vfs[y].vlans[x]);
+					bleat_printf( 2, "dump: pf/vf: %d/%d vlan[%d] %d ", sriov_config->ports[i].rte_port_number, sriov_config->ports[i].vfs[y].num, x, sriov_config->ports[i].vfs[y].vlans[x]);
 				}
 	
 				int z;
 				for (z = sriov_config->ports[i].vfs[y].first_mac; z < sriov_config->ports[i].vfs[y].num_macs; z++) {
-					bleat_printf( 2, "dump: mac[%d] %s ", z, sriov_config->ports[i].vfs[y].macs[z]);
+					bleat_printf( 2, "dump: pf/vf: %d/%d mac[%d] %s ", sriov_config->ports[i].rte_port_number, sriov_config->ports[i].vfs[y].num, z, sriov_config->ports[i].vfs[y].macs[z]);
 				}
 			} else {
 				bleat_printf( 2, "dump: port %d index %d is not configured", i, y );

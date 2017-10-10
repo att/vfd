@@ -13,6 +13,7 @@
 				22 Mar 2017 - Set the jumbo frame flag in the default dev config.
 					Fix comment in same initialisation.
 				16 May 2017 - Add flow control flag constant.
+				10 Oct 2017 - Change set_mirror proto.
 */
 
 #ifndef _SRIOV_H_
@@ -125,6 +126,7 @@
 #define simpe_atomic_swap(var, newval)  __sync_lock_test_and_set(&var, newval)
 #define barrier()                       __sync_synchronize()
 
+typedef char const* const_str;			// a pointer to a constant string
 typedef unsigned char __u8;
 typedef unsigned int uint128_t __attribute__((mode(TI))); 
 
@@ -389,7 +391,7 @@ int  rx_vft_set(portid_t port_id, uint16_t vlan_id, int on);
 void init_port_config(void);
 
 int get_split_ctlreg( portid_t port_id, uint16_t vf_id );
-void set_mirror( portid_t port_id, uint32_t vf, uint8_t id, uint8_t target, uint8_t direction );
+int set_mirror( portid_t port_id, uint32_t vf, uint8_t id, uint8_t target, uint8_t direction );
 void set_queue_drop( portid_t port_id, int state );
 void set_split_erop( portid_t port_id, uint16_t vf_id, int state );
 
@@ -449,6 +451,7 @@ int suss_loopback( int port );
 
 struct sriov_port_s *suss_port( int portid );
 struct vf_s *suss_vf( int port, int vfid );
+struct mirror_s*  suss_mirror( int port, int vfid );
 void push_mac( int port, int vf, char* mac );
 
 void add_refresh_queue(u_int8_t port_id, uint16_t vf_id);
