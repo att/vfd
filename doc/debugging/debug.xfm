@@ -1,9 +1,9 @@
 
 
 .ll 6.5i
-.in .5i
 .sf Helvetica
 .st 10
+.** 
 
 .dh 1 m=.5i  e=no s=21 i=0 p=16 f=Helvetica-bold
 .dh 2  m=.5i s=21 i=0      p=14 f=Helvetica-bold 
@@ -14,6 +14,9 @@
 .hn off
 
 .im ../setup.im
+.in 0i
+.xx 2
+.xx 0
 
 	
 .dv sub_title Debugging Tricks
@@ -72,44 +75,43 @@ the PF that owns the VFs that the guests will use.
 If this is not set, the outbound traffic from the troubled guest will not be visible on the debugging guest.
 
 &h2(Configuring The Debugging Guest)
-The debugging guest is where the mirrored traffic will be sent. 
-It is configured much like any other guest though the setting for unknown unicast (allow_un_ucast" 
-&bold(must) be set to false. 
+The debugging guest is where the mirrored traffic will be sent and thus it should be possible to run 
+&cw(tcpdump) or similar debugging tool in the guest to examine the mirrored traffic.. 
+This guest is configured much like any other though the setting to allow unknown unicast (allow_un_ucast) 
+&bold(must) be set to false; all other settings can be left as were set up by the virtualisation (or manually). 
 The following is a sample configuration for a VF that was used as the mirror destination. 
 .sp .5
+
 .sf &cwfont
 .st 8p
 .nf
-    {
-    "comments":      "",
-
-    "name":             "daniels_0_3",
-    "pciid":            "0000:08:00.0",
-    "vfid":             3,
-    "strip_stag":       true,
-    "allow_bcast":      true,
-    "allow_mcast":      true,
-    "allow_un_ucast":   false,
-
-    "vlan_anti_spoof":  false,
-    "mac_anti_spoof":   false,
-    "vlans":            [ 101 ],
-    "macs":             [ "fa:ce:de:02:00:03" ],
-
-    "queues": [
-        { "priority": 0, "share": "90%" },
-        { "priority": 1, "share": "90%" },
-        { "priority": 2, "share": "90%" },
-        { "priority": 3, "share": "90%" },
-    ]
-    }
+   "allow_un_ucast":   false,
 .fo
 .st &textsize
-.st &textfont
-.fg Sample configuration for a target VF.
+.sf &textfont
+.fg The setting for unknown unicast.
 .sp
 
 &h2(Configuring The Problem Guest)
+As of commits made on 10 Oct 2017 to the nic_agnosic branch, it is possible to adjust mirroring 
+without modifying the configuration file as described in subsequent paragraphs.  
+These paragraphs are left to support those with older versions of VFd, however the following command
+should be all that is needed to start/stop mirroring the traffic into or out from the problem guest:
+&ex_start
+  sudo iplex mirror <pf> <vf> <direction> <target>
+&ex_end
+.sp .5
+Where:
+&bd( .5i : Helvetica-bold : )
+&di(pf) Is the PF number as reported by the iplex show command.
+&di(vf) Is the VF number of the problem guest.
+&di(direction) Is one of in, out, all, or off to mirror inbound (Rx), outbound (Tx), all (Tx and Rx) 
+	or to turn mirroring off.
+&di(target) Is the VF number that is to receive the mirrored traffic.
+&ed
+
+
+.h3 With Older VFd Versions
 The configuration of the problem guest should be as established by the virtualisation manager, however 
 one additional configuration parameter will need to be added in order to start the mirroring.
 The mirroring definition, illustrated below, can be added as the last parameter to the existing
@@ -122,7 +124,7 @@ Once it is added, the configuration will need to be reloaded; this process is di
     "mirror": { "target": 3, "direction": "all" }
 .fo
 .st &textsize
-.st &textfont
+.sf &textfont
 .sp .1
 .fg The mirroring configuration json bits added to the troubled guest's configuration file.
 .sp
@@ -131,31 +133,31 @@ The &ital(target) is the VF number of the debugging guest.  This may not be know
 is started (depending on whether the guest is being started manually or via some virtualisation driver).
 The direction may be one of four strings:
 .sp .5
-.bd .5i Helvetica-bold
-.di all : Mirror all traffic to the target.
-.di in : Mirror only traffic received and passed to the guest.
-.di out : Mirror only traffic which is transmitted from the guest.
-.di off : Turn mirroring off.
-.ed
+&bd( .5i : Helvetica-bold : )
+&di(all)  Mirror all traffic to the target.
+&di(in)   Mirror only traffic received and passed to the guest.
+&di(out)  Mirror only traffic which is transmitted from the guest.
+&di(off)  Turn mirroring off.
+&ed
 .sp
 
-&h2(Changing Mirroring State)
+&h3(Changing Mirroring State)
 To change the mirror state for a running guest involves a set of simple steps:
 
 .sp .5
-.bd a=1 f=%d .25i
-.di 1 : Make a back up of the current configuration of the VF configuration (/var/lib/vfd/config).
+&bd( .25i :  &difont : a=1 f=&adi_fmt )
+&adi  Make a back up of the current configuration of the VF configuration (/var/lib/vfd/config).
 .sp .4
-.di 2 : Add the mirroring setting to the backup configuration setting in, our, all, or off as desired.
+&adi  Add the mirroring setting to the backup configuration setting in, our, all, or off as desired.
 .sp .4
-.di 3 : Delete the current configuration from VFd (iplex delete <id>). The configuration file will be removed.
+&adi  Delete the current configuration from VFd (iplex delete <id>). The configuration file will be removed.
 .sp .4
-.di 4 : Copy the backup file to the config directory giving it the same name as before.
+&adi  Copy the backup file to the config directory giving it the same name as before.
 .sp .4
-.di 5 : Add the newly created configuration to VFd (iplex add <id>).
+&adi  Add the newly created configuration to VFd (iplex add <id>).
 .sp .4
-.di 6 : Verify in the VFd log file that mirroring state was changed for the desired VF.
-.ed
+&adi  Verify in the VFd log file that mirroring state was changed for the desired VF.
+&ed
 .sp
 
 
