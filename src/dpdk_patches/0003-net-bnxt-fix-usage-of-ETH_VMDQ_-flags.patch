@@ -1,0 +1,48 @@
+From 00b1745db3bee02f845001a93bab01eaa5728e8c Mon Sep 17 00:00:00 2001
+From: Ajit Khaparde <ajit.khaparde@broadcom.com>
+Date: Fri, 25 Aug 2017 09:23:14 -0600
+Subject: [PATCH 3/4] net/bnxt: fix usage of ETH_VMDQ_* flags
+
+Map ETH_VMDQ_ACCEPT_HASH_UC to the promiscuous bit.
+Also, set ALLMULTI and MCAST when MCAST is set to ensure multicast traffic
+is received regardless of the VF driver list.
+
+Signed-off-by: Stephen Hurd <stephen.hurd@broadcom.com>
+Signed-off-by: Ajit Khaparde <ajit.khaparde@broadcom.com>
+---
+ drivers/net/bnxt/rte_pmd_bnxt.c | 12 +++++-------
+ 1 file changed, 5 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/net/bnxt/rte_pmd_bnxt.c b/drivers/net/bnxt/rte_pmd_bnxt.c
+index c343d9033..2061466d5 100644
+--- a/drivers/net/bnxt/rte_pmd_bnxt.c
++++ b/drivers/net/bnxt/rte_pmd_bnxt.c
+@@ -409,20 +409,18 @@ int rte_pmd_bnxt_set_vf_rxmode(uint8_t port, uint16_t vf,
+ 	if (vf >= bp->pdev->max_vfs)
+ 		return -EINVAL;
+ 
+-	if (rx_mask & (ETH_VMDQ_ACCEPT_UNTAG | ETH_VMDQ_ACCEPT_HASH_MC)) {
++	if (rx_mask & ETH_VMDQ_ACCEPT_UNTAG) {
+ 		RTE_LOG(ERR, PMD, "Currently cannot toggle this setting\n");
+ 		return -ENOTSUP;
+ 	}
+ 
+-	if (rx_mask & ETH_VMDQ_ACCEPT_HASH_UC && !on) {
+-		RTE_LOG(ERR, PMD, "Currently cannot disable UC Rx\n");
+-		return -ENOTSUP;
+-	}
+-
++	/* Is this really the correct mapping?  VFd seems to think it is. */
++	if (rx_mask & ETH_VMDQ_ACCEPT_HASH_UC)
++		flag |= BNXT_VNIC_INFO_PROMISC;
+ 	if (rx_mask & ETH_VMDQ_ACCEPT_BROADCAST)
+ 		flag |= BNXT_VNIC_INFO_BCAST;
+ 	if (rx_mask & ETH_VMDQ_ACCEPT_MULTICAST)
+-		flag |= BNXT_VNIC_INFO_ALLMULTI;
++		flag |= BNXT_VNIC_INFO_ALLMULTI | BNXT_VNIC_INFO_MCAST;
+ 
+ 	if (on)
+ 		bp->pf.vf_info[vf].l2_rx_mask |= flag;
+-- 
+2.13.5 (Apple Git-94)
+
