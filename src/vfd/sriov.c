@@ -1262,6 +1262,8 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 
 		case VFD_BNXT:
 			result = vfd_bnxt_get_vf_stats(port_id, vf, &stats);
+			if (rte_pmd_bnxt_get_vf_tx_drop_count(port_id, vf, &vf_spoffed))
+				vf_spoffed = UINT64_MAX;
 			break;
 			
 		case VFD_MLX5:
