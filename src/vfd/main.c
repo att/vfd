@@ -777,6 +777,30 @@ static int vfd_set_ins_strip( struct sriov_port_s *port, struct vf_s *vf ) {
 	return 1;
 }
 	
+/*
+	Generates a ready or not ready message for the given port.  If port is NULL then
+	a message is written for all ports.
+*/
+extern void log_port_state( struct sriov_port_s* port, const_str msg ) {
+	sriov_conf_t* conf;
+	int i;
+
+	conf = running_config;
+
+	if( conf == NULL ) {											// something up if this happens
+		bleat_printf( 0, "all PFs are %s", msg );					// general message for early start
+		return;
+	}
+
+	if( port ) {
+		bleat_printf( 0, "PF %s is %s", port->pciid, msg );
+	} else {
+		for( i = 0; i < conf->num_ports; ++i ) {					// run each port we know about
+			port = &conf->ports[i];
+			bleat_printf( 0, "PF %s is %s", port->pciid, msg );
+		}
+	}
+}
 
 /*
 	Runs through the configuration and makes adjustments.  This is
@@ -801,6 +825,7 @@ static int vfd_set_ins_strip( struct sriov_port_s *port, struct vf_s *vf ) {
 */
 extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 	int i;
+	int need_ready_msg = 0;			// we only write a ready message for the port when added
 	int on = 1;
     uint32_t vf_mask;
     int y;
@@ -830,6 +855,8 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 			port->num_mirrors = 0;
 
 			if( parms->forreal ) {
+				need_ready_msg = 1;										// log port ready when VFs are finished configuring
+
 				bleat_printf( 1, "port updated: %s/%s",  port->name, port->pciid );
 
 				if( port->flags & PF_PROMISC ) {
@@ -1073,7 +1100,12 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 				}
 			}
 		}				// end for each vf on this port
-    }     // end for each port
+
+		if( need_ready_msg ) {									// only on the first port init; all other updates are quiet
+			log_port_state( port, "ready" );
+			need_ready_msg = 0;
+		}
+    }   				  // end for each port
 
 	rte_spinlock_unlock( &running_config->update_lock );
 	return 0;
@@ -1673,7 +1705,8 @@ main(int argc, char **argv)
 	}		// end !terminated while
 
 	bleat_printf( 0, "terminating" );
-	run_stop_cbs( running_config );				// run any user stop callback commands that were given in VF conf files
+	log_port_state( NULL, "not ready" );								// mark all ports down in log
+	run_stop_cbs( running_config );										// run any user stop callback commands that were given in VF conf files
 
 	if( fd >= 0 ) {
 		close(fd);
