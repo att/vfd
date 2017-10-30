@@ -426,7 +426,6 @@ int xdigit(char c);
 void print_port_errors(struct rte_eth_stats et_stats, int col);
 
 double timeDelta (struct timeval * now, struct timeval * before);
-void runIfrate(uint8_t port, unsigned n_ports, unsigned long cpu_mask);
 
 void daemonize( char* pid_fname );
 void detachFromTerminal( void );
@@ -467,6 +466,8 @@ int get_mac_antispoof( portid_t port_id );
 int get_max_qpp( uint32_t port_id );
 int get_num_vfs( uint32_t port_id );
 void discard_pf_traffic( portid_t portid );
+
+void log_port_state( struct sriov_port_s* port, const_str msg );
 
 //-- testing --
 extern void set_fc_on( portid_t pf, int force );

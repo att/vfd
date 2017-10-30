@@ -147,15 +147,10 @@ To change the mirror state for a running guest involves a set of simple steps:
 .sp .5
 &bd( .25i :  &difont : a=1 f=&adi_fmt )
 &adi  Make a back up of the current configuration of the VF configuration (/var/lib/vfd/config).
-.sp .4
 &adi  Add the mirroring setting to the backup configuration setting in, our, all, or off as desired.
-.sp .4
 &adi  Delete the current configuration from VFd (iplex delete <id>). The configuration file will be removed.
-.sp .4
 &adi  Copy the backup file to the config directory giving it the same name as before.
-.sp .4
 &adi  Add the newly created configuration to VFd (iplex add <id>).
-.sp .4
 &adi  Verify in the VFd log file that mirroring state was changed for the desired VF.
 &ed
 .sp
