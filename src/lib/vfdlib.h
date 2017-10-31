@@ -110,6 +110,7 @@ typedef struct {
 	char*	pciid;					// physical interface id (0000:07:00.1)
 	int		vfid;					// the vf on the pf 1-32
 	int		strip_stag;				// bool
+	int		strip_ctag;				// bool
 	int		allow_bcast;			// bool
 	int		allow_mcast;			// bool
 	int		allow_un_ucast;			// bool
@@ -127,6 +128,7 @@ typedef struct {
 	float	rate;					// percentage of the total link speed this to be confined to (rate limiting)
 	int		mirror_target;			// vf number of the target for mirroring
 	int		mirror_dir;				// direction (in/out/both/off)
+	float	min_rate;				// percentage of the total link speed that is guaranteed (BW guarantee)
 	uint8_t	qshare[MAX_TCS];		// share (percentage) of each traffic class
 	// ignoring mirrors right now
 	/*

@@ -83,7 +83,28 @@ vfd_mlx5_set_vf_link_status(uint8_t port_id, uint16_t vf_id, int status)
 }
 
 int 
-vfd_mlx5_set_vf_mac_addr(uint8_t port_id, uint16_t vf_id, const char* mac)
+vfd_mlx5_set_vf_mac_addr(uint8_t port_id, uint16_t vf_id, const char* mac, uint8_t on)
+{
+	char ifname[IF_NAMESIZE];
+	char cmd[128] = "";
+	int ret;
+
+	if (vfd_mlx5_get_ifname(port_id, ifname))
+		return -1;
+
+	sprintf(cmd, "echo \"%s %s\" > /sys/class/net/%s/device/sriov/%d/mac_list", on ? "add" : "rem", mac, ifname, vf_id);
+
+	ret = system(cmd);
+
+	if (ret < 0) {
+	//	printf("cmd exec returned %d\n", ret);
+	}
+
+	return 0;
+}
+
+int 
+vfd_mlx5_set_vf_def_mac_addr(uint8_t port_id, uint16_t vf_id, const char* mac)
 {
 	char ifname[IF_NAMESIZE];
 	char cmd[128] = "";
@@ -141,7 +162,6 @@ vfd_mlx5_set_vf_vlan_stripq(uint8_t port_id, uint16_t vf_id, uint8_t on)
 	return 0;
 }
 
-
 int 
 vfd_mlx5_set_vf_vlan_insert(uint8_t port_id, uint16_t vf_id, uint16_t vlan_id)
 {
@@ -152,8 +172,50 @@ vfd_mlx5_set_vf_vlan_insert(uint8_t port_id, uint16_t vf_id, uint16_t vlan_id)
 	if (vfd_mlx5_get_ifname(port_id, ifname))
 		return -1;
 
+	sprintf(cmd, "echo '%d:0:802.1ad' > /sys/class/net/%s/device/sriov/%d/vlan", vlan_id, ifname, vf_id);
+
+	ret = system(cmd);
+
+	if (ret < 0) {
+	//	printf("cmd exec returned %d\n", ret);
+	}
+
+	return 0;
+}
+
+int 
+vfd_mlx5_set_vf_cvlan_insert(uint8_t port_id, uint16_t vf_id, uint16_t vlan_id)
+{
+	char ifname[IF_NAMESIZE];
+	char cmd[128] = "";
+	int ret;
+
+	if (vfd_mlx5_get_ifname(port_id, ifname))
+		return -1;
+
 	sprintf(cmd, "ip link set %s vf %d vlan %d", ifname, vf_id, vlan_id);
 
+	ret = system(cmd);
+
+	if (ret < 0) {
+	//	printf("cmd exec returned %d\n", ret);
+	}
+
+	return 0;
+}
+
+int
+vfd_mlx5_set_vf_min_rate(uint8_t port_id, uint16_t vf_id, uint16_t rate)
+{
+	char ifname[IF_NAMESIZE];
+	char cmd[128] = "";
+	int ret;
+
+	if (vfd_mlx5_get_ifname(port_id, ifname))
+		return -1;
+
+	sprintf(cmd, "echo %d > /sys/class/net/%s/device/sriov/%d/min_tx_rate", rate, ifname, vf_id);
+	
 	ret = system(cmd);
 
 	if (ret < 0) {
@@ -266,36 +328,28 @@ uint64_t
 vfd_mlx5_get_vf_spoof_stats(uint8_t port_id, uint16_t vf_id)
 {
 	char ifname[IF_NAMESIZE];
-	char tx_err_cnt[64] = "";
 
 	if (vfd_mlx5_get_ifname(port_id, ifname))
 		return -1;
 
-	sprintf(tx_err_cnt, "tx_vport%d_spoof_drop_packets", vf_id+1);
-
-	return vfd_mlx5_get_vf_ethtool_counter(ifname, tx_err_cnt);
+	return vfd_mlx5_get_vf_sysfs_counter(ifname, "tx_dropped", vf_id);;
 }
 
 int
 vfd_mlx5_get_vf_stats(uint8_t port_id, uint16_t vf_id, struct rte_eth_stats *stats)
 {
 	char ifname[IF_NAMESIZE];
-	char tx_err_cnt[64] = "";
-	char rx_err_cnt[64] = "";
 	
 	if (vfd_mlx5_get_ifname(port_id, ifname))
 		return -1;
-
-	sprintf(tx_err_cnt, "tx_vport%d_spoof_drop_packets", vf_id+1);
-	sprintf(rx_err_cnt, "rx_vport%d_drop_packets", vf_id+1);
 
 	stats->ipackets = vfd_mlx5_get_vf_sysfs_counter(ifname, "rx_packets", vf_id);
 	stats->opackets = vfd_mlx5_get_vf_sysfs_counter(ifname, "tx_packets", vf_id);
 	stats->ibytes = vfd_mlx5_get_vf_sysfs_counter(ifname, "rx_bytes", vf_id);
 	stats->obytes = vfd_mlx5_get_vf_sysfs_counter(ifname, "tx_bytes", vf_id);
 	stats->ipackets = vfd_mlx5_get_vf_sysfs_counter(ifname, "rx_packets", vf_id);
-	stats->ierrors = vfd_mlx5_get_vf_ethtool_counter(ifname, tx_err_cnt);
-	stats->oerrors = vfd_mlx5_get_vf_ethtool_counter(ifname, tx_err_cnt);
+	stats->ierrors = vfd_mlx5_get_vf_sysfs_counter(ifname, "rx_dropped", vf_id);
+	stats->oerrors = vfd_mlx5_get_vf_sysfs_counter(ifname, "tx_dropped", vf_id);
 	
 	return 0;
 }
@@ -389,6 +443,51 @@ vfd_mlx5_set_qos_pf(uint8_t port_id, sriov_port_t *pf)
 	
 	sprintf(cmd, "mlnx_qos -i %s -r %d,%d,%d,%d,%d,%d,%d,%d", ifname, tc_cfg[0].max_bw, tc_cfg[1].max_bw, tc_cfg[2].max_bw,
 				tc_cfg[3].max_bw, tc_cfg[4].max_bw, tc_cfg[5].max_bw, tc_cfg[6].max_bw, tc_cfg[7].max_bw);
+
+	ret = system(cmd);
+
+	if (ret < 0) {
+	//	printf("cmd exec returned %d\n", ret);
+	}
+
+	return 0;
+}
+
+int
+vfd_mlx5_set_vf_vlan_filter(uint8_t port_id, uint16_t vlan_id, uint64_t vf_mask, uint8_t on)
+{
+	char ifname[IF_NAMESIZE];
+	char cmd[256] = "";
+	int vf_num;
+	int ret;
+
+	if (vfd_mlx5_get_ifname(port_id, ifname))
+		return -1;
+
+	vf_num = ffs(vf_mask) - 1;
+
+	sprintf(cmd, "echo %s %d %d > /sys/class/net/%s/device/sriov/%d/trunk", on ? "add" : "rem", vlan_id, vlan_id, ifname, vf_num);
+
+	ret = system(cmd);
+
+	if (ret < 0) {
+	//	printf("cmd exec returned %d\n", ret);
+	}
+
+	return 0;
+}
+
+int 
+vfd_mlx5_set_vf_promisc(uint8_t port_id, uint16_t vf_id, uint8_t on)
+{
+	char ifname[IF_NAMESIZE];
+	char cmd[256] = "";
+	int ret;
+
+	if (vfd_mlx5_get_ifname(port_id, ifname))
+		return -1;
+
+	sprintf(cmd, "ip link set %s vf %d trust %s", ifname, vf_id, on ? "on" : "off");
 
 	ret = system(cmd);
 

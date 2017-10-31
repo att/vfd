@@ -450,12 +450,14 @@ extern vf_config_t*	read_config( char* fname ) {
 		vfc->allow_untagged = !jw_is_bool( jblob, "allow_untagged" ) ? 0 : (int) jw_value( jblob, "allow_untagged" );
 
 		vfc->strip_stag = !jw_is_bool( jblob, "strip_stag" ) ? 0 : (int) jw_value( jblob, "strip_stag" );
+		vfc->strip_ctag = !jw_is_bool( jblob, "strip_ctag" ) ? 0 : (int) jw_value( jblob, "strip_ctag" );
 		vfc->allow_bcast = !jw_is_bool( jblob, "allow_bcast" ) ? 1 : (int) jw_value( jblob, "allow_bcast" );
 		vfc->allow_mcast = !jw_is_bool( jblob, "allow_mcast" ) ? 1 : (int) jw_value( jblob, "allow_mcast" );
 		vfc->allow_un_ucast = !jw_is_bool( jblob, "allow_un_ucast" ) ? 1 : (int) jw_value( jblob, "allow_un_ucast" );
 		vfc->vfid = !jw_is_value( jblob, "vfid" ) ? -1 : (int) jw_value( jblob, "vfid" );			// there is no real default value, so set to invalid
 
 		vfc->rate = jw_missing( jblob, "rate" ) ? 0 : (float) jw_value( jblob, "rate" );
+		vfc->min_rate = jw_missing( jblob, "min_rate" ) ? 0 : (float) jw_value( jblob, "min_rate" );
 
 		if(  (stuff = jw_string( jblob, "name" )) ) {
 			vfc->name = strdup( stuff );

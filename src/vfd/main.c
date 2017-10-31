@@ -8,6 +8,7 @@
 	Date:		February 2016
 	Authors:	Alex Zelezniak (original code)
 				E. Scott Daniels (extensions)
+				Ariel Levkovich - Mellanox Technologies (mlx5 extentions)
 
 	Mods:		25 Mar 2016 - Corrected bug preventing vfid 0 from being added.
 							Added initial support for getting mtu from config.
@@ -68,6 +69,10 @@
 				20 Sep 2017 - Correct potential nil pointer exception.
 				25 Sep 2017 - Correct incorrect starting point in dump output when listing macs.
 				10 Oct 2017 - Add mirror information to dump output.
+				16 Oct 2017 - mlx5: Add vlan list support.
+				16 Oct 2017 - mlx5: Add vlan list support.
+				16 Oct 2017 - mlx5: Add mac list support.
+				16 Oct 2017 - mlx5: Add unknown unicast (promisc mode) for vf support.
 */
 
 
@@ -353,6 +358,10 @@ extern int get_vf_setting( int portid, int vf, int what ) {
 
 		case VF_VAL_UNUCAST:
 			rval = p->allow_un_ucast;
+			break
+			;
+		case VF_VAL_STRIPCVLAN:
+			rval = p->strip_ctag;
 			break;
 	}
 
@@ -757,21 +766,31 @@ static int vfd_set_ins_strip( struct sriov_port_s *port, struct vf_s *vf ) {
 		return 0;
 	}
 
-	if( vf->num_vlans == 1 ) {
-		bleat_printf( 2, "pf: %s vf: %d set strip vlan tag %d", port->name, vf->num, vf->strip_stag );
-		rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag );			// if just one in the list, push through user strip option
+	if (vf->strip_stag && vf->strip_ctag)
+		bleat_printf( 1, "cannot set strip/insert: both ctag and stag stripping is enabled" );
 
-			if( vf->strip_stag && (vf->last_updated != DELETED)) {							// when stripping, we must also insert
+	if( vf->num_vlans == 1 ) {
+		bleat_printf( 2, "pf: %s vf: %d set strip vlan tag %d", port->name, vf->num, vf->strip_stag || vf->strip_ctag );
+		rx_vlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_stag );			// if just one in the list, push through user strip option
+		rx_cvlan_strip_set_on_vf(port->rte_port_number, vf->num, vf->strip_ctag );			// if just one in the list, push through user strip option
+
+		if( (vf->strip_stag || vf->strip_ctag) && (vf->last_updated != DELETED)) {							// when stripping, we must also insert
 			bleat_printf( 2, "%s vf: %d set insert vlan tag with id %d", port->name, vf->num, vf->vlans[0] );
-			tx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->vlans[0] );
+			if (vf->strip_stag)
+				tx_vlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->vlans[0] );
+			else if (vf->strip_ctag)
+				tx_cvlan_insert_set_on_vf(port->rte_port_number, vf->num, vf->vlans[0] );
 		} else {
 			bleat_printf( 2, "%s vf: %d set insert vlan tag with id 0", port->name, vf->num );
 			tx_vlan_insert_set_on_vf( port->rte_port_number, vf->num, 0 );					// no strip, so no insert
+			tx_cvlan_insert_set_on_vf( port->rte_port_number, vf->num, 0 );					// no strip, so no insert
 		}
 	} else {
 		bleat_printf( 2, "%s vf: %d vlan list contains %d entries; strip set to %d; insert turned off", port->name, vf->num, vf->num_vlans, vf->strip_stag );
 		rx_vlan_strip_set_on_vf( port->rte_port_number, vf->num, vf->strip_stag );		// strip is variable
+		rx_cvlan_strip_set_on_vf( port->rte_port_number, vf->num, vf->strip_ctag );		// strip is variable
 		tx_vlan_insert_set_on_vf( port->rte_port_number, vf->num, 0 );					// but insert must always be clear so that packet descriptor is used
+		tx_cvlan_insert_set_on_vf( port->rte_port_number, vf->num, 0 );
 	}
 
 	return 1;
@@ -939,9 +958,11 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 					
 					for(v = 0; v < vf->num_vlans; ++v) {
 						int vlan = vf->vlans[v];
+						int strip_on = (vf->strip_stag || vf->strip_ctag) ? 1 : 0;
 						bleat_printf( 2, "delete vlan: port: %d vf: %d vlan: %d", port->rte_port_number, vf->num, vlan );
 						if( parms->forreal )
-							set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, SET_OFF );		// remove the vlan id from the list
+							if ((get_nic_type(port->rte_port_number) != VFD_MLX5) || !strip_on) // strip/insert vlan is set differently in mlx5
+								set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, SET_OFF );		// remove the vlan id from the list
 					}
 
 					for( m = vf->first_mac; m <= vf->num_macs; ++m ) {				// delete MAC addresses 
@@ -961,9 +982,11 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 
 					for(v = 0; v < vf->num_vlans; ++v) {
 						int vlan = vf->vlans[v];
+						int strip_on = (vf->strip_stag || vf->strip_ctag) ? 1 : 0;
 						bleat_printf( 2, "add vlan: port: %d vf=%d vlan=%d", port->rte_port_number, vf->num, vlan );
 						if( parms->forreal )
-							set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, on );		// add the vlan id to the list
+							if ((get_nic_type(port->rte_port_number) != VFD_MLX5) || !strip_on) // strip/insert vlan is set differently in mlx5
+								set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, on );		// add the vlan id to the list
 					}
 				}
 
@@ -977,8 +1000,12 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 						mac = vf->macs[m];
 						bleat_printf( 2, "delete mac: port: %d vf: %d mac: %s", port->rte_port_number, vf->num, mac );
 		
-						if( parms->forreal )
-							set_vf_rx_mac(port->rte_port_number, mac, vf->num, SET_OFF );
+						if( parms->forreal ) {
+							if ((get_nic_type(port->rte_port_number) == VFD_MLX5) && (m == vf->first_mac))
+								vfd_mlx5_vf_mac_remove(port->rte_port_number, vf->num);
+							else
+								set_vf_rx_mac(port->rte_port_number, mac, vf->num, SET_OFF );
+						}
 					}
 				} else {
 					bleat_printf( 2, "configuring %d mac addresses: port: %d vf: %d firstmac=%d", vf->num_macs, port->rte_port_number, vf->num, vf->first_mac );
@@ -997,24 +1024,45 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 					}
 				}
 
-				if( vf->rate > 0 ) {
+				if( vf->rate || vf->min_rate ) {
 					struct rte_eth_link link;
 
 					rte_eth_link_get_nowait(port->rte_port_number, &link);
-					bleat_printf( 1, "setting rate: %d", (int)  ( (float)link.link_speed * vf->rate ) );
-					set_vf_rate_limit( port->rte_port_number, vf->num, (uint16_t)( (float)link.link_speed * vf->rate ), 0x01 );
+
+					if( vf->rate ) {
+						bleat_printf( 1, "setting rate: %d", (int)  ( (float)link.link_speed * vf->rate ) );
+						set_vf_rate_limit( port->rte_port_number, vf->num, (uint16_t)( (float)link.link_speed * vf->rate ), 0x01 );
+					}
+
+					if( vf->min_rate ) {
+						bleat_printf( 1, "setting min_rate: %d", (int)  ( (float)link.link_speed * vf->min_rate ) );
+						set_vf_min_rate( port->rte_port_number, vf->num, (uint16_t)( (float)link.link_speed * vf->min_rate ), 0x01 );
+					}
 				}
 
 				if( vf->last_updated == DELETED ) {				// do this last!
 					if( parms->forreal ) { 
 						if( vf->rate > 0 ) { //disable rate limit
-							bleat_printf( 1, "setting rate: %d", (int)  ( 10000 * vf->rate ) );
+							bleat_printf( 1, "disabling rate limit");
 							set_vf_rate_limit( port->rte_port_number, vf->num, 0, 0x01 );
 						}
+
+						if( vf->min_rate > 0 ) { //disable rate guarantee
+							bleat_printf( 1, "disabling min rate guarantee");
+							set_vf_min_rate( port->rte_port_number, vf->num, 0, 0x01 );
+						}
+
+						/* retoring VF cfg to default */
 						vfd_set_ins_strip( port, vf );
 
 						bleat_printf( 2, "port: %d vf: %d set link status to %d", port->rte_port_number, vf->num, VF_LINK_AUTO);
 						set_vf_link_status( port->rte_port_number, vf->num, VF_LINK_AUTO);
+
+						bleat_printf( 2, "port: %d vf: %d set allow un-ucast to %d", port->rte_port_number, vf->num, SET_OFF );
+						set_vf_allow_un_ucast(port->rte_port_number, vf->num, SET_OFF);
+
+						bleat_printf( 2, "port: %d vf: %d set allow mcast to %d", port->rte_port_number, vf->num, SET_OFF );
+						set_vf_allow_mcast(port->rte_port_number, vf->num, SET_OFF);
 					}
 					vf->num = -1;								// must reset this so an add request with the now deleted number will succeed
 					// TODO -- is there anything else that we need to clean up in the struct?
@@ -1090,7 +1138,7 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 						if (ret < 0)
 							bleat_printf( 0, "ERR: bad unicast hash table parameter, return code = %d", ret);
 					}					
-						
+					
 					
 					// don't accept untagged frames
 					set_vf_allow_untagged(port->rte_port_number, vf->num, !on);
@@ -1322,6 +1370,7 @@ dump_sriov_config( sriov_conf_t* sriov_config)
 					sriov_config->ports[i].vfs[y].allow_mcast,
 					sriov_config->ports[i].vfs[y].allow_untagged,
 					sriov_config->ports[i].vfs[y].rate,
+					sriov_config->ports[i].vfs[y].min_rate,
 					sriov_config->ports[i].vfs[y].link,
 					sriov_config->ports[i].vfs[y].num_vlans,
 					sriov_config->ports[i].vfs[y].num_macs,
