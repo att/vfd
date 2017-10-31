@@ -314,12 +314,21 @@ tx_cvlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id)
 			
 	uint dev_type = get_nic_type(port_id);
 	switch (dev_type) {
+		case VFD_NIANTIC:
+			break;
+			
+		case VFD_FVL25:		
+			break;
+
+		case VFD_BNXT:
+			break;
+
 		case VFD_MLX5:
 			diag = vfd_mlx5_set_vf_cvlan_insert( port_id, vf_id, vlan_id );
 			break;
 			
 		default:
-			bleat_printf( 0, "tx_vlan_insert_set_on_vf: unknown device type: %u, port: %u", port_id, dev_type);
+			bleat_printf( 0, "tx_cvlan_insert_set_on_vf: unknown device type: %u, port: %u", port_id, dev_type);
 			break;	
 	}
 	
@@ -385,14 +394,14 @@ rx_cvlan_strip_set_on_vf(portid_t port_id, uint16_t vf_id, int on)
 			break;
 
 		default:
-			bleat_printf( 0, "rx_vlan_strip_set_on_vf: unknown device type: %u, port: %u", port_id, dev_type);
+			bleat_printf( 0, "rx_cvlan_strip_set_on_vf: unknown device type: %u, port: %u", port_id, dev_type);
 			break;	
 	}
 
 	if (diag < 0) {
-		bleat_printf( 0, "set rx vlan strip on vf failed: port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, on, diag );
+		bleat_printf( 0, "set rx cvlan strip on vf failed: port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, on, diag );
 	} else {
-		bleat_printf( 3, "set rx vlan strip on vf successful: port=%d, vf_id=%d on/off=%d", port_id, vf_id, on );
+		bleat_printf( 3, "set rx cvlan strip on vf successful: port=%d, vf_id=%d on/off=%d", port_id, vf_id, on );
 	}
 }
 
