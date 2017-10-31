@@ -2,7 +2,7 @@
 #include "sriov.h"
 
 int  
-vfd_i40e_ping_vfs(uint8_t port_id, int16_t vf_id)
+vfd_i40e_ping_vfs(uint16_t port_id, int16_t vf_id)
 {
 	int diag = 0;
 	int i;
@@ -33,7 +33,7 @@ vfd_i40e_ping_vfs(uint8_t port_id, int16_t vf_id)
 
 
 int 
-vfd_i40e_set_vf_mac_anti_spoof(uint8_t port_id, uint16_t vf_id, uint8_t on)
+vfd_i40e_set_vf_mac_anti_spoof(uint16_t port_id, uint16_t vf_id, uint8_t on)
 {
 	int diag = rte_pmd_i40e_set_vf_mac_anti_spoof(port_id, vf_id, on);
 	if (diag < 0) {
@@ -47,7 +47,7 @@ vfd_i40e_set_vf_mac_anti_spoof(uint8_t port_id, uint16_t vf_id, uint8_t on)
 
 
 int 
-vfd_i40e_set_vf_vlan_anti_spoof(uint8_t port_id, uint16_t vf_id, uint8_t on)
+vfd_i40e_set_vf_vlan_anti_spoof(uint16_t port_id, uint16_t vf_id, uint8_t on)
 {
 	int diag = rte_pmd_i40e_set_vf_vlan_anti_spoof(port_id, vf_id, on);
 	if (diag < 0) {
@@ -61,7 +61,7 @@ vfd_i40e_set_vf_vlan_anti_spoof(uint8_t port_id, uint16_t vf_id, uint8_t on)
 
 
 int 
-vfd_i40e_set_tx_loopback(uint8_t port_id, uint8_t on)
+vfd_i40e_set_tx_loopback(uint16_t port_id, uint8_t on)
 {
 	int diag = rte_pmd_i40e_set_tx_loopback(port_id, on);
 	if (diag < 0) {
@@ -75,7 +75,7 @@ vfd_i40e_set_tx_loopback(uint8_t port_id, uint8_t on)
 
 
 int 
-vfd_i40e_set_vf_unicast_promisc(uint8_t port_id, uint16_t vf_id, uint8_t on)
+vfd_i40e_set_vf_unicast_promisc(uint16_t port_id, uint16_t vf_id, uint8_t on)
 {
 	int diag = rte_pmd_i40e_set_vf_unicast_promisc(port_id, vf_id, on);
 	if (diag < 0) {
@@ -89,7 +89,7 @@ vfd_i40e_set_vf_unicast_promisc(uint8_t port_id, uint16_t vf_id, uint8_t on)
 
 
 int 
-vfd_i40e_set_vf_multicast_promisc(uint8_t port_id, uint16_t vf_id, uint8_t on)
+vfd_i40e_set_vf_multicast_promisc(uint16_t port_id, uint16_t vf_id, uint8_t on)
 {
 	int diag = rte_pmd_i40e_set_vf_multicast_promisc(port_id, vf_id, on);
 	if (diag < 0) {
@@ -103,7 +103,7 @@ vfd_i40e_set_vf_multicast_promisc(uint8_t port_id, uint16_t vf_id, uint8_t on)
 
 
 int 
-vfd_i40e_set_vf_mac_addr(uint8_t port_id, uint16_t vf_id,  __attribute__((__unused__)) struct ether_addr *mac_addr)
+vfd_i40e_set_vf_mac_addr(uint16_t port_id, uint16_t vf_id,  __attribute__((__unused__)) struct ether_addr *mac_addr)
 {
 	/* FIXME looks like this isn't working for FVL25 ? */
 	int diag = rte_eth_dev_mac_addr_add( port_id, mac_addr, vf_id );
@@ -125,7 +125,7 @@ vfd_i40e_set_vf_mac_addr(uint8_t port_id, uint16_t vf_id,  __attribute__((__unus
 	we call it only once during VFd startup
 */
 int 
-vfd_i40e_set_vf_default_mac_addr(uint8_t port_id, uint16_t vf, struct ether_addr *mac_addr ) {
+vfd_i40e_set_vf_default_mac_addr(uint16_t port_id, uint16_t vf, struct ether_addr *mac_addr ) {
 	int state = 0;
 	struct vf_s* vfp;
 
@@ -149,7 +149,7 @@ vfd_i40e_set_vf_default_mac_addr(uint8_t port_id, uint16_t vf, struct ether_addr
 }
 
 int 
-vfd_i40e_set_vf_vlan_stripq(uint8_t port_id, uint16_t vf_id, uint8_t on)
+vfd_i40e_set_vf_vlan_stripq(uint16_t port_id, uint16_t vf_id, uint8_t on)
 {
 	int diag = rte_pmd_i40e_set_vf_vlan_stripq(port_id, vf_id, on);
 	if (diag < 0) {
@@ -163,7 +163,7 @@ vfd_i40e_set_vf_vlan_stripq(uint8_t port_id, uint16_t vf_id, uint8_t on)
 
 
 int 
-vfd_i40e_set_vf_vlan_insert(uint8_t port_id, uint16_t vf_id, uint16_t vlan_id)
+vfd_i40e_set_vf_vlan_insert(uint16_t port_id, uint16_t vf_id, uint16_t vlan_id)
 {
 	int diag = rte_pmd_i40e_set_vf_vlan_insert(port_id, vf_id, vlan_id);
 	if (diag < 0) {
@@ -177,7 +177,7 @@ vfd_i40e_set_vf_vlan_insert(uint8_t port_id, uint16_t vf_id, uint16_t vlan_id)
 
 
 int 
-vfd_i40e_set_vf_broadcast(uint8_t port_id, uint16_t vf_id, uint8_t on)
+vfd_i40e_set_vf_broadcast(uint16_t port_id, uint16_t vf_id, uint8_t on)
 {
 	int diag = rte_pmd_i40e_set_vf_broadcast(port_id, vf_id, on);
 	if (diag < 0) {
@@ -191,7 +191,7 @@ vfd_i40e_set_vf_broadcast(uint8_t port_id, uint16_t vf_id, uint8_t on)
 
 
 int 
-vfd_i40e_allow_untagged(uint8_t port_id, uint16_t vf_id, uint8_t on)
+vfd_i40e_allow_untagged(uint16_t port_id, uint16_t vf_id, uint8_t on)
 {	
 	int diag = 0;
 	//int diag = rte_pmd_i40e_set_vf_vlan_untag_drop(port_id, vf_id, !on);  // don't allow untagged
@@ -206,7 +206,7 @@ vfd_i40e_allow_untagged(uint8_t port_id, uint16_t vf_id, uint8_t on)
 
 
 int 
-vfd_i40e_set_vf_vlan_filter(uint8_t port_id, uint16_t vlan_id, uint64_t vf_mask, uint8_t on)
+vfd_i40e_set_vf_vlan_filter(uint16_t port_id, uint16_t vlan_id, uint64_t vf_mask, uint8_t on)
 {
 	int diag = rte_pmd_i40e_set_vf_vlan_filter(port_id, vlan_id, vf_mask, on);
 	if (diag < 0) {
@@ -220,7 +220,7 @@ vfd_i40e_set_vf_vlan_filter(uint8_t port_id, uint16_t vlan_id, uint64_t vf_mask,
 
 
 int 
-vfd_i40e_get_vf_stats(uint8_t port_id, uint16_t vf_id, struct rte_eth_stats *stats)
+vfd_i40e_get_vf_stats(uint16_t port_id, uint16_t vf_id, struct rte_eth_stats *stats)
 {
 	int diag = rte_pmd_i40e_get_vf_stats(port_id, vf_id, stats);
 	if (diag < 0) {
@@ -238,7 +238,7 @@ vfd_i40e_get_vf_stats(uint8_t port_id, uint16_t vf_id, struct rte_eth_stats *sta
 
 
 int 
-vfd_i40e_reset_vf_stats(uint8_t port_id, uint16_t vf_id)
+vfd_i40e_reset_vf_stats(uint16_t port_id, uint16_t vf_id)
 {
 	int diag = rte_pmd_i40e_reset_vf_stats(port_id, vf_id);
 	if (diag < 0) {
@@ -252,7 +252,7 @@ vfd_i40e_reset_vf_stats(uint8_t port_id, uint16_t vf_id)
 
 
 int 
-vfd_i40e_set_all_queues_drop_en(uint8_t port_id, uint8_t on)
+vfd_i40e_set_all_queues_drop_en(uint16_t port_id, uint8_t on)
 {
 	bleat_printf( 3, "vfd_i40e_set_all_queues_drop_en not implemented: port_id=%d, on=%d", port_id, on);
 
@@ -336,7 +336,7 @@ struct i40e_virtchnl_promisc_info {
 
 
 int
-vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *data, void *param) {
+vfd_i40e_vf_msb_event_callback(uint16_t port_id, enum rte_eth_event_type type, void *data, void *param) {
 
 	struct vf_s* vfp;
 	struct rte_pmd_ixgbe_mb_event_param *p;
@@ -606,7 +606,7 @@ vfd_i40e_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, vo
 }
 
 uint32_t 
-vfd_i40e_get_pf_spoof_stats(uint8_t port_id)
+vfd_i40e_get_pf_spoof_stats(uint16_t port_id)
 {
 	uint32_t spoofed = 0;
 	struct rte_eth_stats stats;
@@ -631,7 +631,7 @@ vfd_i40e_get_pf_spoof_stats(uint8_t port_id)
 
 
 uint32_t 
-vfd_i40e_get_vf_spoof_stats(uint8_t port_id, uint16_t vf_id)
+vfd_i40e_get_vf_spoof_stats(uint16_t port_id, uint16_t vf_id)
 {
 	/* not implemented */
 	bleat_printf( 3, "vfd_i40e_get_vf_spoof_stats not implemented: port_id=%d, on=%d", port_id, vf_id);
@@ -641,7 +641,7 @@ vfd_i40e_get_vf_spoof_stats(uint8_t port_id, uint16_t vf_id)
 
 
 int 
-vfd_i40e_is_rx_queue_on(uint8_t port_id, uint16_t vf_id, __attribute__((__unused__)) int* mcounter)
+vfd_i40e_is_rx_queue_on(uint16_t port_id, uint16_t vf_id, __attribute__((__unused__)) int* mcounter)
 {
 	struct vf_s* vfp;
 	vfp = suss_vf( port_id, vf_id );		// find our vf structure matching this vf
@@ -664,7 +664,7 @@ vfd_i40e_is_rx_queue_on(uint8_t port_id, uint16_t vf_id, __attribute__((__unused
 
 
 void 
-vfd_i40e_set_pfrx_drop(uint8_t port_id,  __attribute__((__unused__)) int state)
+vfd_i40e_set_pfrx_drop(uint16_t port_id,  __attribute__((__unused__)) int state)
 {
 	/* TODO */
 	bleat_printf( 0, "vfd_i40e_set_pfrx_drop(): not implementede for port %d", port_id);
@@ -672,7 +672,7 @@ vfd_i40e_set_pfrx_drop(uint8_t port_id,  __attribute__((__unused__)) int state)
 
 
 void 
-vfd_i40e_set_rx_drop(uint8_t port_id, uint16_t vf_id, __attribute__((__unused__)) int state)
+vfd_i40e_set_rx_drop(uint16_t port_id, uint16_t vf_id, __attribute__((__unused__)) int state)
 {
 	/* TODO */
 	bleat_printf( 0, "vfd_i40e_set_pfrx_drop(): not implemented for port=%d, vf=%d", port_id, vf_id);
@@ -680,7 +680,7 @@ vfd_i40e_set_rx_drop(uint8_t port_id, uint16_t vf_id, __attribute__((__unused__)
 
 
 void 
-vfd_i40e_set_split_erop(uint8_t port_id, uint16_t vf_id, __attribute__((__unused__)) int state)
+vfd_i40e_set_split_erop(uint16_t port_id, uint16_t vf_id, __attribute__((__unused__)) int state)
 {
 	/* TODO */
 	bleat_printf( 0, "vfd_i40e_set_split_erop(): not implemented for port=%d, vf=%d", port_id, vf_id );	
@@ -688,7 +688,7 @@ vfd_i40e_set_split_erop(uint8_t port_id, uint16_t vf_id, __attribute__((__unused
 
 
 int 
-vfd_i40e_get_split_ctlreg(uint8_t port_id, uint16_t vf_id)
+vfd_i40e_get_split_ctlreg(uint16_t port_id, uint16_t vf_id)
 {
 	/* not implemented */
 	bleat_printf( 3, "vfd_i40e_get_split_ctlreg not implemented: port_id=%d, vd_id=%d", port_id, vf_id);
@@ -698,7 +698,7 @@ vfd_i40e_get_split_ctlreg(uint8_t port_id, uint16_t vf_id)
 }
 
 int 
-vfd_i40e_dump_all_vlans(uint8_t port_id)
+vfd_i40e_dump_all_vlans(uint16_t port_id)
 {
 	/* TODO */
 	bleat_printf( 0, "vfd_i40e_dump_all_vlans(): not implemented for port=%d", port_id );	

@@ -1262,7 +1262,7 @@ nic_stats_clear(portid_t port_id)
 
 
 int
-nic_stats_display(uint8_t port_id, char * buff, int bsize)
+nic_stats_display(uint16_t port_id, char * buff, int bsize)
 {
 	struct rte_eth_stats stats;
 	struct rte_eth_link link;
@@ -1322,7 +1322,7 @@ nic_stats_display(uint8_t port_id, char * buff, int bsize)
 	It is converted to uint32 for calculations here.
 */
 int
-vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsize)
+vf_stats_display(uint16_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsize)
 {
 	uint32_t vf;
 	int result = 0;
@@ -1418,7 +1418,7 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 	eturns number of characters placed into buff.
 */
 int
-port_xstats_display(uint8_t port_id, char * buff, int bsize)
+port_xstats_display(uint16_t port_id, char * buff, int bsize)
 {
 	struct rte_eth_xstat *xstats;
 	int cnt_xstats, idx_xstat;
@@ -1503,6 +1503,35 @@ dump_all_vlans(portid_t port_id)
 }
 
 
+//int lsi_event_callback(uint16_t port_id, enum rte_eth_event_type type, void *param, void *ret_param)
+int lsi_event_callback(uint16_t port_id, enum rte_eth_event_type type, void *param, void* data )
+{
+	struct rte_eth_link link;
+
+	RTE_SET_USED(param);
+	RTE_SET_USED(data);
+
+	bleat_printf( 3, "Event type: %s", type == RTE_ETH_EVENT_INTR_LSC ? "LSC interrupt" : "unknown event");
+	rte_eth_link_get_nowait(port_id, &link);
+	if (link.link_status) {
+		bleat_printf( 3, "Port %d Link Up - speed %u Mbps - %s",
+				port_id, (unsigned)link.link_speed,
+			(link.link_duplex == ETH_LINK_FULL_DUPLEX) ?
+				("full-duplex") : ("half-duplex"));
+
+		if( type == RTE_ETH_EVENT_INTR_LSC ) {
+			restore_vf_setings( port_id, -1 );				// reset _all_ VFs on the port
+		}
+	} else
+		bleat_printf( 3, "Port %d Link Down", port_id);
+
+	// notify every VF about link status change
+	ping_vfs(port_id, -1);
+
+	return 0;   // CAUTION:  as of 2017/07/05 it seems this value is ignored by dpdk, but it might not alwyas be
+}
+
+
 /*
 	Initialise a device (port).
 	Return 0 if there were no errors, 1 otherwise.  The calling programme should
@@ -1513,7 +1542,7 @@ dump_all_vlans(portid_t port_id)
 	If hw_strip_crc is false, the default will be overridden.
 */
 int
-port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_pool, int hw_strip_crc, __attribute__((__unused__)) sriov_port_t *pf )
+port_init(uint16_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_pool, int hw_strip_crc, __attribute__((__unused__)) sriov_port_t *pf )
 {
 	struct rte_eth_conf port_conf = port_conf_default;
 	const uint16_t rx_rings = 1;
@@ -1544,7 +1573,9 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 		return 1;
 	}
 
-	rte_eth_dev_callback_register(port, RTE_ETH_EVENT_INTR_LSC, lsi_event_callback, NULL);
+	rte_eth_dev_callback_register(port,
+				RTE_ETH_EVENT_INTR_LSC,
+				lsi_event_callback, NULL);
 	
 	
 	uint dev_type = get_nic_type(port);
@@ -1669,36 +1700,6 @@ extern void set_fc_on( portid_t pf, int force ) {
 	rte_eth_dev_flow_ctrl_set( pf, &fcstate );
 }
 
-
-
-//lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param, __attribute__((__unused__)) void *data)
-int 
-lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param, void *data)
-{
-	struct rte_eth_link link;
-
-	RTE_SET_USED(param);
-	RTE_SET_USED(data);
-
-	bleat_printf( 3, "Event type: %s", type == RTE_ETH_EVENT_INTR_LSC ? "LSC interrupt" : "unknown event");
-	rte_eth_link_get_nowait(port_id, &link);
-	if (link.link_status) {
-		bleat_printf( 3, "Port %d Link Up - speed %u Mbps - %s",
-				port_id, (unsigned)link.link_speed,
-			(link.link_duplex == ETH_LINK_FULL_DUPLEX) ?
-				("full-duplex") : ("half-duplex"));
-
-		if( type == RTE_ETH_EVENT_INTR_LSC ) {
-			restore_vf_setings( port_id, -1 );				// reset _all_ VFs on the port
-		}
-	} else
-		bleat_printf( 3, "Port %d Link Down", port_id);
-
-	// notify every VF about link status change
-	ping_vfs(port_id, -1);
-
-	return 0;   // CAUTION:  as of 2017/07/05 it seems this value is ignored by dpdk, but it might not alwyas be
-}
 
 
 void
