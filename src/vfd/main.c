@@ -1335,7 +1335,7 @@ timeDelta(struct timeval * now, struct timeval * before)
 	we are currently managing.
 */
 void
-restore_vf_setings(uint8_t port_id, int vf_id) {
+restore_vf_setings(uint16_t port_id, int vf_id) {
 	int i;
 	int matched = 0;		// number matched for log
 
