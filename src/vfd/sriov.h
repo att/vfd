@@ -458,6 +458,7 @@ struct sriov_port_s *suss_port( int portid );
 struct vf_s *suss_vf( int port, int vfid );
 struct mirror_s*  suss_mirror( int port, int vfid );
 void push_mac( int port, int vf, char* mac );
+extern int add_mac( int port, int vfid, char* mac );
 
 void add_refresh_queue(u_int8_t port_id, uint16_t vf_id);
 void process_refresh_queue(void);

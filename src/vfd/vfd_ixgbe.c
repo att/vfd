@@ -307,6 +307,8 @@ vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, v
 	uint16_t mbox_type;
 	uint32_t *msgbuf;
 	char	wbuf[128];
+	int i;
+	int value;
 
 	struct ether_addr *new_mac;
 
@@ -416,12 +418,37 @@ vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, v
 			break;
 
 		case IXGBE_VF_SET_MACVLAN:
+/*
 			bleat_printf( 1, "set macvlan event received: port=%d (responding nop+nak)", port_id );
-			p->retval =  RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;    /* noop & nack */
+			p->retval =  RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;    
 			bleat_printf( 3, "type: %d, port: %d, vf: %d, out: %d, _T: %s ", type, port_id, vf, p->retval, "IXGBE_VF_SET_MACVLAN");
 			bleat_printf( 3, "setting mac_vlan = %d", msgbuf[1] );
+*/
+			new_mac = (struct ether_addr *) (&msgbuf[1]);
+			snprintf( wbuf, sizeof( wbuf ), "%02x:%02x:%02x:%02x:%02x:%02x", new_mac->addr_bytes[0], new_mac->addr_bytes[1],
+					new_mac->addr_bytes[2], new_mac->addr_bytes[3], new_mac->addr_bytes[4], new_mac->addr_bytes[5] );
 
-			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
+			for( i = 0; i < 6; i++ ) {
+				if( new_mac->addr_bytes[i] ) {
+					value = 1;
+				}
+			}
+
+			if( value == 0 ) {										// all 0s -- assume reset (don't save the 0s)
+				bleat_printf( 1, "set macvlan event received, not stashed: pf/vf=%d/%d %s (responding proceed)", port_id, vf, wbuf );
+				p->retval = RTE_PMD_IXGBE_MB_EVENT_PROCEED;
+			} else {
+				if( add_mac( port_id, vf, wbuf ) ) {					// add to the VF's mac list if room on both pf and vf
+					bleat_printf( 1, "set macvlan event received: pf/vf=%d/%d %s (responding proceed)", port_id, vf, wbuf );
+					p->retval = RTE_PMD_IXGBE_MB_EVENT_PROCEED;
+				} else {
+					bleat_printf( 1, "set macvlan event received: pf/vf=%d/%d %s (responding nop+nak)", port_id, vf, wbuf );
+					p->retval =  RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;    						/* something rejected so noop & nack */
+				}
+			}
+			bleat_printf( 2, "type: %d, port: %d, vf: %d, out: %d, _T: %s ", type, port_id, vf, p->retval, "IXGBE_VF_SET_MACVLAN");
+
+			add_refresh_queue( port_id, vf );								// schedule a complete refresh when the queue goes hot
 			break;
 
 		case IXGBE_VF_API_NEGOTIATE:
