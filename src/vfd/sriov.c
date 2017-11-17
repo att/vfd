@@ -637,7 +637,7 @@ void set_vf_default_mac( portid_t port_id, const char* mac, uint32_t vf ) {
 			break;
 
 		default:
-			bleat_printf( 0, "set_vf_rx_mac: unknown device type: %u, port: %u", port_id, dev_type);
+			bleat_printf( 0, "set_vf_def_mac: unknown device type: %u, port: %u", port_id, dev_type);
 			break;	
 	}
 
