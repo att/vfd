@@ -447,6 +447,50 @@ extern void push_mac( int port, int vfid, char* mac ) {
 	bleat_printf( 1, "default mac pushed onto head of list: %s", vf->macs[0] );
 }
 
+/*
+	Accepts a mac string and adds it to the list of MACs for the pf/vf provided that
+	1) the addition of a MAC does not cause the PF limit to be exceeded, and 2)
+	the VF has room for another MAC.  O is returned if either of these does not hold;
+	1 is returned if the mac was added. mac is expected to be an ASCII-z string in 
+	human readable xx:xx... form.
+*/
+extern int add_mac( int port, int vfid, char* mac ) {
+	struct vf_s* vf = NULL;				// references to our pf/vf structs
+	struct sriov_port_s* p = NULL;
+	int total = 0;						// number of MACs defined for the PF
+	int i;
+	
+	if( (p = suss_port( port )) == NULL ) {
+		bleat_printf( 2, "add_mac: port doesn't map: %d", port );
+		return 0;
+	}
+
+	if( (vf = suss_vf( port, vfid )) == NULL ) {
+		bleat_printf( 2, "add_mac: vf doesn't map: %d/%d", port, vfid );
+		return 0;
+	}
+
+	for( i = 0; i < p->num_vfs; i++ ) {
+		total += p->vfs[i].num_macs;
+	}
+
+	if( total+1 > MAX_PF_MACS ) {
+		bleat_printf( 2, "add_mac: adding mac would exceeed PF limit: pf/vf=%d/%d mac=%s", port, vfid, mac );
+		return 0;
+	}
+
+	if( vf->num_macs +1 > MAX_VF_MACS ) {
+		bleat_printf( 2, "add_mac: adding mac would exceeed VF limit: pf/vf=%d/%d mac=%s", port, vfid, mac );
+		return 0;
+	}
+
+	vf->num_macs++;
+	strncpy( vf->macs[vf->num_macs], mac, 17 );			// will add 0 if a:b:c style resulting in short string
+	vf->macs[vf->num_macs][17] = 0;						// if long string passed in; ensure terminated
+
+	return 1;
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 /*
 	Close all open PF ports. We assume this releases memory pool allocation as well.  This will also

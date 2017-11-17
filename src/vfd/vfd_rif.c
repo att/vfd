@@ -688,7 +688,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	*/
 
 	if( vfc->nvlans <= 0 ) {							// must have at least one VLAN defined or bad things happen on the NIC
-		snprintf( mbuf, sizeof( mbuf ), "vlan id list may not be empty" );
+		snprintf( mbuf, sizeof( mbuf ), "vlan id list is empty; it must contain at least one id" );
 		bleat_printf( 1, "vf not added: %s", mbuf );
 		if( reason ) {
 			*reason = strdup( mbuf );
