@@ -1009,6 +1009,8 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 								set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, SET_OFF );		// remove the vlan id from the list
 					}
 
+					// this is done below -- why is it duplicated here? commenting out for now.
+					/*
 					for( m = vf->first_mac; m <= vf->num_macs; ++m ) {				// delete MAC addresses 
 						mac = vf->macs[m];
 						bleat_printf( 2, "delete mac: port: %d vf: %d mac: %s", port->rte_port_number, vf->num, mac );
@@ -1016,6 +1018,7 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 						if( parms->forreal )
 							set_vf_rx_mac(port->rte_port_number, mac, vf->num, SET_OFF );
 					}
+					*/
 				} else {
 					int v;
 
@@ -1051,6 +1054,8 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 								set_vf_rx_mac(port->rte_port_number, mac, vf->num, SET_OFF );
 						}
 					}
+
+					vf->num_macs = 0;							// shouldn't be referenced, but prevent accidents
 				} else {
 					bleat_printf( 2, "configuring %d mac addresses: port: %d vf: %d firstmac=%d", vf->num_macs, port->rte_port_number, vf->num, vf->first_mac );
 					for( m = vf->num_macs; m >= vf->first_mac; m-- ) {				// must run in reverse order because of FV oddness
