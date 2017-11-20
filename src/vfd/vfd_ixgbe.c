@@ -429,7 +429,7 @@ vfd_ixgbe_vf_msb_event_callback(uint16_t port_id, enum rte_eth_event_type type, 
 					new_mac->addr_bytes[2], new_mac->addr_bytes[3], new_mac->addr_bytes[4], new_mac->addr_bytes[5] );
 
 			value = 0;
-			for( i = 0; i < 6; i++ ) {
+			for( i = 0; i < 6; i++ ) {					// check to see if mac address has at least one non-zero element
 				if( new_mac->addr_bytes[i] ) {
 					value = 1;
 				}

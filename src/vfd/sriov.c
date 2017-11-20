@@ -1646,6 +1646,21 @@ port_init(uint16_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_po
 	// Enable RX in promiscuous mode for the Ethernet device.
 	rte_eth_promiscuous_enable(port);
 
+
+	/* temporary fix of missing interrupts */
+/*
+	//----- this should be covered by the intel patch 11/20/2017 --------
+	dev_type = get_nic_type(port);
+	if (dev_type == VFD_NIANTIC) {
+		uint32_t reg = port_pci_reg_read(port, 0x898);
+		bleat_printf( 2,  "port_init: port %u,  GPIE: %02" PRIx32 "" , (unsigned)port, reg);
+		reg |= 0x80000000;
+		bleat_printf( 2,  "port_init: port %u,  GPIE: %02" PRIx32 "" , (unsigned)port, reg);
+		port_pci_reg_write(port, 0x898, reg);
+	}
+*/
+
+
 	// don't allow untagged packets to any VF
 	for(i = 0; i < get_num_vfs(port); i++) {
 		set_vf_allow_untagged(port, i, 0);   

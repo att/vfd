@@ -484,6 +484,13 @@ extern int add_mac( int port, int vfid, char* mac ) {
 		return 0;
 	}
 
+	for( i = vf->first_mac; i <= vf->num_macs; i++ ) {	// check for duplicates
+		if( strcmp( vf->macs[i], mac ) == 0 ) {
+			bleat_printf( 2, "add_mac: not added, mac already in table for: pf/vf=%d/%d mac=%s", port, vfid, mac );
+			return 1;
+		}
+	}
+
 	vf->num_macs++;
 	strncpy( vf->macs[vf->num_macs], mac, 17 );			// will add 0 if a:b:c style resulting in short string
 	vf->macs[vf->num_macs][17] = 0;						// if long string passed in; ensure terminated
