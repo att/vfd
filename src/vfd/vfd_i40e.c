@@ -101,22 +101,20 @@ vfd_i40e_set_vf_multicast_promisc(uint16_t port_id, uint16_t vf_id, uint8_t on)
 	return diag;
 }
 
-
-int 
+int
 vfd_i40e_set_vf_mac_addr(uint16_t port_id, uint16_t vf_id,  __attribute__((__unused__)) struct ether_addr *mac_addr)
 {
-	/* FIXME looks like this isn't working for FVL25 ? */
-	int diag = rte_eth_dev_mac_addr_add( port_id, mac_addr, vf_id );
-	//diag = rte_pmd_i40e_set_vf_mac_addr(port_id, vf_id, mac_addr);
-		
+	int diag = rte_pmd_i40e_add_vf_mac_addr(port_id, vf_id, mac_addr);
+
 	if (diag < 0) {
-		bleat_printf( 0, "rte_pmd_i40e_set_vf_mac_addr failed: (port_pi=%d, vf_id=%d) failed rc=%d", port_id, vf_id, diag );
+		bleat_printf( 0, "rte_pmd_i40e_add_vf_mac_addr failed: (port_pi=%d, vf_id=%d) failed rc=%d", port_id, vf_id, diag );
 	} else {
-		bleat_printf( 3, "rte_pmd_i40e_set_vf_mac_addr successful: port_id=%d, vf=%d", port_id, vf_id);
+		bleat_printf( 3, "rte_pmd_i40e_add_vf_mac_addr successful: port_id=%d, vf=%d", port_id, vf_id);
 	}
-	
+
 	return diag;
 }
+
 
 /*
 	Looks like it removes all existing MAC filters.
