@@ -453,6 +453,8 @@ extern void push_mac( int port, int vfid, char* mac ) {
 	the VF has room for another MAC.  O is returned if either of these does not hold;
 	1 is returned if the mac was added. mac is expected to be an ASCII-z string in 
 	human readable xx:xx... form.
+
+	Return true on success.
 */
 extern int add_mac( int port, int vfid, char* mac ) {
 	struct vf_s* vf = NULL;				// references to our pf/vf structs
@@ -460,6 +462,7 @@ extern int add_mac( int port, int vfid, char* mac ) {
 	int total = 0;						// number of MACs defined for the PF
 	int i;
 	
+
 	if( (p = suss_port( port )) == NULL ) {
 		bleat_printf( 2, "add_mac: port doesn't map: %d", port );
 		return 0;
@@ -470,25 +473,25 @@ extern int add_mac( int port, int vfid, char* mac ) {
 		return 0;
 	}
 
+	for( i = vf->first_mac; i <= vf->num_macs; i++ ) {	// check for duplicates; if already in then just return good and leave
+		if( strcmp( vf->macs[i], mac ) == 0 ) {
+			bleat_printf( 2, "add_mac: no action needed: mac already in table for: pf/vf=%d/%d mac=%s", port, vfid, mac );
+			return 1;
+		}
+	}
+
 	for( i = 0; i < p->num_vfs; i++ ) {
 		total += p->vfs[i].num_macs;
 	}
 
 	if( total+1 > MAX_PF_MACS ) {
-		bleat_printf( 2, "add_mac: adding mac would exceeed PF limit: pf/vf=%d/%d mac=%s", port, vfid, mac );
+		bleat_printf( 2, "add_mac: adding mac would exceed PF limit: pf/vf=%d/%d current_pf=%d mac=%s", port, vfid, total, mac );
 		return 0;
 	}
 
 	if( vf->num_macs +1 > MAX_VF_MACS ) {
-		bleat_printf( 2, "add_mac: adding mac would exceeed VF limit: pf/vf=%d/%d mac=%s", port, vfid, mac );
+		bleat_printf( 2, "add_mac: adding mac would exceed VF limit: pf/vf=%d/%d current_vf=%d mac=%s", port, vfid, vf->num_macs, mac );
 		return 0;
-	}
-
-	for( i = vf->first_mac; i <= vf->num_macs; i++ ) {	// check for duplicates
-		if( strcmp( vf->macs[i], mac ) == 0 ) {
-			bleat_printf( 2, "add_mac: not added, mac already in table for: pf/vf=%d/%d mac=%s", port, vfid, mac );
-			return 1;
-		}
 	}
 
 	vf->num_macs++;
