@@ -4,9 +4,8 @@ in this file.
 
 
 
-This code makes use of DPDK 17.08 features which are currently in the master
-branch.  Pull the DPDK repo, and attempt to checkout v17.08. If this fails
-checkout the master branch until the v17.08 tag is added.
+This code makes use of DPDK 17.11 features which are currently in the master
+branch.  Pull the DPDK repo, and attempt to checkout v17.11. 
 
 Once the dpdk repo has been cloned, it must be built before anything in the 
 vfd source tree can be built. To do this follow the following steps:
@@ -23,19 +22,32 @@ vfd source tree can be built. To do this follow the following steps:
            errors during the build, it is likely this step was not 
            executed, or didn't finish correctly
 
-    -   export RTE_SDK=$PWD
+    -   export RTE_SDK=$PWD			# wise to put these in your profile
     -   export RTE_TARGET=x86_64-native-linuxapp-gcc
 
-Building VFd Itself
-After the DPDK library has been built, you can cd into vfd/src and:
-	- cd vfd    # which ever directory you cloned the vfd repo into
-	- cd lib
-	- make jsmn			# will clone and build the jsmn library
-	- make libvfd.a		# will build vfd support library
-	- cd ../vfd
-	- make clean 
-	- make
 
+Once DPDK has been built,  any patches in the dpdk_patch directory must be
+applied.  See the README in that directory for details
 
-Todo:
-	A toplevel mk/make build needs to be provided
+Building VFd Itself: 
+After DPDK is built, and patched, the following comands can be used to 
+build VFd. 
+
+	- make all
+
+	This should:
+		1) switch to the lib directory and checkout/pull jsmn from github
+		2) build jsmn and the VFd library
+		3) switch to the vfd directory and build VFd
+
+	The binary should reside in vfd/buid/app/vfd
+
+	Manual steps if using make in this directory is not desired:
+		- cd vfd    # which ever directory you cloned the vfd repo into
+		- cd lib
+		- make jsmn			# will clone and build the jsmn library
+		- make libvfd.a		# will build vfd support library
+		- cd ../vfd
+		- make clean 
+		- make
+
