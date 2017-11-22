@@ -22,12 +22,17 @@ vfd source tree can be built. To do this follow the following steps:
            errors during the build, it is likely this step was not 
            executed, or didn't finish correctly
 
-    -   export RTE_SDK=$PWD
+    -   export RTE_SDK=$PWD			# wise to put these in your profile
     -   export RTE_TARGET=x86_64-native-linuxapp-gcc
 
 
-Once DPDK has been built,  building VFd Itself: 
-	- cd vfd
+Once DPDK has been built,  any patches in the dpdk_patch directory must be
+applied.  See the README in that directory for details
+
+Building VFd Itself: 
+After DPDK is built, and patched, the following comands can be used to 
+build VFd. 
+
 	- make all
 
 	This should:
