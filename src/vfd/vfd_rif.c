@@ -1065,10 +1065,15 @@ extern int vfd_write( int fd, const_str buf, int len ) {
 	}
 
 	while( n2send > 0 && tries > 0 ) {
-		nsent = write( fd, buf, n2send );			// hard error; quit immediately
+		nsent = write( fd, buf, n2send );
 		if( nsent < 0 ) {
-			bleat_printf( 0, "WRN: write error attempting %d, wrote only %d bytes: %s", len, len - n2send, strerror( errno ) );
-			return -1;
+			if( errno != EAGAIN ) { 					// hard error; quit immediately
+				bleat_printf( 0, "WRN: write error attempting %d, wrote only %d bytes: %s", len, len - n2send, strerror( errno ) );
+				return -1;
+			}
+
+			bleat_printf( 1, "response write soft error (will retry ) attempting=%d, written=%d bytes desired=%d: %s", n2send, len - n2send, len, strerror( errno ) );
+			nsent = 0;									// will soft fail and try up to max
 		}
 			
 		if( nsent == n2send ) {
@@ -1076,11 +1081,13 @@ extern int vfd_write( int fd, const_str buf, int len ) {
 		}
 
 		if( nsent > 0 ) { 		// something sent, so we assume iplex is actively reading
+			bleat_printf( 1, "response write partial:  nsent=%d n2send=%d", nsent, n2send - nsent );
 			n2send -= nsent;
 			buf += nsent;
 		} else {
 			tries--;
-			usleep(50000);			// .5s
+			usleep(500000);			// .5s
+			
 		}
 	}
 
