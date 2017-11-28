@@ -1255,6 +1255,7 @@ static void sig_int( int sig ) {
 				abort( );					// to get core; not safe to just set term flag and end normally
 				break;
 
+		case SIGPIPE:
 		case SIGUSR1:						// for these we just ignore and go on
 		case SIGUSR2:
 		case SIGALRM:
