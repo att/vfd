@@ -8,12 +8,13 @@
 	Mods:		07 Apr 2017 - Correct default mode on open/create.
 */
 
-#include <fcntl.h>
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <errno.h>
 #include <string.h>
 
@@ -65,6 +66,7 @@ extern void* rfifo_create( char* fname, int mode ) {
 			return NULL;
 		}
 
+		fcntl( fd, F_SETPIPE_SZ, 1024 * 60 );		// ensure a 60k buffer even though 4k is the atomic write size
 		fifo->fname = strdup( fname );
 	}
 
