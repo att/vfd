@@ -21,7 +21,7 @@ function build_it
         cd $src_dir/src/lib
         git clone http://dpdk.org/git/dpdk -b $dpdk_branch
 		cd $src_dir/src/lib/dpdk
-        git am $src_dir/src/dpdk_patches/*.patch
+        git apply --ignore-whitespace $src_dir/src/dpdk_patches/*.patch
 		echo "building dpdk...."
         cat <<endKat >config/defconfig_x86_64-vfd-linuxapp-gcc
 #include "common_linuxapp"
