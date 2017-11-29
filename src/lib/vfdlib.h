@@ -156,8 +156,11 @@ void ng_flow_ref( void *vf, char *buf, long len );
 // ---------------- fifo ---------------------------------------------------------------------------------
 extern void* rfifo_create( char* fname, int mode );
 extern void rfifo_close( void* vfifo );
+extern void rfifo_detect_close( void* vfifo );
 extern char* rfifo_read( void* vfifo );
 extern char* rfifo_readln( void* vfifo );
+extern char* rfifo_blk_readln( void* vfifo );
+extern char* rfifo_to_readln( void* vfifo, int to );
 
 
 // --------------- list ----------------------------------------------------------------------------------
