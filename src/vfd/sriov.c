@@ -112,6 +112,10 @@ get_num_vfs( uint32_t port_id ) {
 	return dev_info.max_vfs;
 }
 
+/*
+	Accept a null termianted, human readable MAC and convert it into
+	an ether_addr struct.
+*/
 void
 ether_aton_r(const char *asc, struct ether_addr *addr)
 {
@@ -545,12 +549,11 @@ set_vf_allow_untagged(portid_t port_id, uint16_t vf_id, int on)
 /*
 	Add one mac to the receive mac filter whitelist.  Only the traffic sent to the dest macs in the
 	list will be passed to the VF.
-
+	If on is false, then the MAC is removed from the port.
 */
 void
 set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  uint8_t on)
 {
-
   int diag = 0;
   struct ether_addr mac_addr;
   ether_aton_r(mac, &mac_addr);
@@ -581,9 +584,10 @@ set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  uint8_t on)
 		}
 	
 		if (diag < 0) {
-			bleat_printf( 0, "set rx mac failed: port=%d vf=%d on/off=%d mac=%s rc=%d", (int)port_id, (int)vf, on, mac, diag );
+			bleat_printf( 0, "set rx whitelist mac failed: pf/vf=%d/%d on/off=%d mac=%s rc=%d", (int)port_id, (int)vf, on, mac, diag );
+		} else {
+			bleat_printf( 3, "set whitelist rx mac ok: pf/vf=%d/%d on/off=%d mac=%s rc=%d", (int)port_id, (int)vf, on, mac, diag );
 		}
-		
 	} else {
 		switch (dev_type) {
 			case VFD_MLX5:
@@ -595,9 +599,9 @@ set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  uint8_t on)
 		}
 
 		if( diag < 0 ) {
-			bleat_printf( 0, "clear rx mac failed: port=%d vf=%d on/off=%d mac=%s rc=%d", (int)port_id, (int)vf, on, mac, diag );
+			bleat_printf( 0, "delete rx mac failed: pf/vf=%d/%d on/off=%d mac=%s rc=%d", (int)port_id, (int)vf, on, mac, diag );
 		} else {
-			bleat_printf( 3, "clear rx mac successful: port=%d vf=%d on/off=%d mac=%s", (int)port_id, (int)vf, on, mac );
+			bleat_printf( 3, "delete rx mac successful: pf/vf=%d/%d on/off=%d mac=%s", (int)port_id, (int)vf, on, mac );
 		}
 	}
 }
@@ -642,11 +646,9 @@ void set_vf_default_mac( portid_t port_id, const char* mac, uint32_t vf ) {
 	}
 
 	if (diag < 0) {
-		bleat_printf( 0, "set default rx mac failed: port=%d vf=%d mac=%s rc=%d", (int)port_id, (int)vf, mac, diag );
-	}
-	
-	if (diag < 0) {
-		bleat_printf( 0, "set rx default mac failed: port=%d vf=%d mac=%s rc=%d", (int)port_id, (int)vf, mac, diag );
+		bleat_printf( 0, "set default rx mac failed: pf/vf=%d/%d mac=%s rc=%d", (int)port_id, (int)vf, mac, diag );
+	} else {
+		bleat_printf( 3, "set rx default mac ok: pf/vf=%d/%d mac=%s rc=%d", (int)port_id, (int)vf, mac, diag );
 	}
 
 	return;
@@ -715,9 +717,9 @@ set_vf_vlan_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 	}	
 	
 	if (diag < 0) {
-		bleat_printf( 0, "set vlan antispoof failed: port=%d vf=%d on/off=%d rc=%d", (int)port_id, (int)vf, on, diag );
+		bleat_printf( 0, "set vlan antispoof failed: pf/vf=%d/%d on/off=%d rc=%d", (int)port_id, (int)vf, on, diag );
 	} else {
-		bleat_printf( 3, "set vlan antispoof successful: port=%d vf=%d on/off=%d", (int)port_id, (int)vf, on );
+		bleat_printf( 3, "set vlan antispoof successful: pf/vf=%d/%d on/off=%d", (int)port_id, (int)vf, on );
 	}
 
 }
@@ -752,9 +754,9 @@ set_vf_mac_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 	}	
 	
 	if (diag < 0) {
-		bleat_printf( 0, "set mac antispoof failed: port=%d vf=%d on/off=%d rc=%d", (int)port_id, (int)vf, on, diag );
+		bleat_printf( 0, "set mac antispoof failed: pf/vf=%d/%d on/off=%d rc=%d", (int)port_id, (int)vf, on, diag );
 	} else {
-		bleat_printf( 3, "set mac antispoof successful: port=%d vf=%d on/off=%d", (int)port_id, (int)vf, on );
+		bleat_printf( 3, "set mac antispoof successful: pf/vf=%d/%d on/off=%d", (int)port_id, (int)vf, on );
 	}
 
 }
@@ -843,10 +845,10 @@ int set_mirror( portid_t port_id, uint32_t vf, uint8_t id, uint8_t target, uint8
 	
 	state = rte_eth_mirror_rule_set( port_id, &mconf, id, on_off );
 	if( state < 0 ) {
-		bleat_printf( 0, "%s: set mirror for pf=%d vf=%d mid=%d target=%d dir=%d on/off=%d failed: %d (%s)", 
+		bleat_printf( 0, "%s: set mirror for pf/vf=%d/%d mid=%d target=%d dir=%d on/off=%d failed: %d (%s)", 
 				fail_type, (int) port_id, (int) vf, (int) id, (int) target, (int) direction, (int) on_off, state, strerror( -state ) );
 	} else {
-		bleat_printf( 0, "set mirror for pf=%d vf=%d target=%d dir=%d on/off=%d  type=%d ok", (int) port_id, (int) vf, (int) target, (int) direction, (int) on_off, (int) mconf.rule_type );
+		bleat_printf( 1, "set mirror for pf/vf=%d/%d target=%d dir=%d on/off=%d  type=%d ok", (int) port_id, (int) vf, (int) target, (int) direction, (int) on_off, (int) mconf.rule_type );
 	}
 
 	return state;
@@ -1338,7 +1340,7 @@ vf_stats_display(uint16_t port_id, uint32_t pf_ari, int ivf, char * buff, int bs
 	uint32_t new_ari;
 	struct rte_pci_addr vf_pci_addr;
 	
-	bleat_printf( 5, "vf_stats_display: pf=%d, vf=%d", port_id, vf);
+	bleat_printf( 5, "vf_stats_display: pf/vf=%d/%d", port_id, vf);
 
 	struct sriov_port_s *port = &running_config->ports[port_id];	
 	new_ari = pf_ari + port->vf_offset + (vf * port->vf_stride);
