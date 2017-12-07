@@ -240,6 +240,7 @@ int main( int argc, char** argv ) {
 		fprintf( stderr, "unable to create response channel: %s: %s\n", resp_fname, strerror( errno ) );
 		exit( 1 );
 	}
+	rfifo_detect_close( resp_fifo );		// detect when other side closes the fifo; will give us an empty buffer on the next read
 
 	parms = crack_args( argc, argv );
 
@@ -271,14 +272,12 @@ int main( int argc, char** argv ) {
 
 	if( ok2read ) {
 		char* rbuf;
-		int		got_stuff = 0;
+		int		timeout = 100;			// wait 10 seconds for initial response
 
-		while( ! got_stuff ) {
-			while( ((rbuf = rfifo_readln( resp_fifo )) != NULL) &&  *rbuf ) {
-				got_stuff = 1;
-				fprintf( stdout, "%s", rbuf );
-				free( rbuf );
-			}
+		while( ((rbuf = rfifo_to_readln( resp_fifo, timeout )) != NULL) && *rbuf ) {		// blocking read until we see an empty line or nil (error)
+			fprintf( stdout, "%s", rbuf );													// buffers should be newline terminated
+			free( rbuf );
+			timeout = 0;																	// full blocking after initial read
 		}
 	} else {
 		fprintf( stderr, "internal mishap: not waiting for response; above error messages may help determine the cause of the problem\n" );

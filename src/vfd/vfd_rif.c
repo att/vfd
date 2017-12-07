@@ -518,7 +518,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	struct vf_s*	vf;					// point at the vf we need to fill in
 	char mbuf[BUF_1K];					// message buffer if we fail
 	int tot_vlans = 0;					// must count vlans and macs to ensure limit not busted
-	int tot_macs = 0;
+	//int tot_macs = 0;
 	float tot_min_rate = 0;
 	
 
@@ -588,7 +588,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 			}
 
 			tot_vlans += port->vfs[i].num_vlans;
-			tot_macs += port->vfs[i].num_macs;
+			//tot_macs += port->vfs[i].num_macs;
 			tot_min_rate += port->vfs[i].min_rate;
 		}
 	}
@@ -651,6 +651,8 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		return 0;
 	}
 
+#ifdef KEEP
+// now provided by mac_add()
 	if( vfc->nmacs + tot_macs > MAX_PF_MACS ) { 			// would bust the total across the whole PF
 		snprintf( mbuf, sizeof( mbuf ), "number of macs supplied (%d) cauess total for PF to exceed the maximum (%d)", vfc->nmacs, MAX_PF_MACS );
 		bleat_printf( 1, "vf not added: %s", mbuf );
@@ -671,21 +673,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		free_config( vfc );
 		return 0;
 	}
-
-	/*
-	We now allow multiple VLAN IDs when stripping.  Strip is set (1) and insert is cleared (0) which 
-	causes strip on Rx and the tag indicated in the packet descriptor to be inserted on Tx.
-
-	if( vfc->strip_stag  &&  vfc->nvlans > 1 ) {		// one vlan is allowed when stripping
-		snprintf( mbuf, sizeof( mbuf ), "conflicting options: strip_stag may not be supplied with a list of vlan ids" );
-		bleat_printf( 1, "vf not added: %s", mbuf );
-		if( reason ) {
-			*reason = strdup( mbuf );
-		}
-		free_config( vfc );
-		return 0;
-	}
-	*/
+#endif
 
 	if( vfc->nvlans <= 0 ) {							// must have at least one VLAN defined or bad things happen on the NIC
 		snprintf( mbuf, sizeof( mbuf ), "vlan id list is empty; it must contain at least one id" );
@@ -734,6 +722,15 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		}
 	}
 
+	for( i = 0; i < vfc->nmacs-1; i++ ) {			// if a mac is duplicated it will be weeded out when we add
+		if( ! can_add_mac( port->rte_port_number, vfc->vfid, vfc->macs[i] ) ) {
+			bleat_printf( 1, "vf not added: mac cannot be added to this port: %s", vfc->macs[i] );
+			return 0;
+		}
+	}
+
+#ifdef KEEP
+// handled by can_add_mac() now
 	if( vfc->nmacs == 1 ) {											// only need range check if one
 		if( is_valid_mac_str( vfc->macs[0] ) < 0 ) {
 			snprintf( mbuf, sizeof( mbuf ), "invalid mac in list: %s", vfc->macs[0] );
@@ -769,6 +766,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 			}
 		}
 	}
+#endif
 
 	if( ! (port->flags & PF_OVERSUB) ) {						// if in strict mode, ensure TC amounts can be added to current settings without busting 100% cap
 		if( check_qs_oversub( port, vfc->qshare ) != 0 ) {
@@ -885,8 +883,10 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	vf->num_vlans = vfc->nvlans;
 
 	for( i = 1; i <= vfc->nmacs; i++ ) {				// src is 0 based but vf list is 1 based to allow for easy push if guests sets a default mac
-		strcpy( vf->macs[i], vfc->macs[i-1] );			// length vetted earlier, so this is safe
+		//strcpy( vf->macs[i], vfc->macs[i-1] );						// length vetted earlier, so this is safe
+		add_mac( port->rte_port_number, vf->num, vfc->macs[i-1] );		// this should not fail as we vetted it before
 	}
+
 	vf->num_macs = vfc->nmacs;
 	vf->first_mac = 1;								// if guests pushes a mac, we'll add it to [0] and reset the index
 
@@ -1054,9 +1054,9 @@ extern int vfd_del_vf( parms_t* parms, sriov_conf_t* conf, char* fname, char** r
 	so we'll try only a few times if we make absolutely no progress.
 */
 extern int vfd_write( int fd, const_str buf, int len ) {
-	int	tries = 5;				// if we have this number of times where there is no progress we give up
-	int	nsent;					// number of bytes actually sent
-	int n2send;					// number of bytes left to send
+	int	tries = 10;				// we'll try for about 2.5 seconds and then we give up
+	int	nsent = 0;				// number of bytes actually sent
+	int n2send = 0;				// number of bytes left to send
 
 
 	if( (n2send = len) <= 0 ) {
@@ -1064,6 +1064,7 @@ extern int vfd_write( int fd, const_str buf, int len ) {
 		return 0;
 	}
 
+	bleat_printf( 2, "response write starts for %d bytes", len );
 	while( n2send > 0 && tries > 0 ) {
 		nsent = write( fd, buf, n2send );
 		if( nsent < 0 ) {
@@ -1072,21 +1073,21 @@ extern int vfd_write( int fd, const_str buf, int len ) {
 				return -1;
 			}
 
-			bleat_printf( 1, "response write soft error (will retry ) attempting=%d, written=%d bytes desired=%d: %s", n2send, len - n2send, len, strerror( errno ) );
+			bleat_printf( 2, "response write would block (will retry ) attempting=%d, prev-written=%d bytes total-desired=%d: %s", n2send, len - n2send, len, strerror( errno ) );
 			nsent = 0;									// will soft fail and try up to max
-		}
+		} 
 			
 		if( nsent == n2send ) {
 			return len;
 		}
 
 		if( nsent > 0 ) { 		// something sent, so we assume iplex is actively reading
-			bleat_printf( 1, "response write partial:  nsent=%d n2send=%d", nsent, n2send - nsent );
+			bleat_printf( 2, "response write partial:  nsent=%d n2send=%d", nsent, n2send - nsent );
 			n2send -= nsent;
 			buf += nsent;
 		} else {
 			tries--;
-			usleep(500000);			// .5s
+			usleep(250000);			// .25s
 			
 		}
 	}
@@ -1127,7 +1128,7 @@ extern void vfd_response( char* rpipe, int state, const_str msg ) {
 			vfd_write( fd, msg, strlen( msg ) );				// ignore state; we need to close the json regardless
 		}
 
-		snprintf( buf, sizeof( buf ), "\" }\n" );				// terminate the json
+		snprintf( buf, sizeof( buf ), "\" }\n\n" );				// terminate the json
 		vfd_write( fd, buf, strlen( buf ) );
 		bleat_printf( 2, "response written to pipe" );			// only if all of message written
 	}
