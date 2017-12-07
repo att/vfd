@@ -1,0 +1,20 @@
+
+This directory contains patches that must be applied against DPDK in order to 
+support VFd.  These patches, along with the command(s) to apply them to DPDK 
+should be described below.  Patches will be removed from this directory when 
+they are available in the current DPDK release. 
+
+We assume that VFD_PATH is the path to the VFd src directory.
+
+dpdk-dev-net-ixgbe-fix-VF-RX-hang.patch
+cd $RTE_SDK
+git apply --whitesapace=fix $VFD_PATH/dpdk_patches/dpdk-dev-net-ixgbe-fix-VF-RX-hang.patch
+
+
+dpdk-ixgbe_pf_host_configure.patch
+This patch prevents the PF code in DPDK from returning a failure indication when a 
+set macvlan callback is made.  This is a work around; the final fix in DPDK will be 
+more complex
+
+cd $RTE_SDK
+git apply --ignore-whitespace $VFD_PATH/dpdk_patches/dpdk-ixgbe_pf_host_configure.patch

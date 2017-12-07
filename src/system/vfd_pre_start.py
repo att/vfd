@@ -13,6 +13,8 @@
                 2017 10 Feb - update the code with parallel execution of VF's bind
                 2017 20 Feb - update script to bind pfs to igb_uio
                 2017 23 Feb - update script to bind pfs to vfio-pci in older AIC env
+                2017 23 Jun - update script to bind pfs to vfio-pci in all env
+                2017 01 Nov - update script to handle mellanox devices
 """
 
 import subprocess
@@ -40,6 +42,34 @@ def setup_logging(logfile):
     handler.setFormatter(log_formatter)
     log.setLevel(logging.INFO)
     log.addHandler(handler)
+
+def is_mlx5_core_loaded():
+    try:
+        subprocess.check_call('lsmod | grep mlx5_core >/dev/null', shell=True)
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+def load_mlx5_core_driver():
+    try:
+        subprocess.check_call('modprobe mlx5_core', shell=True)
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+def is_pci_stub_loaded():
+    try:
+        subprocess.check_call('lsmod | grep pci_stub >/dev/null', shell=True)
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+def load_pci_stub():
+    try:
+        subprocess.check_call('modprobe pci-stub', shell=True)
+        return True
+    except subprocess.CalledProcessError:
+        return False
 
 def is_uio_loaded():
     try:
@@ -138,9 +168,9 @@ def bind_pf(dev_id, pf_driver):
     except subprocess.CalledProcessError:
         return False
 
-# bind vf's to vfio-pci
-def bind_vfs(vfs_list):
-    bind_cmd = "dpdk_nic_bind --force -b vfio-pci %s" % ' '.join(vfs_list)
+# bind vf's to $vf_driver
+def bind_vfs(vfs_list, vf_driver="vfio-pci"):
+    bind_cmd = "dpdk_nic_bind --force -b %s %s" % (vf_driver, ' '.join(vfs_list))
     try:
         subprocess.check_call(bind_cmd, shell=True)
         log.info(bind_cmd)
@@ -148,12 +178,14 @@ def bind_vfs(vfs_list):
     except subprocess.CalledProcessError:
         return False
 
-# check whether igb_uio driver is attached to pf
+# check whether pf driver is attached to pf
 def driver_attach_pf(dev_id, pf_driver):
     index = 0
     cmd = 'lspci -k -s %s' % dev_id
+    log.info(cmd)
     try:
         driver_name = subprocess.check_output(cmd, shell=True).splitlines()[2].split(':')[1].lstrip()
+        log.info(driver_name)
         if driver_name == pf_driver:
             return [index, True]
         return [index, False]
@@ -189,23 +221,27 @@ def get_pciids_group(dev_id):
 
 # get the vendor details
 def check_vendor(pciids):
-    not_intel_broadcom_vendor = []
+    not_intel_broadcom_mlnx_vendor = []
     for pciid in pciids:
         cmd = "lspci -vm -s %s" % pciid
         try:
             vendor_name = subprocess.check_output(cmd, shell=True).splitlines()[2].split(':')[1].lstrip()
-            if vendor_name == 'Intel Corporation' or vendor_name == "Broadcom Corporation":
+            if vendor_name == 'Intel Corporation' or vendor_name == "Broadcom Corporation" \
+                    or vendor_name == 'Mellanox Technologies' :
                 continue
             else:
-                not_intel_broadcom_vendor.append(pciid)
+                not_intel_broadcom_mlnx_vendor.append(pciid)
         except IndexError:
             log.error("Not able to find valid vendor %s", pciid)
             sys.exit(1)
-    return not_intel_broadcom_vendor
+    return not_intel_broadcom_mlnx_vendor
 
-def get_vfs_path(dev_id):
+def get_vfs_path(dev_id, pf_driver):
     global file_path
-    cmd = "find /sys -name max_vfs | grep %s" % dev_id
+    if pf_driver.startswith("mlx"):
+        cmd = "find /sys -name sriov_numvfs | grep %s" % dev_id
+    else:
+        cmd = "find /sys -name max_vfs | grep %s" % dev_id
     log.info(cmd)
     try:
         file_path = subprocess.check_output(cmd, shell=True)
@@ -215,9 +251,9 @@ def get_vfs_path(dev_id):
         log.info(file_path)
         return False
 
-def create_vfs(dev_id, vfs):
+def create_vfs(dev_id, vfs, pf_driver):
     global file_path
-    get_vfs_path(dev_id)
+    get_vfs_path(dev_id, pf_driver)
     cmd = "echo %s > %s" % (str(vfs), file_path)
     log.info(cmd)
     try:
@@ -226,9 +262,9 @@ def create_vfs(dev_id, vfs):
     except subprocess.CalledProcessError:
         return False
 
-def reset_vfs(dev_id):
+def reset_vfs(dev_id, pf_driver):
     global file_path
-    get_vfs_path(dev_id)
+    get_vfs_path(dev_id, pf_driver)
     vfs = 0
     cmd = "echo %s > %s" % (str(vfs), file_path)
     log.info(cmd)
@@ -259,27 +295,26 @@ def main():
     group_pciids = list(set(real_pciids) | set(group_pciids))
     log.info("pciids: %s", group_pciids)
 
-    not_intel_broadcom_vendor = check_vendor(real_pciids)
-    if len(not_intel_broadcom_vendor) > 0:
-        log.error("VFD wont handle for this vendors: %s", not_intel_broadcom_vendor)
+    not_intel_broadcom_mlnx_vendor = check_vendor(real_pciids)
+    if len(not_intel_broadcom_mlnx_vendor) > 0:
+        log.error("VFD wont handle for this vendors: %s", not_intel_broadcom_mlnx_vendor)
         sys.exit(1)
-    
-    pf_driver = "vfio-pci"
-    vf_driver = "vfio-pci"
+
+    pf_driver = None
+    vf_driver = None
     for obj in pciids_obj:
         if 'pf_driver' in obj:
             pf_driver = obj['pf_driver']
         if 'vf_driver' in obj:
             vf_driver = obj['vf_driver']
-        if pf_driver == "igb_uio" and vf_driver == "vfio-pci":
+
+        if pf_driver == 'igb_uio' or pf_driver == 'vfio-pci' or vf_driver == 'pci-stub' or vf_driver == 'vfio-pci':
             if not is_uio_loaded():
                 if load_uio():
                     log.info("Successfully loaded uio driver")
                 else:
                     log.error("unable to load uio driver")
                     sys.exit(1)
-            else:
-                log.info("Already loaded uio driver")
 
             if not is_igb_uio_loaded():
                 log.error("please load dpdk igb_uio driver")
@@ -291,18 +326,23 @@ def main():
                 else:
                     log.error("unable to load vfio-pci driver")
                     sys.exit(1)
-            else:
-                log.info("Already loaded vfio-pci driver")
-        elif pf_driver == "vfio-pci" and vf_driver == "vfio-pci":
-            if not is_vfio_pci_loaded():
-                if load_vfio_pci_driver():
-                    log.info("Successfully loaded vfio-pci driver")
+
+            if not is_pci_stub_loaded():
+                if load_pci_stub():
+                    log.info("Successfully loaded pci-stub driver")
                 else:
-                    log.error("unable to load vfio-pci driver")
+                    log.error("unable to load pci-stub driver")
+                    sys.exit(1)   
+
+        if pf_driver == "mlx5_core":
+            if not is_mlx5_core_loaded():
+                if load_mlx5_core_driver():
+                    log.info("Successfully loaded mlx5_core driver")
+                else:
+                    log.error("unable to load mlx5_core driver")
                     sys.exit(1)
-        else:
-            log.error("Invalid drivers")
-            sys.exit(1)
+            else:
+                log.info("Already loaded mlx5_core driver")
 
         pciid = None
         if 'id' in obj:
@@ -314,183 +354,82 @@ def main():
 
         if pciid in real_pciids and pciid in group_pciids:
             group_pciids.remove(pciid)
-            status_list = driver_attach_pf(pciid, pf_driver)
-            if pf_driver == 'igb_uio':
-                if not status_list[1]:
-                    if status_list[0] == 0:
-                        if not unbind_pfs(pciid):
-                            log.error("unable to unbind %s PF", pciid)
-                            sys.exit(1)
-                        else:
-                            log.info("Successfully unbind %s", pciid)
-                            if not bind_pf(pciid, pf_driver):
-                                log.error("unable to bind %s with %s", pciid, pf_driver)
-                                sys.exit(1)
-                            else:
-                                log.info("Successfully bind %s", pciid)
-                                if reset_vfs(pciid):
-                                    if not create_vfs(pciid, vfs_count):
-                                        log.error("not able to create vfs for pf %s", pciid)
-                                        sys.exit(1)
-                                    else:
-                                        log.info("Successfully created vfs for pf: %s", pciid)
-                                        unbind_vf_list = [vfid for vfid in get_vfids(pciid) if not driver_attach_vf(vfid)[1] and driver_attach_vf(vfid)[0] == 0]
-                                        bind_vf_list = [vfid for vfid in get_vfids(pciid) if not driver_attach_vf(vfid)[1] and driver_attach_vf(vfid)[0] == 1]
-                                        if len(unbind_vf_list) > 0:
-                                            if not unbind_vfs(unbind_vf_list):
-                                                log.error("not able to unbind VF's %s ", unbind_vf_list)
-                                                sys.exit(1)
-                                            else:
-                                                log.info("Successfully unbind the VF's %s ", unbind_vf_list)
-                                        total_vfs_list = list(set(unbind_vf_list)|set(bind_vf_list))
-                                        if len(total_vfs_list) > 0:
-                                            if not bind_vfs(get_vfids(pciid)):
-                                                log.error("not able to bind VF's %s to vfio-pci", get_vfids(pciid))
-                                                sys.exit(1)
-                                            else:
-                                                log.info("Successfully bind the VF's %s to vfio-pci", get_vfids(pciid))
-                                else:
-                                    log.error("not able to reset vfs for pf %s", pciid)
-                                    sys.exit(1)
-                    else:
-                        if not bind_pf(pciid, pf_driver):
-                            log.error("unable to bind %s with %s", pciid, pf_driver)
-                            sys.exit(1)
-                        else:
-                            log.info("Successfully bind %s", pciid)
-                            if reset_vfs(pciid):
-                                if not create_vfs(pciid, vfs_count):
-                                    log.error("not able to create vfs for pf %s", pciid)
-                                    sys.exit(1)
-                                else:
-                                    log.info("Successfully created vfs for pf: %s", pciid)
-                                    unbind_vf_list = [vfid for vfid in get_vfids(pciid) if not driver_attach_vf(vfid)[1] and driver_attach_vf(vfid)[0] == 0]
-                                    bind_vf_list = [vfid for vfid in get_vfids(pciid) if not driver_attach_vf(vfid)[1] and driver_attach_vf(vfid)[0] == 1]
-                                    if len(unbind_vf_list) > 0:
-                                        if not unbind_vfs(unbind_vf_list):
-                                            log.error("not able to unbind VF's %s ", unbind_vf_list)
-                                            sys.exit(1)
-                                        else:
-                                            log.info("Successfully unbind the VF's %s ", unbind_vf_list)
-                                    total_vfs_list = list(set(unbind_vf_list)|set(bind_vf_list))
-                                    if len(total_vfs_list) > 0:
-                                        if not bind_vfs(get_vfids(pciid)):
-                                            log.error("not able to bind VF's %s to vfio-pci", get_vfids(pciid))
-                                            sys.exit(1)
-                                        else:
-                                            log.info("Successfully bind the VF's %s to vfio-pci", get_vfids(pciid))
-                            else:
-                                log.error("not able to reset vfs for pf %s", pciid)
-                                sys.exit(1)
+            if pf_driver != None:
+                if pf_driver == 'vfio-pci':
+                    status_list = driver_attach_pf(pciid, "igb_uio")
                 else:
-                    log.info("Already  %s bind to dpdk igb_uio driver", pciid)
-                    if len(get_vfids(pciid)) != vfs_count:
-                        if reset_vfs(pciid):
-                            if not create_vfs(pciid, vfs_count):
-                                log.error("not able to create vfs for pf %s", pciid)
-                                sys.exit(1)
-                            else:
-                                log.info("Successfully created vfs for pf: %s", pciid)
-                                unbind_vf_list = [vfid for vfid in get_vfids(pciid) if not driver_attach_vf(vfid)[1] and driver_attach_vf(vfid)[0] == 0]
-                                bind_vf_list = [vfid for vfid in get_vfids(pciid) if not driver_attach_vf(vfid)[1] and driver_attach_vf(vfid)[0] == 1]
-                                if len(unbind_vf_list) > 0:
-                                    if not unbind_vfs(unbind_vf_list):
-                                        log.error("not able to unbind VF's %s ", unbind_vf_list)
-                                        sys.exit(1)
-                                    else:
-                                        log.info("Successfully unbind the VF's %s ", unbind_vf_list)
-                                total_vfs_list = list(set(unbind_vf_list)|set(bind_vf_list))
-                                if len(total_vfs_list) > 0:
-                                    if not bind_vfs(total_vfs_list):
-                                        log.error("not able to bind VF's %s to vfio-pci", total_vfs_list)
-                                        sys.exit(1)
-                                    else:
-                                        log.info("Successfully bind the VF's %s to vfio-pci", get_vfids(pciid))
-                        else:
-                            log.error("not able to reset vfs for pf %s", pciid)
-                            sys.exit(1)
-                    else:
-                        unbind_vf_list = [vfid for vfid in get_vfids(pciid) if not driver_attach_vf(vfid)[1] and driver_attach_vf(vfid)[0] == 0]
-                        bind_vf_list = [vfid for vfid in get_vfids(pciid) if not driver_attach_vf(vfid)[1] and driver_attach_vf(vfid)[0] == 1]
-                        if len(unbind_vf_list) > 0:
-                            if not unbind_vfs(unbind_vf_list):
-                                log.error("not able to unbind VF's %s ", unbind_vf_list)
-                                sys.exit(1)
-                        total_vfs_list = list(set(unbind_vf_list)|set(bind_vf_list))
-                        if len(total_vfs_list) > 0:
-                            if not bind_vfs(total_vfs_list):
-                                log.error("not able to bind VF's %s to vfio-pci", total_vfs_list)
-                                sys.exit(1)
-            elif pf_driver == 'vfio-pci':
-                status_list = driver_attach_pf(pciid, pf_driver)
-                if not status_list[1]:
-                    if status_list[0] == 0:
-                        if not unbind_pfs(pciid):
-                            log.error("unable to unbind %s PF", pciid)
-                            sys.exit(1)
-                        else:
-                            log.info("Successfully unbind %s", pciid)
-                            if not bind_pf(pciid, pf_driver):
-                                log.error("unable to bind %s with %s", pciid, pf_driver)
-                                sys.exit(1)
-                            else:
-                                unbind_vf_list = [vfid for vfid in get_vfids(pciid) if not driver_attach_vf(vfid)[1] and driver_attach_vf(vfid)[0] == 0]
-                                bind_vf_list = [vfid for vfid in get_vfids(pciid) if not driver_attach_vf(vfid)[1] and driver_attach_vf(vfid)[0] == 1]
-                                if len(unbind_vf_list) > 0:
-                                    if not unbind_vfs(unbind_vf_list):
-                                        log.error("not able to unbind VF's %s ", unbind_vf_list)
-                                        sys.exit(1)
-                                total_vfs_list = list(set(unbind_vf_list)|set(bind_vf_list))
-                                if len(total_vfs_list) > 0:
-                                    if not bind_vfs(total_vfs_list):
-                                        log.error("not able to bind VF's %s to vfio-pci", total_vfs_list)
-                                        sys.exit(1)
-                    else:
-                        if not bind_pf(pciid, pf_driver):
-                            log.error("unable to bind %s with %s", pciid, pf_driver)
-                            sys.exit(1)
-                        else:
-                            unbind_vf_list = [vfid for vfid in get_vfids(pciid) if not driver_attach_vf(vfid)[1] and driver_attach_vf(vfid)[0] == 0]
-                            bind_vf_list = [vfid for vfid in get_vfids(pciid) if not driver_attach_vf(vfid)[1] and driver_attach_vf(vfid)[0] == 1]
-                            if len(unbind_vf_list) > 0:
-                                if not unbind_vfs(unbind_vf_list):
-                                    log.error("not able to unbind VF's %s ", unbind_vf_list)
-                                    sys.exit(1)
-                            total_vfs_list = list(set(unbind_vf_list)|set(bind_vf_list))
-                            if len(total_vfs_list) > 0:
-                                if not bind_vfs(total_vfs_list):
-                                    log.error("not able to bind VF's %s to vfio-pci", total_vfs_list)
-                                    sys.exit(1)
-                else:
-                    unbind_vf_list = [vfid for vfid in get_vfids(pciid) if not driver_attach_vf(vfid)[1] and driver_attach_vf(vfid)[0] == 0]
-                    bind_vf_list = [vfid for vfid in get_vfids(pciid) if not driver_attach_vf(vfid)[1] and driver_attach_vf(vfid)[0] == 1]
-                    if len(unbind_vf_list) > 0:
-                        if not unbind_vfs(unbind_vf_list):
-                            log.error("not able to unbind VF's %s ", unbind_vf_list)
-                            sys.exit(1)
-                    total_vfs_list = list(set(unbind_vf_list)|set(bind_vf_list))
-                    if len(total_vfs_list) > 0:
-                        if not bind_vfs(total_vfs_list):
-                            log.error("not able to bind VF's %s to vfio-pci", total_vfs_list)
-                            sys.exit(1)
+                    status_list = driver_attach_pf(pciid, pf_driver)
             else:
-                log.error("Invalid driver entry in the config file")
+                log.info("please pass valid pf_driver in /etc/vfd/vfd.cfg")
                 sys.exit(1)
-                
-    for group_pciid in group_pciids:
-        status_list = driver_attach_pf(pciid, pf_driver)
-        if not status_list[1]:
-            if status_list[0] == 0:
-                if not unbind_pfs(pciid):
-                    log.error("unable to unbind %s PF", pciid)
+            if status_list[1] and (vfs_count == len(get_vfids(pciid))):
+                if not bind_pf(pciid, pf_driver):
+                    log.error("unable to bind %s with %s", pciid, pf_driver)
                     sys.exit(1)
                 else:
-                    log.info("Successfully unbind %s", pciid)
-                    if not bind_pf(pciid, pf_driver):
-                        log.error("unable to bind %s with %s", pciid, pf_driver)
+                    log.info("Successfully bind to %s", pciid)
+            elif status_list[1] and (len(get_vfids(pciid)) < vfs_count) and (len(get_vfids(pciid)) == 0):
+                if reset_vfs(pciid, pf_driver):
+                    if not create_vfs(pciid, vfs_count, pf_driver):
+                        log.error("not able to create vfs for pf %s", pciid)
                         sys.exit(1)
                     else:
-                        log.info("Successfully bind %s", pciid)
+                        log.info("Successfully created vfs for pf: %s", pciid)
+                else:
+                    log.error("not able to reset vfs for pf %s", pciid)
+                    sys.exit(1)
+                if not bind_pf(pciid, pf_driver):
+                    log.error("unable to bind %s with %s", pciid, pf_driver)
+                    sys.exit(1)
+                else:
+                    log.info("Successfully bind to %s", pciid)
+            elif not status_list[1] and (vfs_count == len(get_vfids(pciid))):
+                if not bind_pf(pciid, pf_driver):
+                    log.error("unable to bind %s with %s", pciid, pf_driver)
+                    sys.exit(1)
+                else:
+                    log.info("Successfully bind to %s", pciid)
+            elif not status_list[1] and (len(get_vfids(pciid)) < vfs_count) and (len(get_vfids(pciid)) == 0):
+                if pf_driver == 'vfio-pci':
+                    drv = 'igb_uio'
+                else:
+                    drv = pf_driver
+                if not bind_pf(pciid, drv):
+                    log.error("unable to bind %s with %s", pciid, drv)
+                    sys.exit(1)
+                else:
+                    log.info("Successfully bind to %s", pciid)
+                    if reset_vfs(pciid, pf_driver):
+                        if not create_vfs(pciid, vfs_count, pf_driver):
+                            log.error("not able to create vfs for pf %s", pciid)
+                            sys.exit(1)
+                        else:
+                            log.info("Successfully created vfs for pf: %s", pciid)
+                            if not bind_pf(pciid, pf_driver):
+                                log.error("unable to bind %s with %s", pciid, pf_driver)
+                                sys.exit(1)
+                            else:
+                                log.info("Successfully bind to %s", pciid)
+                    else:
+                        log.error("not able to reset vfs for pf %s", pciid)
+                        sys.exit(1)
+            else:
+                log.error("Please check something is wrong with the drivers")
+                sys.exit(1)
+    for group_pciid in group_pciids:
+        if pf_driver != None:
+            status_list = driver_attach_pf(group_pciid, pf_driver)
+        else:
+            log.info("please pass valid pf_driver in /etc/vfd/vfd.cfg")
+            sys.exit(1)
+        log.info(status_list)
+        if not status_list[1]:
+            if status_list[0] == 0:
+                if not bind_pf(group_pciid, pf_driver):
+                    log.error("unable to bind %s with %s", group_pciid, pf_driver)
+                    sys.exit(1)
+                else:
+                    log.info("Successfully bind %s", group_pciid)
 
 if __name__ == "__main__":
     main()

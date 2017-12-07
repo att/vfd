@@ -17,6 +17,11 @@
 #define JWFMT_FLOAT		3
 
 //----------------- config.c --------------------------------------------------------------------------
+#define MIRROR_OFF			0		// mirror directions
+#define MIRROR_IN			1		// mirror just inbound traffic
+#define MIRROR_OUT			2		// mirror just outbound traffic
+#define MIRROR_ALL			3		// mirror both directions
+
                                     // tc_class_t struct flags
 #define TCF_LOW_LATENCY 0x01
 #define TCF_BW_STRICTP  0x02
@@ -30,6 +35,7 @@
 #define RF_ENABLE_QOS	0x01		// enable qos
 #define RF_INITIALISED	0x02		// init has finished
 #define RF_ENABLE_FC	0x04		// enable flow control for all PFs
+#define RF_NO_HUGE		0x08		// disable huget pages
 
 #define MAX_TCS			8			// max number of traffic classes supported (0 - 7)
 #define NUM_BWGS		8			// number of bandwidth groups
@@ -104,6 +110,7 @@ typedef struct {
 	char*	pciid;					// physical interface id (0000:07:00.1)
 	int		vfid;					// the vf on the pf 1-32
 	int		strip_stag;				// bool
+	int		strip_ctag;				// bool
 	int		allow_bcast;			// bool
 	int		allow_mcast;			// bool
 	int		allow_un_ucast;			// bool
@@ -119,6 +126,9 @@ typedef struct {
 	char**	macs;					// array of mac addresses (filter)
 	int		nmacs;					// number of mac addresses
 	float	rate;					// percentage of the total link speed this to be confined to (rate limiting)
+	int		mirror_target;			// vf number of the target for mirroring
+	int		mirror_dir;				// direction (in/out/both/off)
+	float	min_rate;				// percentage of the total link speed that is guaranteed (BW guarantee)
 	uint8_t	qshare[MAX_TCS];		// share (percentage) of each traffic class
 	// ignoring mirrors right now
 	/*
@@ -196,5 +206,14 @@ extern float get_value( void* jblob, char const* field_name, float def_value );
 extern int get_ivalue( void* jblob, char const* field_name, int def_value );
 extern char* get_value_as_str( void* jblob, char const* field_name, char const* def_value, int  fmt );
 extern char* get_str( void* jblob, char const* field_name, char const* def_value );
+
+//----------------- idmgr -----------------------------------------------------------------------------------
+extern void* mk_idm( int num_ids );
+extern int idm_alloc( void* vid );
+extern int idm_use( void* vid, int id_val );
+extern int idm_is_used( void* vid, int id_val );
+extern void idm_return( void* vid, int id_val );
+extern void idm_free( void* vid );
+
 
 #endif

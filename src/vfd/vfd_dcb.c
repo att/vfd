@@ -18,6 +18,7 @@
 #include <vfdlib.h>		// if vfdlib.h needs an include it must be included there, can't be include prior
 #include "sriov.h"
 #include "vfd_dcb.h"
+#include "vfd_mlx5.h"
 
 /*
 	Default dcb settings.
@@ -90,10 +91,15 @@ extern int vfd_dcb_config( sriov_port_t *pf ) {
 		tc_pctgs[i] = pf->tc_config[i]->min_bw;		// snag min bandwidth percentage for the tc
 	}
 
-	ixgbe_configure_dcb( pf_dev );											// set up dcb
-	qos_set_tdplane( port, tc_pctgs, pf->tc2bwg, pf->ntcs, pf->mtu );		// configure tc plane with our percentages
-	qos_set_txpplane( port, tc_pctgs, pf->tc2bwg, pf->ntcs, pf->mtu );		// configure packet plane with our percentages
-	qos_enable_arb( port );													// finally turn arbitors on
+	if (get_nic_type(port) != VFD_MLX5) { // No support in mlx5 yet
+		ixgbe_configure_dcb( pf_dev );											// set up dcb
+		qos_set_tdplane( port, tc_pctgs, pf->tc2bwg, pf->ntcs, pf->mtu );		// configure tc plane with our percentages
+		qos_set_txpplane( port, tc_pctgs, pf->tc2bwg, pf->ntcs, pf->mtu );		// configure packet plane with our percentages
+		qos_enable_arb( port );													// finally turn arbitors on
+	} else {
+		vfd_mlx5_set_prio_trust(port);
+		vfd_mlx5_set_qos_pf(port, pf);
+	}
 
 	return 0;			// for now constant; but in future it will report an error if needed
 }
@@ -139,8 +145,24 @@ extern int dcb_port_init( sriov_port_t *pf, __attribute__((__unused__)) struct r
 	}
 
 
-	rte_eth_dev_callback_register(port, RTE_ETH_EVENT_INTR_LSC, lsi_event_callback, NULL);
-	rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vf_msb_event_callback, NULL);
+	uint dev_type = get_nic_type(port);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			retval = rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vfd_ixgbe_vf_msb_event_callback, NULL);
+			break;
+			
+		case VFD_FVL25:		
+			retval = rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vfd_i40e_vf_msb_event_callback, NULL);
+			break;
+
+		case VFD_BNXT:
+			retval = rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vfd_bnxt_vf_msb_event_callback, NULL);
+			break;
+			
+		default:
+			bleat_printf( 0, "port_init: unknown device type: %u, port: %u", port, dev_type);
+			break;	
+	}
 
 
 	// Allocate and set up RX queues for the port.

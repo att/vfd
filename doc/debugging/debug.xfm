@@ -1,0 +1,212 @@
+
+
+.ll 6.5i
+.sf Helvetica
+.st 10
+.** 
+
+.dh 1 m=.5i  e=no s=21 i=0 p=16 f=Helvetica-bold
+.dh 2  m=.5i s=21 i=0      p=14 f=Helvetica-bold 
+.dh 3  m=.5i s=10 i=0      p=12 f=Helvetica-bold
+
+.cd 1 7i
+.ju on
+.hn off
+
+.im ../setup.im
+.in 0i
+.xx 2
+.xx 0
+
+	
+.dv sub_title Debugging Tricks
+.st 18p
+.sf Helvetica
+.gv date
+.if pfm
+	.bc start
+	Virtual Function Daemon -- VFd
+	.br
+	.st 14
+	&sub_title
+	.bc end
+	.st &fontsize
+.ei
+	.im ../caution.im 
+
+	&bold(Virtual Function Daemon -- VFd)
+	.sp
+	&bold(&sub_title)
+.fi
+
+.** while it makes sense to leave spaces after opening and before closing of macro parens (e.g. &ital( word )
+.** this actually causes issues for the space sensitive markdown world. Since we must support this beast
+.** of an output format, be warned that spaces will likely cause issues, as well as make it more difficult
+.** to spell check.
+
+
+
+&h1(Overview)
+&start_note
+	A basic primer on SR-IOV can be found at .br
+	&{http}www.intel.com/content/dam/doc/application-note/pci-sig-sr-iov-primer-sr-iov-technology-paper.pdf
+	.sp .3
+&end_note
+
+VFd is a daemon which manages the configuration of virtual and physical functions (VFs and PFs) which 
+are exposed by an SR-IOV &super capable network interface card (NIC).  
+Configuration and management is accomplished via DPDK which requires a DPDK enabled driver be attached
+to both the NIC PF and VFs which are to be made accessible to the guests through SR-IOV.
+Once a DPDK driver is bound to the PF and VFs, the usual debugging tools (e.g. tcpdump) become unavailable.
+This document is a set of &ital(tricks) that might make sussing out the cause of networking issues when a 
+guest is attempting to use an SR-IOV provided device. 
+
+
+
+&h1(Using Mirrors)
+As of August 2017 mirroring traffic in and out of a VF is supported provided that the underlying NICs
+support it (Niantic is confirmed).  
+When it appears that no traffic is arriving, or being transmitted, to/from a VF, mirroring the traffic
+to another VF, and running a tool like &cw(tcpdump) in the other VF can be useful. 
+
+&h2(Configuring The PF)
+To support mirroring, the &ital(enable_loopback) setting in the main VFd configuration must be set for
+the PF that owns the VFs that the guests will use. 
+If this is not set, the outbound traffic from the troubled guest will not be visible on the debugging guest.
+
+&h2(Configuring The Debugging Guest)
+The debugging guest is where the mirrored traffic will be sent and thus it should be possible to run 
+&cw(tcpdump) or similar debugging tool in the guest to examine the mirrored traffic.. 
+This guest is configured much like any other though the setting to allow unknown unicast (allow_un_ucast) 
+&bold(must) be set to false; all other settings can be left as were set up by the virtualisation (or manually). 
+The following is a sample configuration for a VF that was used as the mirror destination. 
+.sp .5
+
+.sf &cwfont
+.st 8p
+.nf
+   "allow_un_ucast":   false,
+.fo
+.st &textsize
+.sf &textfont
+.fg The setting for unknown unicast.
+.sp
+
+&h2(Configuring The Problem Guest)
+As of commits made on 10 Oct 2017 to the nic_agnosic branch, it is possible to adjust mirroring 
+without modifying the configuration file as described in subsequent paragraphs.  
+These paragraphs are left to support those with older versions of VFd, however the following command
+should be all that is needed to start/stop mirroring the traffic into or out from the problem guest:
+&ex_start
+  sudo iplex mirror <pf> <vf> <direction> <target>
+&ex_end
+.sp .5
+Where:
+&bd( .5i : Helvetica-bold : )
+&di(pf) Is the PF number as reported by the iplex show command.
+&di(vf) Is the VF number of the problem guest.
+&di(direction) Is one of in, out, all, or off to mirror inbound (Rx), outbound (Tx), all (Tx and Rx) 
+	or to turn mirroring off.
+&di(target) Is the VF number that is to receive the mirrored traffic.
+&ed
+
+
+.h3 With Older VFd Versions
+The configuration of the problem guest should be as established by the virtualisation manager, however 
+one additional configuration parameter will need to be added in order to start the mirroring.
+The mirroring definition, illustrated below, can be added as the last parameter to the existing
+configuration file.  
+Once it is added, the configuration will need to be reloaded; this process is discussed next.
+.sp .5
+.sf &cwfont
+.st 8p
+.nf
+    "mirror": { "target": 3, "direction": "all" }
+.fo
+.st &textsize
+.sf &textfont
+.sp .1
+.fg The mirroring configuration json bits added to the troubled guest's configuration file.
+.sp
+
+The &ital(target) is the VF number of the debugging guest.  This may not be known until the guest
+is started (depending on whether the guest is being started manually or via some virtualisation driver).
+The direction may be one of four strings:
+.sp .5
+&bd( .5i : Helvetica-bold : )
+&di(all)  Mirror all traffic to the target.
+&di(in)   Mirror only traffic received and passed to the guest.
+&di(out)  Mirror only traffic which is transmitted from the guest.
+&di(off)  Turn mirroring off.
+&ed
+.sp
+
+&h3(Changing Mirroring State)
+To change the mirror state for a running guest involves a set of simple steps:
+
+.sp .5
+&bd( .25i :  &difont : a=1 f=&adi_fmt )
+&adi  Make a back up of the current configuration of the VF configuration (/var/lib/vfd/config).
+&adi  Add the mirroring setting to the backup configuration setting in, our, all, or off as desired.
+&adi  Delete the current configuration from VFd (iplex delete <id>). The configuration file will be removed.
+&adi  Copy the backup file to the config directory giving it the same name as before.
+&adi  Add the newly created configuration to VFd (iplex add <id>).
+&adi  Verify in the VFd log file that mirroring state was changed for the desired VF.
+&ed
+.sp
+
+
+&h2(Detecting Configuration Issues)
+The mirroring technique works only if the traffic arriving will actually be passed into the problematic
+guest, or the traffic being sent is actually accepted by the NIC for transmission.
+In cases where traffic is not flowing because the VLAN and/or MAC address is/are not correctly configured
+the traffic will also not be mirrored as the traffic would not normally be accepted by the NIC.
+These are classic cases where the spoof counter is increasing with the Rx/Tx count at the PF level.
+
+.sp
+Mirroring will help with misconfiguration when stripping is involved. 
+If the &ital(strip_stag) setting is set to false when the guest cannot handle packets with the VLAN ID
+still in place, or the outer VLAN ID in place, the packet will be mirrored to the target guest
+and should provide a clue about the configuration problem. 
+
+
+
+
+
+.** -----------------------------------------------------------------------------------------------
+.if tfm
+	&h1( Notes: )
+	.sp 2
+	.cn showend
+	&line
+.fi
+
+.im appendix_a.im
+
+.** -----------------------------------------------------------------------------------------------
+.gv remain
+.if &_iremain < 4
+	.pa
+.ei
+	.sp 5
+.fi
+
+.if tfm
+	.sp 5
+	.ln
+	.im caution.im 
+.fi
+
+.st 8p
+.gv version
+.gv Date
+&def_list( .75i &ditext )
+&di(Source) vfd/doc/debug.xfm
+.sp 1
+&di(Original) 25 September 2017
+.sp 1
+&di(Revised) &_date
+.sp 1
+&di(Formatter) &_ver
+&end_dlist
+

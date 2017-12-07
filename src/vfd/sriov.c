@@ -26,10 +26,12 @@
 				11 Feb 2017 - Changes to prevent packet loss which was occuring when the drop
 					enable bit was set for VF queues. Fixed alignment on show output to handle
 					wider fields.
+				17 Feb 2017 - Changes to accommodate support of i40e and bnxt NICs
 				21 Mar 2017 - Ensure that looback is set on a port when reset/negotiate callbacks
 					are dirven.
 				06 Apr 2017 - Add set flowcontrol function, add mtu/jumbo confirmation msg to log.
 				22 May 2017 - Add ability to remove a whitelist RX mac.
+				10 Oct 2017 - Add range check on mirror target.
 
 	useful doc:
 				 http://www.intel.com/content/dam/doc/design-guide/82599-sr-iov-driver-companion-guide.pdf
@@ -38,6 +40,7 @@
 #include "vfdlib.h"
 #include "sriov.h"
 #include "vfd_dcb.h"
+#include "vfd_mlx5.h"
 
 
 #define RTE_PMD_PARAM_UNSET -1
@@ -80,7 +83,8 @@ xdigit(char c)
 	Get_max_qpp returns the maximum number of queues which could be supported
 	by a pool based on the current number of VFs configured for the PF.
 */
-static int get_max_qpp( uint32_t port_id ) {
+int 
+get_max_qpp( uint32_t port_id ) {
 	struct rte_eth_dev_info dev_info;
 
 	rte_eth_dev_info_get( port_id, &dev_info );
@@ -99,7 +103,8 @@ static int get_max_qpp( uint32_t port_id ) {
 /*
 	Return the number of VFs for the port.
 */
-static int get_num_vfs( uint32_t port_id ) {
+int 
+get_num_vfs( uint32_t port_id ) {
 	struct rte_eth_dev_info dev_info;
 
 	rte_eth_dev_info_get( port_id, &dev_info );
@@ -138,9 +143,89 @@ ether_aton_r(const char *asc, struct ether_addr *addr)
 
 
 int
+get_nic_type(portid_t port_id)
+{
+	struct rte_eth_dev_info dev_info;
+	rte_eth_dev_info_get(port_id, &dev_info);
+	
+	if (strcmp(dev_info.driver_name, "net_bnxt") == 0)
+		return VFD_BNXT;
+	
+	if (strcmp(dev_info.driver_name, "net_ixgbe") == 0)
+		return VFD_NIANTIC;
+	
+	if (strcmp(dev_info.driver_name, "net_i40e") == 0)
+		return VFD_FVL25;
+
+	if (strcmp(dev_info.driver_name, "net_mlx5") == 0)
+		return VFD_MLX5;
+	
+	return 0;
+}
+
+int
+set_vf_link_status(portid_t port_id, uint16_t vf, int status)
+{
+	int diag = 0;
+
+	if ((status > VF_LINK_ON) || (status < VF_LINK_OFF))
+			bleat_printf( 0, "set_vf_link_status: invalid link status: %d, port: %u", status, port_id);
+
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_MLX5:
+			diag = vfd_mlx5_set_vf_link_status(port_id, vf, status);
+			break;
+		default:
+			bleat_printf( 0, "set_vf_link_status: unknown device type: %u, port: %u", port_id, dev_type);
+	}
+
+	if (diag != 0) {
+		bleat_printf( 0, "set_vf_link_status: unable to set link state %d: (%d) %s", status, diag, strerror( -diag ) );
+	}
+
+	return diag;
+}
+
+int
+set_vf_min_rate(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk)
+{
+	int diag = 0;
+
+	if (q_msk == 0)
+		return 0;
+
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			break;
+			
+		case VFD_FVL25:
+			break;
+
+		case VFD_BNXT:
+			break;
+			
+		case VFD_MLX5:
+			diag = vfd_mlx5_set_vf_min_rate(port_id, vf, rate);
+			break;
+
+		default:
+			bleat_printf( 0, "set_vf_min_rate: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
+	}
+
+	if (diag != 0) {
+		bleat_printf( 0, "set_vf_min_rate: unable to set value %u: (%d) %s", rate, diag, strerror( -diag ) );
+	}
+
+	return diag;
+}
+
+int
 set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk)
 {
-	int diag;
+	int diag = 0;
 	struct rte_eth_link link;
 
 	if (q_msk == 0)
@@ -152,13 +237,36 @@ set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk)
 		bleat_printf( 0, "set_vf_rate: invalid rate value: %u bigger than link speed: %u", rate, link.link_speed);
 		return 1;
 	}
-	diag = rte_eth_set_vf_rate_limit(port_id, vf, rate, q_msk);
+	
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			diag = vfd_ixgbe_set_vf_rate_limit(port_id, vf, rate, q_msk);
+			break;
+			
+		case VFD_FVL25:
+			break;
+
+		case VFD_BNXT:
+			break;
+			
+		case VFD_MLX5:
+			diag = vfd_mlx5_set_vf_rate_limit(port_id, vf, rate);
+			break;
+
+		default:
+			bleat_printf( 0, "set_vf_rate: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
+	}
+
 	if (diag != 0) {
 		bleat_printf( 0, "set_vf_rate: unable to set value %u: (%d) %s", rate, diag, strerror( -diag ) );
 	}
 
 	return diag;
 }
+
+
 
 /*
 	Set VLAN tag on transmission.  If no tag is to be inserted, then a VLAN
@@ -167,10 +275,31 @@ set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk)
 void
 tx_vlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id)
 {
-	int diag;
+	int diag = 0;
+			
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			diag = vfd_ixgbe_set_vf_vlan_insert( port_id, vf_id, vlan_id );
+			break;
+			
+		case VFD_FVL25:		
+			diag = vfd_i40e_set_vf_vlan_insert(port_id, vf_id, vlan_id);
+			break;
 
-	diag = rte_pmd_ixgbe_set_vf_vlan_insert( port_id, vf_id, vlan_id );
+		case VFD_BNXT:
+			diag = vfd_bnxt_set_vf_vlan_insert( port_id, vf_id, vlan_id );
+			break;
 
+		case VFD_MLX5:
+			diag = vfd_mlx5_set_vf_vlan_insert( port_id, vf_id, vlan_id );
+			break;
+			
+		default:
+			bleat_printf( 0, "tx_vlan_insert_set_on_vf: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
+	}
+	
 	if (diag < 0) {
 		bleat_printf( 0, "set tx vlan insert on vf failed: port_pi=%d, vf_id=%d, vlan_id=%d) failed rc=%d", port_id, vf_id, vlan_id, diag );
 	} else {
@@ -178,13 +307,66 @@ tx_vlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id)
 	}
 }
 
+void
+tx_cvlan_insert_set_on_vf(portid_t port_id, uint16_t vf_id, int vlan_id)
+{
+	int diag = 0;
+			
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			break;
+			
+		case VFD_FVL25:		
+			break;
+
+		case VFD_BNXT:
+			break;
+
+		case VFD_MLX5:
+			diag = vfd_mlx5_set_vf_cvlan_insert( port_id, vf_id, vlan_id );
+			break;
+			
+		default:
+			bleat_printf( 0, "tx_cvlan_insert_set_on_vf: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
+	}
+	
+	if (diag < 0) {
+		bleat_printf( 0, "set tx cvlan insert on vf failed: port_pi=%d, vf_id=%d, vlan_id=%d) failed rc=%d", port_id, vf_id, vlan_id, diag );
+	} else {
+		bleat_printf( 3, "set tx cvlan insert on vf successful: port=%d, vf=%d vlan=%d", port_id, vf_id, vlan_id );
+	}
+}
 
 void
 rx_vlan_strip_set_on_vf(portid_t port_id, uint16_t vf_id, int on)
 {
-	int diag;
+	int diag = 0;
+			
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			diag = vfd_ixgbe_set_vf_vlan_stripq(port_id, vf_id, on);
+		break;
 
-	diag = rte_pmd_ixgbe_set_vf_vlan_stripq(port_id, vf_id, on);
+		case VFD_FVL25:		
+			diag = vfd_i40e_set_vf_vlan_stripq(port_id, vf_id, on);
+			break;
+
+		case VFD_BNXT:
+			diag = vfd_bnxt_set_vf_vlan_stripq(port_id, vf_id, on);
+			break;
+			
+		case VFD_MLX5:
+			diag = vfd_mlx5_set_vf_vlan_stripq(port_id, vf_id, on);
+			break;
+
+		default:
+			bleat_printf( 0, "rx_vlan_strip_set_on_vf: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
+	}
+
 	if (diag < 0) {
 		bleat_printf( 0, "set rx vlan strip on vf failed: port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, on, diag );
 	} else {
@@ -192,12 +374,61 @@ rx_vlan_strip_set_on_vf(portid_t port_id, uint16_t vf_id, int on)
 	}
 }
 
+void
+rx_cvlan_strip_set_on_vf(portid_t port_id, uint16_t vf_id, int on)
+{
+	int diag = 0;
+			
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			break;
+
+		case VFD_FVL25:		
+			break;
+
+		case VFD_BNXT:
+			break;
+			
+		case VFD_MLX5:
+			break;
+
+		default:
+			bleat_printf( 0, "rx_cvlan_strip_set_on_vf: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
+	}
+
+	if (diag < 0) {
+		bleat_printf( 0, "set rx cvlan strip on vf failed: port_pi=%d, vf_id=%d, on=%d) failed rc=%d", port_id, vf_id, on, diag );
+	} else {
+		bleat_printf( 3, "set rx cvlan strip on vf successful: port=%d, vf_id=%d on/off=%d", port_id, vf_id, on );
+	}
+}
 
 void
 set_vf_allow_bcast(portid_t port_id, uint16_t vf_id, int on)
 {
-  int ret = rte_eth_dev_set_vf_rxmode(port_id, vf_id, ETH_VMDQ_ACCEPT_BROADCAST,(uint8_t) on);
+  int ret = 0;
 
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			ret = vfd_ixgbe_set_vf_broadcast(port_id, vf_id, on);
+			break;
+			
+		case VFD_FVL25:		
+			ret = vfd_i40e_set_vf_broadcast(port_id, vf_id, on);
+			break;
+
+		case VFD_BNXT:
+			ret = vfd_bnxt_set_vf_broadcast(port_id, vf_id, on);
+			break;
+			
+		default:
+			bleat_printf( 0, "set_vf_allow_bcast: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
+	}
+	
 	if (ret < 0) {
 		bleat_printf( 0, "set allow bcast failed: port/vf %d/%d on/off=%d rc=%d", port_id, vf_id, on, ret );
 	} else {
@@ -209,8 +440,30 @@ set_vf_allow_bcast(portid_t port_id, uint16_t vf_id, int on)
 void
 set_vf_allow_mcast(portid_t port_id, uint16_t vf_id, int on)
 {
-	int ret = rte_eth_dev_set_vf_rxmode(port_id, vf_id, ETH_VMDQ_ACCEPT_MULTICAST,(uint8_t) on);
+	int ret = 0;
 
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			ret = vfd_ixgbe_set_vf_multicast_promisc(port_id, vf_id, on);
+			break;
+			
+		case VFD_FVL25:		
+			ret = vfd_i40e_set_vf_multicast_promisc(port_id, vf_id, on);
+			break;
+
+		case VFD_BNXT:
+			ret = vfd_bnxt_set_vf_multicast_promisc(port_id, vf_id, on);
+			break;
+			
+		case VFD_MLX5:
+			ret = vfd_mlx5_set_vf_promisc(port_id, vf_id, on);
+			break;
+		default:
+			bleat_printf( 0, "set_vf_allow_mcast: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
+	}
+	
 	if (ret < 0) {
 		bleat_printf( 0, "set allow mcast failed: port/vf %d/%d on/off=%d rc=%d", port_id, vf_id, on, ret );
 	} else {
@@ -222,8 +475,31 @@ set_vf_allow_mcast(portid_t port_id, uint16_t vf_id, int on)
 void
 set_vf_allow_un_ucast(portid_t port_id, uint16_t vf_id, int on)
 {
-	int ret = rte_eth_dev_set_vf_rxmode(port_id, vf_id, ETH_VMDQ_ACCEPT_HASH_UC,(uint8_t) on);
+	int ret = 0;
 
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			ret = vfd_ixgbe_set_vf_unicast_promisc(port_id, vf_id, on);
+			break;
+			
+		case VFD_FVL25:		
+			ret = vfd_i40e_set_vf_unicast_promisc(port_id, vf_id, on);
+			break;
+
+		case VFD_BNXT:	
+			ret = vfd_bnxt_set_vf_unicast_promisc(port_id, vf_id, on);
+			break;
+			
+		case VFD_MLX5:		
+			ret = vfd_mlx5_set_vf_promisc(port_id, vf_id, on);
+			break;
+
+		default:
+			bleat_printf( 0, "set_vf_allow_un_ucast: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
+	}
+	
 	if (ret < 0) {
 		bleat_printf( 0, "set allow ucast failed: port/vf %d/%d on/off=%d rc=%d", port_id, vf_id, on, ret );
 	} else {
@@ -235,14 +511,31 @@ set_vf_allow_un_ucast(portid_t port_id, uint16_t vf_id, int on)
 void
 set_vf_allow_untagged(portid_t port_id, uint16_t vf_id, int on)
 {
-  uint16_t rx_mode = 0;
-  rx_mode |= ETH_VMDQ_ACCEPT_UNTAG;
+	int ret = 0;
 
-  bleat_printf( 3, "set_vf_allow_untagged(): rx_mode = %d, on = %dn", rx_mode, on);
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			ret = vfd_ixgbe_allow_untagged(port_id, vf_id, on);
+			break;
+			
+		case VFD_FVL25:		
+			ret = vfd_i40e_allow_untagged(port_id, vf_id, on);
+			break;
 
-	int ret = rte_eth_dev_set_vf_rxmode(port_id, vf_id, rx_mode, (uint8_t) on);
-
-	if (ret >= 0) {
+		case VFD_BNXT:		
+			ret = vfd_bnxt_allow_untagged(port_id, vf_id, on);
+			break;
+		case VFD_MLX5:
+			ret = vfd_mlx5_set_vf_vlan_filter(port_id, 0, VFN2MASK(vf_id), on);
+			break;
+			
+		default:
+			bleat_printf( 0, "set_vf_allow_untagged: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
+	}
+	
+	if (ret < 0) {
 		bleat_printf( 3, "set allow untagged failed: port/vf %d/%d on/off=%d rc=%d", port_id, vf_id, on, ret );
 	} else {
 		bleat_printf( 3, "set allow untagged successful: port/vf %d/%d on/off=%d", port_id, vf_id, on );
@@ -255,57 +548,139 @@ set_vf_allow_untagged(portid_t port_id, uint16_t vf_id, int on)
 
 */
 void
-//set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  __attribute__((__unused__)) uint8_t on)
 set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  uint8_t on)
 {
-	int diag;
-	struct ether_addr mac_addr;
 
-	ether_aton_r(mac, &mac_addr);
+  int diag = 0;
+  struct ether_addr mac_addr;
+  ether_aton_r(mac, &mac_addr);
 
-	if( on ) {
-		diag = rte_eth_dev_mac_addr_add(port_id, &mac_addr, vf);
+  uint dev_type = get_nic_type(port_id);
+	if(on)
+	{
+		switch (dev_type) {
+			case VFD_NIANTIC:
+				diag = vfd_ixgbe_set_vf_mac_addr(port_id, vf, &mac_addr);
+				break;
+				
+			case VFD_FVL25:		
+				diag = vfd_i40e_set_vf_mac_addr(port_id, vf, &mac_addr);
+				break;
+
+			case VFD_BNXT:	
+				diag = vfd_bnxt_set_vf_mac_addr(port_id, vf, &mac_addr);
+				break;
+				
+			case VFD_MLX5:	
+				diag = vfd_mlx5_set_vf_mac_addr(port_id, vf, mac, on);
+				break;
+
+			default:
+				bleat_printf( 0, "set_vf_rx_mac: unknown device type: %u, port: %u", port_id, dev_type);
+				break;	
+		}
+	
 		if (diag < 0) {
 			bleat_printf( 0, "set rx mac failed: port=%d vf=%d on/off=%d mac=%s rc=%d", (int)port_id, (int)vf, on, mac, diag );
-		} else {
-			bleat_printf( 3, "set rx mac successful: port=%d vf=%d on/off=%d mac=%s", (int)port_id, (int)vf, on, mac );
 		}
+		
 	} else {
-		diag = rte_eth_dev_mac_addr_remove( port_id, &mac_addr );
+		switch (dev_type) {
+			case VFD_MLX5:
+				diag = vfd_mlx5_set_vf_mac_addr(port_id, vf, mac, on);
+				break;
+			default:
+				diag = rte_eth_dev_mac_addr_remove( port_id, &mac_addr );
+				break;
+		}
+
 		if( diag < 0 ) {
 			bleat_printf( 0, "clear rx mac failed: port=%d vf=%d on/off=%d mac=%s rc=%d", (int)port_id, (int)vf, on, mac, diag );
 		} else {
 			bleat_printf( 3, "clear rx mac successful: port=%d vf=%d on/off=%d mac=%s", (int)port_id, (int)vf, on, mac );
 		}
 	}
-
 }
+
 
 /*
 	Set the 'default' MAC address for the VF. This is different than the set_vf_rx_mac() funciton
 	inasmuch as the address should be what the driver reports to a DPDK application when the 
 	MAC address is 'read' from the device.
+
+	CAUTION:  Intel FV doesn't provide a separate function to set the default; the last MAC set is
+			used as the default. The caller probably should set all MACs in the white list with
+			set_vf_rx_mac() calls first, and then set the default so that the correct behavour
+			happens if the underlying NIC is fortville.
 */
 void set_vf_default_mac( portid_t port_id, const char* mac, uint32_t vf ) {
-	int state;
+	int diag = 0;
 	struct ether_addr mac_addr;
-
 	ether_aton_r(mac, &mac_addr);
 
-	if( (state = rte_pmd_ixgbe_set_vf_mac_addr( port_id, vf, &mac_addr )) >= 0 ) {
-		bleat_printf( 3, "set default mac successful: port=%d vf=%d mac=%s", (int)port_id, (int)vf, mac );
-	} else {
-		bleat_printf( 3, "set default mac failed: port=%d vf=%d mac=%s state=%d", (int)port_id, (int)vf, mac, state );
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			diag = vfd_ixgbe_set_vf_default_mac_addr(port_id, vf, &mac_addr );
+			break;
+			
+		case VFD_FVL25:		
+			diag = vfd_i40e_set_vf_default_mac_addr(port_id, vf, &mac_addr );
+			break;
+
+		case VFD_BNXT:	
+			diag = vfd_bnxt_set_vf_default_mac_addr(port_id, vf, &mac_addr );
+			break;
+			
+		case VFD_MLX5:	
+			diag = vfd_mlx5_set_vf_def_mac_addr(port_id, vf, mac);
+			break;
+
+		default:
+			bleat_printf( 0, "set_vf_def_mac: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
 	}
+
+	if (diag < 0) {
+		bleat_printf( 0, "set default rx mac failed: port=%d vf=%d mac=%s rc=%d", (int)port_id, (int)vf, mac, diag );
+	}
+	
+	if (diag < 0) {
+		bleat_printf( 0, "set rx default mac failed: port=%d vf=%d mac=%s rc=%d", (int)port_id, (int)vf, mac, diag );
+	}
+
+	return;
 }
 
 
 void
 set_vf_rx_vlan(portid_t port_id, uint16_t vlan_id, uint64_t vf_mask, uint8_t on)
 {
-	int diag;
+	int diag = 0;
 
-	diag = rte_eth_dev_set_vf_vlan_filter(port_id, vlan_id, vf_mask, on);
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			diag = vfd_ixgbe_set_vf_vlan_filter(port_id, vlan_id, vf_mask, on);
+			break;
+			
+		case VFD_FVL25:		
+			diag = vfd_i40e_set_vf_vlan_filter(port_id, vlan_id, vf_mask, on);
+			break;
+
+		case VFD_BNXT:
+			diag = vfd_bnxt_set_vf_vlan_filter(port_id, vlan_id, vf_mask, on);
+			break;
+
+		case VFD_MLX5:	
+			diag = vfd_mlx5_set_vf_vlan_filter(port_id, vlan_id, vf_mask, on);
+			break;
+			
+		default:
+			bleat_printf( 0, "set_vf_rx_vlan: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
+	}
+	
 	if (diag < 0) {
 		bleat_printf( 0, "set rx vlan filter failed: port=%d vlan=%d on/off=%d rc=%d", (int)port_id, (int) vlan_id, on, diag );
 	} else {
@@ -318,9 +693,27 @@ set_vf_rx_vlan(portid_t port_id, uint16_t vlan_id, uint64_t vf_mask, uint8_t on)
 void
 set_vf_vlan_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 {
-	int diag;
+	int diag = 0;
+			
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			diag = vfd_ixgbe_set_vf_vlan_anti_spoof(port_id, vf, on);
+			break;
+			
+		case VFD_FVL25:		
+			diag = vfd_i40e_set_vf_vlan_anti_spoof(port_id, vf, on);
+			break;
 
-	diag = rte_pmd_ixgbe_set_vf_vlan_anti_spoof(port_id, vf, on);
+		case VFD_BNXT:
+			diag = vfd_bnxt_set_vf_vlan_anti_spoof(port_id, vf, on);
+			break;
+			
+		default:
+			bleat_printf( 0, "set_vf_vlan_anti_spoofing: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
+	}	
+	
 	if (diag < 0) {
 		bleat_printf( 0, "set vlan antispoof failed: port=%d vf=%d on/off=%d rc=%d", (int)port_id, (int)vf, on, diag );
 	} else {
@@ -333,9 +726,31 @@ set_vf_vlan_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 void
 set_vf_mac_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 {
-	int diag;
+	int diag = 0;
+			
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			diag = vfd_ixgbe_set_vf_mac_anti_spoof(port_id, vf, 1);  // always set mac anti-spoof on for niantic
+			break;
+			
+		case VFD_FVL25:		
+			diag = vfd_i40e_set_vf_mac_anti_spoof(port_id, vf, 0);  // always set mac anti-spoof off for FVL
+			break;
 
-	diag = rte_pmd_ixgbe_set_vf_mac_anti_spoof(port_id, vf, on);
+		case VFD_BNXT:
+			diag = vfd_bnxt_set_vf_mac_anti_spoof(port_id, vf, on);
+			break;
+
+		case VFD_MLX5:
+			diag = vfd_mlx5_set_vf_mac_anti_spoof(port_id, vf, on);
+			break;
+			
+		default:
+			bleat_printf( 0, "set_vf_mac_anti_spoofing: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
+	}	
+	
 	if (diag < 0) {
 		bleat_printf( 0, "set mac antispoof failed: port=%d vf=%d on/off=%d rc=%d", (int)port_id, (int)vf, on, diag );
 	} else {
@@ -347,9 +762,30 @@ set_vf_mac_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 void
 tx_set_loopback(portid_t port_id, u_int8_t on)
 {
-	int diag;
+	int diag = 0;
+			
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			diag = vfd_ixgbe_set_tx_loopback(port_id, on);
+			break;
+			
+		case VFD_FVL25:		
+			diag = vfd_i40e_set_tx_loopback(port_id, on);
+			break;
 
-	diag = rte_pmd_ixgbe_set_tx_loopback(port_id, on);
+		case VFD_BNXT:
+			diag = vfd_bnxt_set_tx_loopback(port_id, on);
+			break;
+			
+		case VFD_MLX5:
+			break;
+
+		default:
+			bleat_printf( 0, "tx_set_loopback: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
+	}	
+
 	if (diag < 0) {
 		bleat_printf( 0, "set tx loopback failed: port=%d on/off=%d rc=%d", (int)port_id, on, diag );
 	} else {
@@ -358,22 +794,89 @@ tx_set_loopback(portid_t port_id, u_int8_t on)
 }
 
 /*
+	Set mirroring on/off for a pf/vf combination. Direction is a MIRROR_ const.
+	The error message generated becomes critical (CRI) if the attempt to disable a mirror
+	fails.  This is a critical situation as hanging mirrors at shutdown have been suspected
+	of causing physcial machines to crash when DPDK reconfigures the NIC (on VFd start, or 
+	other use).
+*/
+int set_mirror( portid_t port_id, uint32_t vf, uint8_t id, uint8_t target, uint8_t direction ) {
+	struct rte_eth_mirror_conf mconf;
+	uint8_t on_off = SET_ON;
+	int state = 0;
+	char const* fail_type = "WRN";
+
+	if( target > MAX_VFS ) {
+		bleat_printf( 0, "mirror not set: target vf out of range: %d", (int) target );
+		return -1;
+	}
+
+	memset( &mconf, 0, sizeof( mconf ) );
+	mconf.dst_pool = target;					// assume 1:1 vf to pool mapping
+	mconf.pool_mask = 1 << vf;
+
+	switch( direction ) {
+		case MIRROR_IN:
+			mconf.rule_type = ETH_MIRROR_DOWNLINK_PORT;
+			rte_eth_mirror_rule_set( port_id, &mconf, id, 0 );		// ensure out is off
+
+			mconf.rule_type = ETH_MIRROR_UPLINK_PORT;
+			break;
+
+		case MIRROR_OUT:
+			mconf.rule_type = ETH_MIRROR_UPLINK_PORT;
+			rte_eth_mirror_rule_set( port_id, &mconf, id, 0 );		// ensure in is off
+
+			mconf.rule_type = ETH_MIRROR_DOWNLINK_PORT;
+			break;
+
+		case MIRROR_ALL:
+			mconf.rule_type = ETH_MIRROR_UPLINK_PORT | ETH_MIRROR_DOWNLINK_PORT;
+			break;
+
+		default:			// MIRROR_OFF
+			fail_type = "CRI";
+			on_off = SET_OFF;
+			mconf.rule_type = ETH_MIRROR_UPLINK_PORT | ETH_MIRROR_DOWNLINK_PORT;
+			break;
+	}
+	
+	state = rte_eth_mirror_rule_set( port_id, &mconf, id, on_off );
+	if( state < 0 ) {
+		bleat_printf( 0, "%s: set mirror for pf=%d vf=%d mid=%d target=%d dir=%d on/off=%d failed: %d (%s)", 
+				fail_type, (int) port_id, (int) vf, (int) id, (int) target, (int) direction, (int) on_off, state, strerror( -state ) );
+	} else {
+		bleat_printf( 0, "set mirror for pf=%d vf=%d target=%d dir=%d on/off=%d  type=%d ok", (int) port_id, (int) vf, (int) target, (int) direction, (int) on_off, (int) mconf.rule_type );
+	}
+
+	return state;
+}	
+
+/*
 	Returns the value of the split receive control register for the first queue
 	of the port/vf pair.
 */
 int get_split_ctlreg( portid_t port_id, uint16_t vf_id ) {
-	uint32_t reg_off = 0x01014; 	// split receive control regs (pg598)
-	int queue;						// the first queue for the vf (TODO: expand this to accept a queue 0-max_qpp)
+	int ret = 0;
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			ret = vfd_ixgbe_get_split_ctlreg(port_id, vf_id);
+			break;
+			
+		case VFD_FVL25:		
+			ret = vfd_ixgbe_get_split_ctlreg(port_id, vf_id);
+			break;
 
-	queue = get_max_qpp( port_id ) * vf_id;
-
-	if( queue >= 64 ) {
-		reg_off = 0x0d014;			// high set of queues
+		case VFD_BNXT:
+			break;
+			
+		default:
+			bleat_printf( 0, "vfd_ixgbe_get_split_ctlreg: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
 	}
-
-	reg_off += 0x40 * queue;		// step to the right spot for the given queue
-
-	return (int) port_pci_reg_read( port_id, reg_off );
+	
+	return ret;
 }
 
 /*
@@ -385,31 +888,23 @@ int get_split_ctlreg( portid_t port_id, uint16_t vf_id ) {
 */
 void set_split_erop( portid_t port_id, uint16_t vf_id, int state ) {
 
-	uint32_t reg_off = 0x01014; 							// split receive control regs (pg598)
-	uint32_t reg_value;
-	uint32_t qpvf;					// number of queues per vf
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			vfd_ixgbe_set_split_erop(port_id, vf_id, state);
+			break;
+			
+		case VFD_FVL25:		
+			vfd_i40e_set_split_erop(port_id, vf_id, state);
+			break;
 
-	if( vf_id > 63  ) {				// this offset good only for 0-63; we won't support 64-127
-		return;
-	}
-
-	qpvf = (uint32_t) get_max_qpp( port_id );
-
-	reg_off += 0x40 * vf_id;
-
-	reg_value =  port_pci_reg_read( port_id, reg_off );
-
-	if( state ) {
-		reg_value |= IXGBE_SRRCTL_DROP_EN;								// turn on the enable bit
-	} else {
-		reg_value &= ~IXGBE_SRRCTL_DROP_EN;								// turn off the enable bit
-	}
-
-	bleat_printf( 4, "setting split receive drop for %d queues on port=%d vf=%d on/off=%d", qpvf, port_id, vf_id, state );
-
-	for( ; qpvf > 0; qpvf-- ) {
-		port_pci_reg_write( port_id, reg_off, reg_value );
-		reg_off += 0x40;
+		case VFD_BNXT:
+			vfd_bnxt_set_split_erop(port_id, vf_id, state);
+			break;
+			
+		default:
+			bleat_printf( 0, "set_split_erop: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
 	}
 }
 
@@ -418,23 +913,23 @@ void set_split_erop( portid_t port_id, uint16_t vf_id, int state ) {
 */
 static void set_rx_drop(portid_t port_id, uint16_t vf_id, int state )
 {
-	int          i;
-	uint32_t reg_off;
-	uint32_t reg_value;          // value to write into the register
-	int q_num;
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			vfd_ixgbe_set_rx_drop(port_id, vf_id, state);
+			break;
+			
+		case VFD_FVL25:		
+			vfd_i40e_set_rx_drop(port_id, vf_id, state);
+			break;
 
-	q_num = get_max_qpp( port_id );		// number of queues per vf on this port
-	if( q_num > 8 ) {
-		bleat_printf( 0, "internal mishap in set_rx_drop: qpp is out of range: %d", q_num );
-		return;							// panic in the face of potential disaster and do nothing
-	}
-	bleat_printf( 0, "setting rx drop enable to %d for pf/vf %d/%d on/off=%d", state, port_id, vf_id, !!state );
-
-	reg_off = 0x02f04;
-
-	for( i = vf_id * q_num; i < (vf_id * q_num) + q_num; i++ ) {						// one bit per queue writes the right most three bits into the proper place
-		reg_value = IXGBE_QDE_WRITE | (i << IXGBE_QDE_IDX_SHIFT) | (!!state);
-		port_pci_reg_write( port_id, reg_off, reg_value );
+		case VFD_BNXT:
+			vfd_bnxt_set_rx_drop(port_id, vf_id, state);
+			break;
+			
+		default:
+			bleat_printf( 0, "set_rx_drop: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
 	}
 }
 
@@ -445,30 +940,23 @@ static void set_rx_drop(portid_t port_id, uint16_t vf_id, int state )
 */
 extern void set_pfrx_drop(portid_t port_id, int state )
 {
-	uint16_t qstart;			// point where the queue starts (1 past the last VF)
-	int          i;
-	uint32_t reg_off;
-	uint32_t reg_value;          // value to write into the register
-	int q_num;
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			vfd_ixgbe_set_pfrx_drop( port_id, state ); 		// (re)set flag for all queues on the port
+			break;
+			
+		case VFD_FVL25:		
+			vfd_i40e_set_pfrx_drop( port_id, state );
+			break;
 
-	q_num = get_max_qpp( port_id );				// number of queues per vf on this port
-	if( q_num > 8 ) {
-		bleat_printf( 0, "internal mishap in set_pfrx_drop: qpp is out of range: %d", q_num );
-		return;							// panic in the face of potential disaster and do nothing
-	}
-
-	qstart = get_num_vfs( port_id ) * q_num;	// PF queue starts just past last possible vf
-	if( qstart > (128 - q_num) ) {
-		bleat_printf( 0, "internal mishap in set_pfrx_drop: qstart (%d) is out of range for nqueues=%d", qstart, q_num );
-		return;
-	}
-
-	bleat_printf( 0, "setting pf drop enable for port %d qstart=%d on/off=%d", port_id, qstart, !!state );
-	reg_off = 0x02f04;
-
-	for( i = qstart; i < qstart + q_num; i++ ) {						// one bit per queue writes the right most three bits into the proper place
-		reg_value = IXGBE_QDE_WRITE | (i << IXGBE_QDE_IDX_SHIFT) | (!!state);
-		port_pci_reg_write( port_id, reg_off, reg_value );
+		case VFD_BNXT:
+			//vfd_bnxt_set_pfrx_drop( port_id, state ); 				// not implemented TODO
+			break;
+			
+		default:
+			bleat_printf( 0, "set_pfrx_drop: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
 	}
 }
 
@@ -489,7 +977,28 @@ void set_queue_drop( portid_t port_id, int state ) {
 	
 	bleat_printf( 0, "WARN: something is calling set_queue drop which may not be expected\n" );
 	bleat_printf( 2, "setting queue drop for port %d on all queues to: on/off=%d", port_id, !!state );
-	result = rte_pmd_ixgbe_set_all_queues_drop_en( port_id, !!state );			// (re)set flag for all queues on the port
+	
+			
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			result = vfd_ixgbe_set_all_queues_drop_en( port_id, !!state ); 		// (re)set flag for all queues on the port
+			break;
+			
+		case VFD_FVL25:		
+			result = vfd_i40e_set_all_queues_drop_en( port_id, !!state );
+			break;
+
+		case VFD_BNXT:
+			result = vfd_bnxt_set_all_queues_drop_en( port_id, !!state ); 				// not implemented TODO
+			break;
+			
+		default:
+			bleat_printf( 0, "set_queue_drop: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
+	}
+	
+
 	if( result != 0 ) {
 		bleat_printf( 0, "fail: unable to set drop enable for port %d on/off=%d: errno=%d", port_id, !state, -result );
 	}
@@ -498,6 +1007,36 @@ void set_queue_drop( portid_t port_id, int state ) {
 	 disable default pool to avoid DMAR errors when we get packets not destined to any VF
 	*/
 	disable_default_pool(port_id);
+}
+
+/*
+	Different NICs may have different reuirements for antispoofing.  We always force VLAN antispoofing
+	to be on, which meanst that normally MAC antispoofing can be off.  However, on the niantic if one
+	is on, they both must be on, so this function exists to return the proper mac antispoofing value
+	(true or false) based on the port.
+*/
+int get_mac_antispoof( portid_t port_id )
+{
+  int sv = 0;				// spoof value: default to setting to off (allow guests to use any mac)
+
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			sv = 1;
+			bleat_printf( 0, "forcing mac antispoofing to be on for niantic" );
+			break;
+			
+		case VFD_FVL25:		
+			break;
+
+		case VFD_BNXT:
+			break;
+			
+		default:
+			break;	
+	}
+
+	return sv;
 }
 
 // --------------- pending reset support ----------------------------------------------------------------------
@@ -520,47 +1059,27 @@ void set_queue_drop( portid_t port_id, int state ) {
 int
 is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter )
 {
-	int queue;						// queue to set (0-max-queues)
-	uint32_t reg_off;				// control register address
-	uint32_t ctrl;					// value read from nic register
-	uint32_t queues_per_pool = 8;	// maximum number of queues that could be assigned to a pool (based on total VFs configured)
+	int result = 0;
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			result = vfd_ixgbe_is_rx_queue_on(port_id, vf_id, mcounter);
+			break;
+			
+		case VFD_FVL25:		
+			result = vfd_i40e_is_rx_queue_on(port_id, vf_id, mcounter);
+			break;
 
-	struct rte_eth_dev *pf_dev;
-	struct rte_eth_dev_info dev_info;
-
-	rte_eth_dev_info_get( port_id, &dev_info );
- 	pf_dev = &rte_eth_devices[port_id];
-
-	reg_off = 0x01028;							// default to 'low' range (receive descriptor control reg (pg527/597))
-	queues_per_pool = get_max_qpp( port_id );	// set the max possible queues per pool; controls layout at offset
-	queue = vf_id * queues_per_pool;			// compute the offset which is based on the max/pool
-	if( queue > 127 ) {
-		bleat_printf( 2, "warn: can't check rx_queue_on q out of range: port=%d q=%d vfid_id=%d", port_id, queue, vf_id );
-		return 0;								// error -- vf is out of range for the number of queues/pool
-	} else {
-		if( queue > 63 ) {
-			reg_off = 0x0D028;					// must use the 'high' area
-			queue -= 64;						// this now becomes the offset into the dcb space
-		}
-	}
-
-	reg_off += queue * 0x40;					// each block of info is x40 wide (per datasheet)
-
-	ctrl = port_pci_reg_read(port_id, reg_off);
-	bleat_printf( 5, "is_queue_en: offset=0x%08X, port=%d q=%d vfid_id=%d, ctrl=0x%08X)", reg_off, port_id, queue, vf_id, ctrl);
-
-	if( ctrl & 0x2000000) {
-  		bleat_printf( 3, "first queue active: offset=0x%08X, port=%d vfid_id=%d, q=%d ctrl=0x%08X)", reg_off, port_id, vf_id, queue, ctrl);
-		return 1;
-	} else {
-		if( mcounter != NULL ) {
-			if( (*mcounter % 100 ) == 0 ) {
-  				bleat_printf( 4, "is_queue_en: still pending: first queue not active: bar=0x%08X, port=%d vfid_id=%d, ctrl=0x%08x q/pool=%d", reg_off, port_id, vf_id, ctrl, (int) RTE_ETH_DEV_SRIOV(pf_dev).nb_q_per_pool);
-			}
-			(*mcounter)++;
-		}
-		return 0;
-	}
+		case VFD_BNXT:
+			result = vfd_bnxt_is_rx_queue_on(port_id, vf_id, mcounter);
+			break;
+			
+		default:
+			bleat_printf( 0, "is_rx_queue_on: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
+	}	
+	
+	return result;
 }
 
 /*
@@ -571,10 +1090,20 @@ is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter )
 void
 disable_default_pool(portid_t port_id)
 {
-	uint32_t ctrl = port_pci_reg_read(port_id, IXGBE_VT_CTL);
-	ctrl |= IXGBE_VT_CTL_DIS_DEFPL;
-	bleat_printf( 3, "disabling default pool bar=0x%08X, port=%d ctrl=0x%08x ", IXGBE_VT_CTL, port_id, ctrl);
-	port_pci_reg_write( port_id, IXGBE_VT_CTL, ctrl);
+  uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			vfd_ixgbe_disable_default_pool( port_id ); 
+			break;
+			
+		case VFD_FVL25:		
+		case VFD_BNXT:
+			break;
+			
+		default:
+			bleat_printf( 0, "disable_default_pool: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
+	}
 }
 
 static rte_spinlock_t rte_refresh_q_lock = RTE_SPINLOCK_INITIALIZER;
@@ -669,6 +1198,7 @@ process_refresh_queue(void)
 	while(1) {
 
 		usleep(200000);
+		//usleep(5000000);
 		struct rq_entry *refresh_item;
 
 		rte_spinlock_lock(&rte_refresh_q_lock);
@@ -679,9 +1209,9 @@ process_refresh_queue(void)
 			/* check if item's q is enabled, update VF and remove item from queue */
 			if(refresh_item->enabled){
 				bleat_printf( 2, "refresh item enabled: updating VF: %d", refresh_item->vf_id);
-
+ 
 				restore_vf_setings(refresh_item->port_id, refresh_item->vf_id);		// refresh all of our configuration back onto the NIC
-
+				
 				bleat_printf( 3, "refresh_queue: clearing enable queue drop for %d/%d", refresh_item->port_id, refresh_item->vf_id );
 				set_rx_drop( refresh_item->port_id, refresh_item->vf_id, SET_OFF );
 
@@ -707,6 +1237,7 @@ process_refresh_queue(void)
 	}
 }
 
+
 // -----------------------------------------------------------------------------------------------------------------------------
 
 /*
@@ -731,15 +1262,35 @@ nic_stats_clear(portid_t port_id)
 
 
 int
-nic_stats_display(uint8_t port_id, char * buff, int bsize)
+nic_stats_display(uint16_t port_id, char * buff, int bsize)
 {
 	struct rte_eth_stats stats;
 	struct rte_eth_link link;
 	rte_eth_link_get_nowait(port_id, &link);
-	rte_eth_stats_get(port_id, &stats);
+	rte_eth_stats_get(port_id, &stats);	
 
-	spoffed[port_id] += port_pci_reg_read(port_id, 0x08780);
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			spoffed[port_id] += vfd_ixgbe_get_pf_spoof_stats(port_id); 
+			break;
+			
+		case VFD_FVL25:		
+			spoffed[port_id] = vfd_i40e_get_pf_spoof_stats(port_id);  // FVL25 doesn't reset counters on read, so no adding here
+			break;
 
+		case VFD_BNXT:
+			spoffed[port_id] = vfd_bnxt_get_pf_spoof_stats(port_id);  // BNXT counters are not-reset-on-read. No need to add.
+			break;
+			
+		case VFD_MLX5:
+			spoffed[port_id] += vfd_mlx5_get_pf_spoof_stats(port_id); 
+			break;
+		default:
+			bleat_printf( 0, "nic_stats_display: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
+	}
+	
 
 	char status[5];
 	if(!link.link_status)
@@ -771,10 +1322,13 @@ nic_stats_display(uint8_t port_id, char * buff, int bsize)
 	It is converted to uint32 for calculations here.
 */
 int
-vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsize)
+vf_stats_display(uint16_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsize)
 {
 	uint32_t vf;
-
+	int result = 0;
+	uint64_t vf_spoffed = 0;
+	uint64_t vf_rx_dropped = 0;
+		
 	if( ivf < 0 || ivf > 31 ) {
 		return -1;
 	}
@@ -783,9 +1337,13 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 
 	uint32_t new_ari;
 	struct rte_pci_addr vf_pci_addr;
+	
+	bleat_printf( 5, "vf_stats_display: pf=%d, vf=%d", port_id, vf);
 
+	struct sriov_port_s *port = &running_config->ports[port_id];	
+	new_ari = pf_ari + port->vf_offset + (vf * port->vf_stride);
 
-	new_ari = pf_ari + vf_offfset + (vf * vf_stride);
+	bleat_printf( 5, "vf_stats_display: offset=%d, stride=%d", port->vf_offset, port->vf_stride);
 
 	vf_pci_addr.domain = 0;
 	vf_pci_addr.bus = (new_ari >> 8) & 0xff;
@@ -793,15 +1351,38 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 	vf_pci_addr.function = new_ari & 0x7;
 
 
-	uint32_t	rx_pkts = port_pci_reg_read(port_id, IXGBE_PVFGPRC(vf));
-	uint64_t	rx_ol = port_pci_reg_read(port_id, IXGBE_PVFGORC_LSB(vf));
-	uint64_t	rx_oh = port_pci_reg_read(port_id, IXGBE_PVFGORC_MSB(vf));
-	uint64_t	rx_octets = (rx_oh << 32) |	rx_ol;		// 36 bit only counter
+	struct rte_eth_stats stats;
+	memset( &stats, 0, sizeof( stats ) );			// not all NICs fill all data, so ensure we have 0s
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			result = vfd_ixgbe_get_vf_stats(port_id, vf, &stats);
+			stats.oerrors = 0;
+			break;
+			
+		case VFD_FVL25:		
+			result = vfd_i40e_get_vf_stats(port_id, vf, &stats);
+			break;
 
-	uint32_t	tx_pkts = port_pci_reg_read(port_id, IXGBE_PVFGPTC(vf));
-	uint64_t	tx_ol = port_pci_reg_read(port_id, IXGBE_PVFGOTC_LSB(vf));
-	uint64_t	tx_oh = port_pci_reg_read(port_id, IXGBE_PVFGOTC_MSB(vf));
-	uint64_t	tx_octets = (tx_oh << 32) |	tx_ol;		// 36 bit only counter
+		case VFD_BNXT:
+			result = vfd_bnxt_get_vf_stats(port_id, vf, &stats);
+			if (rte_pmd_bnxt_get_vf_tx_drop_count(port_id, vf, &vf_spoffed))
+				vf_spoffed = UINT64_MAX;
+			break;
+			
+		case VFD_MLX5:
+			result = vfd_mlx5_get_vf_stats(port_id, vf, &stats);
+			vf_spoffed = vfd_mlx5_get_vf_spoof_stats(port_id, vf);
+			break;
+
+		default:
+			bleat_printf( 0, "vf_stats_display: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
+	}
+	
+	if( result != 0 ) {
+		bleat_printf( 0, "fail: vf_stats_display: port %d, vf=%d: errno=%d", port_id, vf, result );
+	}
 
 
 	char status[5];
@@ -810,10 +1391,12 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 		stpcpy(status, "DOWN");
 	else
 	    stpcpy(status, "UP  ");
+	
 
-	return 	snprintf(buff, bsize, "%2s %6d    %04X:%02X:%02X.%01X %6s %30"PRIu32" %15"PRIu64" %47"PRIu32" %15"PRIu64"\n",
+	return 	snprintf(buff, bsize, "%2s %6d    %04X:%02X:%02X.%01X %6s %30"PRIu64" %15"PRIu64" %15"PRIu64" %15"PRIu64" %15"PRIu64" %15"PRIu64" %15"PRIu64" %15"PRIu64"\n",
 				"vf", vf, vf_pci_addr.domain, vf_pci_addr.bus, vf_pci_addr.devid, vf_pci_addr.function, status,
-				rx_pkts, rx_octets, tx_pkts, tx_octets);
+				stats.ipackets, stats.ibytes, stats.ierrors, vf_rx_dropped, stats.opackets, stats.obytes, stats.oerrors, vf_spoffed);
+				
 }
 
 
@@ -835,7 +1418,7 @@ vf_stats_display(uint8_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsi
 	eturns number of characters placed into buff.
 */
 int
-port_xstats_display(uint8_t port_id, char * buff, int bsize)
+port_xstats_display(uint16_t port_id, char * buff, int bsize)
 {
 	struct rte_eth_xstat *xstats;
 	int cnt_xstats, idx_xstat;
@@ -891,23 +1474,61 @@ port_xstats_display(uint8_t port_id, char * buff, int bsize)
   or to check if number of vlans doesn't exceed MAX (64)
 */
 int
-dump_vlvf_entry(portid_t port_id)
+dump_all_vlans(portid_t port_id)
 {
-	uint32_t res;
-	uint32_t ix;
-	uint32_t count = 0;
+	int result = 0;
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			result = vfd_ixgbe_dump_all_vlans(port_id);
+			break;
+			
+		case VFD_FVL25:		
+			result = vfd_i40e_dump_all_vlans(port_id);
+			break;
 
+		case VFD_BNXT:
+			result = vfd_bnxt_dump_all_vlans(port_id);
+			break;
+			
+		case VFD_MLX5:
+			break;
 
-	for (ix = 1; ix < IXGBE_VLVF_ENTRIES; ix++) {
-		res = port_pci_reg_read(port_id, IXGBE_VLVF(ix));
-		if( 0 != (res & 0xfff))
-		{
-			count++;
-			printf("VLAN ID = %d\n", res & 0xfff);
-		}
+		default:
+			bleat_printf( 0, "set_queue_drop: unknown device type: %u, port: %u", port_id, dev_type);
+			break;	
 	}
+	
+	return result;
+}
 
-	return count;
+
+//int lsi_event_callback(uint16_t port_id, enum rte_eth_event_type type, void *param, void *ret_param)
+int lsi_event_callback(uint16_t port_id, enum rte_eth_event_type type, void *param, void* data )
+{
+	struct rte_eth_link link;
+
+	RTE_SET_USED(param);
+	RTE_SET_USED(data);
+
+	bleat_printf( 3, "Event type: %s", type == RTE_ETH_EVENT_INTR_LSC ? "LSC interrupt" : "unknown event");
+	rte_eth_link_get_nowait(port_id, &link);
+	if (link.link_status) {
+		bleat_printf( 3, "Port %d Link Up - speed %u Mbps - %s",
+				port_id, (unsigned)link.link_speed,
+			(link.link_duplex == ETH_LINK_FULL_DUPLEX) ?
+				("full-duplex") : ("half-duplex"));
+
+		if( type == RTE_ETH_EVENT_INTR_LSC ) {
+			restore_vf_setings( port_id, -1 );				// reset _all_ VFs on the port
+		}
+	} else
+		bleat_printf( 3, "Port %d Link Down", port_id);
+
+	// notify every VF about link status change
+	ping_vfs(port_id, -1);
+
+	return 0;   // CAUTION:  as of 2017/07/05 it seems this value is ignored by dpdk, but it might not alwyas be
 }
 
 
@@ -921,13 +1542,14 @@ dump_vlvf_entry(portid_t port_id)
 	If hw_strip_crc is false, the default will be overridden.
 */
 int
-port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_pool, int hw_strip_crc, sriov_port_t *pf )
+port_init(uint16_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_pool, int hw_strip_crc, __attribute__((__unused__)) sriov_port_t *pf )
 {
 	struct rte_eth_conf port_conf = port_conf_default;
 	const uint16_t rx_rings = 1;
 	const uint16_t tx_rings = 1;
 	int retval;
 	uint16_t q;
+	int i;
 
 	port_conf.rxmode.max_rx_pkt_len = pf->mtu;
 	port_conf.rxmode.jumbo_frame = pf->mtu >= 1500;
@@ -951,12 +1573,42 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 		return 1;
 	}
 
-	rte_eth_dev_callback_register(port, RTE_ETH_EVENT_INTR_LSC, lsi_event_callback, NULL);
-	rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vf_msb_event_callback, NULL);
+	rte_eth_dev_callback_register(port,
+				RTE_ETH_EVENT_INTR_LSC,
+				lsi_event_callback, NULL);
+	
+	
+	uint dev_type = get_nic_type(port);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			retval = rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vfd_ixgbe_vf_msb_event_callback, NULL);
+			break;
+			
+		case VFD_FVL25:		
+			retval = rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vfd_i40e_vf_msb_event_callback, NULL);
+			break;
 
+		case VFD_BNXT:
+			retval = rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vfd_bnxt_vf_msb_event_callback, NULL);
+			break;
+			
+		case VFD_MLX5:
+			break;
+
+		default:
+			bleat_printf( 0, "port_init: unknown device type: %u, port: %u", port, dev_type);
+			break;	
+	}
+	
+	if (retval != 0) {
+		bleat_printf( 0, "CRI: abort: cannot register callback function %u, retval %d", port, retval);
+		return 1;
+	}
+	
 	// Allocate and set up 1 RX queue per Ethernet port.
 	for (q = 0; q < rx_rings; q++) {
-		retval = rte_eth_rx_queue_setup(port, q, RX_RING_SIZE, rte_eth_dev_socket_id(port), NULL, mbuf_pool);
+		//retval = rte_eth_rx_queue_setup(port, q, RX_RING_SIZE, rte_eth_dev_socket_id(port), NULL, mbuf_pool); 
+		retval = rte_eth_rx_queue_setup(port, q, RX_RING_SIZE, SOCKET_ID_ANY, NULL, mbuf_pool);
 		if (retval < 0) {
 			bleat_printf( 0, "CRI: abort: cannot setup rx queue, port %u", port);
 			return 1;
@@ -965,7 +1617,8 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 
 	// Allocate and set up 1 TX queue per Ethernet port.
 	for (q = 0; q < tx_rings; q++) {
-		retval = rte_eth_tx_queue_setup(port, q, TX_RING_SIZE, rte_eth_dev_socket_id(port), NULL);
+		//retval = rte_eth_tx_queue_setup(port, q, TX_RING_SIZE, rte_eth_dev_socket_id(port), NULL);
+		retval = rte_eth_tx_queue_setup(port, q, TX_RING_SIZE, SOCKET_ID_ANY, NULL);
 		if (retval < 0) {
 			bleat_printf( 0, "CRI: abort: cannot setup tx queue, port %u", port);
 			return 1;
@@ -980,7 +1633,7 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 		return 1;
 	}
 
-
+	
 	// Display the port MAC address.
 	struct ether_addr addr;
 	rte_eth_macaddr_get(port, &addr);
@@ -993,6 +1646,28 @@ port_init(uint8_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_poo
 	// Enable RX in promiscuous mode for the Ethernet device.
 	rte_eth_promiscuous_enable(port);
 
+
+	/* temporary fix of missing interrupts */
+/*
+	//----- this should be covered by the intel patch 11/20/2017 --------
+	dev_type = get_nic_type(port);
+	if (dev_type == VFD_NIANTIC) {
+		uint32_t reg = port_pci_reg_read(port, 0x898);
+		bleat_printf( 2,  "port_init: port %u,  GPIE: %02" PRIx32 "" , (unsigned)port, reg);
+		reg |= 0x80000000;
+		bleat_printf( 2,  "port_init: port %u,  GPIE: %02" PRIx32 "" , (unsigned)port, reg);
+		port_pci_reg_write(port, 0x898, reg);
+	}
+*/
+
+
+	// don't allow untagged packets to any VF
+	for(i = 0; i < get_num_vfs(port); i++) {
+		set_vf_allow_untagged(port, i, 0);   
+	}
+	
+	nic_stats_clear(port);
+	
 	return 0;
 }
 
@@ -1041,182 +1716,36 @@ extern void set_fc_on( portid_t pf, int force ) {
 }
 
 
+
 void
-lsi_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param)
+ping_vfs(portid_t port_id, int vf)
 {
-	struct rte_eth_link link;
-
-	RTE_SET_USED(param);
-
-	bleat_printf( 3, "Event type: %s", type == RTE_ETH_EVENT_INTR_LSC ? "LSC interrupt" : "unknown event");
-	rte_eth_link_get_nowait(port_id, &link);
-	if (link.link_status) {
-		bleat_printf( 3, "Port %d Link Up - speed %u Mbps - %s",
-				port_id, (unsigned)link.link_speed,
-			(link.link_duplex == ETH_LINK_FULL_DUPLEX) ?
-				("full-duplex") : ("half-duplex"));
-
-		if( type == RTE_ETH_EVENT_INTR_LSC ) {
-			restore_vf_setings( port_id, -1 );				// reset _all_ VFs on the port
-		}
-	} else
-		bleat_printf( 3, "Port %d Link Down", port_id);
-
-  // notify every VF about link status change
-  //AZrte_eth_dev_ping_vfs(port_id, -1);
-}
-
-
-
-/*
-	Called when a 'mailbox' message is received.  Examine and take action based on
-	the message type.
-*/
-void
-vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param) {
-
-	struct rte_pmd_ixgbe_mb_event_param *p = (struct rte_pmd_ixgbe_mb_event_param*) param;
-	uint16_t vf = p->vfid;
-	uint16_t mbox_type = p->msg_type;
-	uint32_t *msgbuf = (uint32_t *) p->msg;
-	char	wbuf[128];							// small work buffer
-
-	struct ether_addr *new_mac;
-
-	/* check & process VF to PF mailbox message */
-	switch (mbox_type) {
-		case IXGBE_VF_RESET:
-			bleat_printf( 1, "reset event received: port=%d", port_id );
-
-			p->retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_ACK;				/* noop & ack */
-			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
-				type, port_id, vf, p->retval, "IXGBE_VF_RESET");
-
-			add_refresh_queue(port_id, vf);
-			break;
-
-		case IXGBE_VF_SET_MAC_ADDR:
-			bleat_printf( 1, "setmac event approved for: port=%d", port_id );
-			p->retval = RTE_PMD_IXGBE_MB_EVENT_PROCEED;    						// do what's needed
-			bleat_printf( 4, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
-				type, port_id, vf, p->retval, "IXGBE_VF_SET_MAC_ADDR");
-
-			new_mac = (struct ether_addr *) (&msgbuf[1]);
-
-			snprintf( wbuf, sizeof( wbuf ), "%02x:%02x:%02x:%02x:%02x:%02x", new_mac->addr_bytes[0], new_mac->addr_bytes[1],
-					new_mac->addr_bytes[2], new_mac->addr_bytes[3], new_mac->addr_bytes[4], new_mac->addr_bytes[5] );
-			push_mac( port_id, vf, wbuf );					// push onto the head of our list
-			bleat_printf( 1, "guest pushed mac address: %s", wbuf );
+	int retval = 0;
 	
-/*
-			if (is_valid_assigned_ether_addr(new_mac)) {						// verify it's unicast
-				bleat_printf( 2, "requested mac: port=%u vf=%u, MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
-					" %02" PRIx8 " %02" PRIx8 " %02" PRIx8,
-					(uint32_t)port_id,
-					(uint32_t)vf,
-					new_mac->addr_bytes[0], new_mac->addr_bytes[1],
-					new_mac->addr_bytes[2], new_mac->addr_bytes[3],
-					new_mac->addr_bytes[4], new_mac->addr_bytes[5]);
-			}
-*/
-
-			add_refresh_queue(port_id, vf);
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_NIANTIC:
+			retval = vfd_ixgbe_ping_vfs(port_id, vf);
 			break;
-
-		case IXGBE_VF_SET_MULTICAST:
-			bleat_printf( 1, "set multicast event approved: port=%d", port_id );
-			p->retval = RTE_PMD_IXGBE_MB_EVENT_PROCEED;    /* do what's needed */
-			bleat_printf( 4, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ",
-				type, port_id, vf, p->retval, "IXGBE_VF_SET_MULTICAST");
-
-			new_mac = (struct ether_addr *) (&msgbuf[1]);
-
-			if (is_valid_assigned_ether_addr(new_mac)) {
-				bleat_printf( 3, "requested mac:, port=%u vf=%u, MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8
-					" %02" PRIx8 " %02" PRIx8 " %02" PRIx8,
-					(uint32_t)port_id,
-					(uint32_t)vf,
-					new_mac->addr_bytes[0], new_mac->addr_bytes[1],
-					new_mac->addr_bytes[2], new_mac->addr_bytes[3],
-					new_mac->addr_bytes[4], new_mac->addr_bytes[5]);
-			}
-
-			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
-
-			break;
-
-		case IXGBE_VF_SET_VLAN:
-			// NOTE: we _always_ approve this.  This is the VMs setting of what will be an 'inner' vlan ID and thus we don't care
-			if( valid_vlan( port_id, vf, (int) msgbuf[1] )) {
-				bleat_printf( 1, "vlan set event approved: port=%d vf=%d vlan=%d (responding noop-ack)", port_id, vf, (int) msgbuf[1] );
-				//*((int*) param) = RTE_ETH_MB_EVENT_PROCEED;
-				p->retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_ACK;     // good rc to VM while not changing anything
-			} else {
-				bleat_printf( 1, "vlan set event rejected; vlan not not configured: port=%d vf=%d vlan=%d (responding noop-ack)", port_id, vf, (int) msgbuf[1] );
-				p->retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     // VM should see failure
-			}
-
-			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
-
-			//bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, *(uint32_t*) param, "IXGBE_VF_SET_VLAN");
-			//bleat_printf( 3, "setting vlan id = %d", p[1]);
-			break;
-
-		case IXGBE_VF_SET_LPE:
-			bleat_printf( 1, "set lpe event received %d %d", port_id, (int) msgbuf[1]  );
-			if( valid_mtu( port_id, (int) msgbuf[1] ) ) {
-				bleat_printf( 1, "mtu set event approved: port=%d vf=%d mtu=%d", port_id, vf, (int) msgbuf[1]  );
-				p->retval = RTE_PMD_IXGBE_MB_EVENT_PROCEED;
-			} else {
-				bleat_printf( 1, "mtu set event rejected: port=%d vf=%d mtu=%d", port_id, vf, (int) msgbuf[1] );
-				p->retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     /* noop & nack */
-			}
-
-			restore_vf_setings(port_id, vf);
-			set_fc_on( port_id, !FORCE );									// enable flow control if allowed (force off)
-			tx_set_loopback( port_id, suss_loopback( port_id ) );		// enable loopback if set (could be reset if link was down)
-			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
-			break;
-
-		case IXGBE_VF_SET_MACVLAN:
-			bleat_printf( 1, "set macvlan event received: port=%d (responding nop+nak)", port_id );
-			p->retval =  RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;    /* noop & nack */
-			bleat_printf( 3, "type: %d, port: %d, vf: %d, out: %d, _T: %s ", type, port_id, vf, p->retval, "IXGBE_VF_SET_MACVLAN");
-			bleat_printf( 3, "setting mac_vlan = %d", msgbuf[1] );
-
-			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
-			break;
-
-		case IXGBE_VF_API_NEGOTIATE:
-			bleat_printf( 1, "set negotiate event received: port=%d (responding proceed)", port_id );
-			p->retval =  RTE_PMD_IXGBE_MB_EVENT_PROCEED;   /* do what's needed */
-			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p->retval, "IXGBE_VF_API_NEGOTIATE");
 			
-			set_fc_on( port_id, !FORCE );									// enable flow control if allowed
-			restore_vf_setings(port_id, vf);							// these must happen now, do NOT queue it. if not immediate guest-guest may hang
-			tx_set_loopback( port_id, suss_loopback( port_id ) );		// enable loopback if set (could be reset if link goes down)
+		case VFD_FVL25:		
+			retval = vfd_i40e_ping_vfs(port_id, vf);
 			break;
 
-		case IXGBE_VF_GET_QUEUES:
-			bleat_printf( 1, "get queues  event received: port=%d (responding proceed)", port_id );
-			p->retval =  RTE_PMD_IXGBE_MB_EVENT_PROCEED;   /* do what's needed */
-			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, _T: %s ", type, port_id, vf, p->retval, "IXGBE_VF_GET_QUEUES");
-
-			add_refresh_queue( port_id, vf );		// schedule a complete refresh when the queue goes hot
+		case VFD_BNXT:
+			retval = vfd_bnxt_ping_vfs(port_id, vf);
 			break;
-
+			
 		default:
-			bleat_printf( 1, "unknown  event request received: port=%d (responding nop+nak)", port_id );
-			p->retval = RTE_PMD_IXGBE_MB_EVENT_NOOP_NACK;     /* noop & nack */
-			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, MBOX_TYPE: %d", type, port_id, vf, p->retval, mbox_type);
-
-			restore_vf_setings(port_id, vf);		// refresh all of our configuration back onto the NIC
-			break;
+			bleat_printf( 0, "ping_vfs: unknown device type: %u, port: %u", port_id, dev_type);
+			break;		
 	}
-
-	bleat_printf( 3, "callback type: %d, Port: %d, VF: %d, OUT: %d, _T: %d", type, port_id, vf, p->retval, mbox_type);
+			
+	
+	if (retval < 0) {
+		bleat_printf( 0, "ping_vfs: failed, port %u, vf %d", port_id, vf);
+	}
 }
-
 
 
 /*
@@ -1341,5 +1870,27 @@ void dump_dev_info( int num_ports  ) {
 
 		dump_port_stats( i  );
 	}
+}
 
+void discard_pf_traffic (portid_t port_id)
+{
+	uint dev_type = get_nic_type(port_id);
+	switch (dev_type) {
+		case VFD_BNXT:
+		{
+#define MAX_PKT_BURST	32
+			struct rte_mbuf *pkts_burst[MAX_PKT_BURST];
+			uint16_t nb_pkts;
+
+			while ( (nb_pkts = rte_eth_rx_burst(port_id, 0, pkts_burst, MAX_PKT_BURST)) > 0 ) {
+				uint16_t idx;
+				for (idx = 0; idx < nb_pkts; idx++)
+					rte_pktmbuf_free(pkts_burst[idx]);
+				bleat_printf( 4, "Discarded %hu frames on PF %d", nb_pkts, port_id);
+			}
+		}
+		break;
+		default:
+		return;
+	}
 }
