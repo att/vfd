@@ -15,5 +15,5 @@ extern void *sym_get( void *s,  const char *name, unsigned int class );
 extern int sym_put( void *s,  const char *name, unsigned int class, void *val );
 extern int sym_map( void *s,  const char *name, unsigned int class, void *val );
 extern void sym_stats( void *s, int level );
-void sym_foreach_class( void *st, unsigned int class, void (* user_fun)(), void *user_data );
-
+//extern void sym_foreach_class( void *st, unsigned int space, void (* user_fun)(), void *user_data );
+extern void sym_foreach_class( void *vst, unsigned int space, void (* user_fun)( void*, void*, const char*, void*, void* ), void *user_data );
