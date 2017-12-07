@@ -427,7 +427,6 @@ vfd_ixgbe_vf_msb_event_callback(uint16_t port_id, enum rte_eth_event_type type, 
 					}
 		
 					if( i >= 6 ) {												// all 0s -- assume reset (don't save the 0s)
-						//bleat_printf( 1, "set macvlan event received, address not stashed: pf/vf=%d/%d %s (responding proceed)", port_id, vf, wbuf );
 						bleat_printf( 1, "set macvlan event received with address of 0s: clearing all but default MAC: pf/vf=%d/%d", port_id, vf );
 						clear_macs( port_id, vf, KEEP_DEFAULT );
 						p->retval = RTE_PMD_IXGBE_MB_EVENT_PROCEED;
