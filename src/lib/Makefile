@@ -14,7 +14,7 @@ cc = gcc $(cflags)
 
 binaries = jwrapper_test parm_file_test list_test fifo_test bleat_test id_mgr_test
 
-all: libvfd.a
+all: libvfd.a jsmn
 
 lib = libvfd.a
 lib_src = jwrapper jw_xapi symtab config ng_flowmgr fifo list_files bleat hot_plug id_mgr
@@ -56,7 +56,7 @@ nuke:
 
 
 # ------ clone (if needed) and update and build jsmn -------
-jsmn:
+jsmn::
 	@if [ ! -d jsmn ] ;\
 	then \
 		git clone https://github.com/zserge/jsmn ;\
