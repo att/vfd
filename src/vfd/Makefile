@@ -1,13 +1,13 @@
-
 #
 # Mnemonic:	Makefile
 # Abstract:	Builds vfd and related components
-#			CAUTION: this imports dpdk make things and behavour is thus somewhat
+#			CAUTION: this imports dpdk make things and behaviour is thus somewhat
 #					non-standard/unpredictable at times.
 # Author:	Alex Zelezniak
 # Date:		February 2016
 # Mods:		28 Oct 2016 - Add version string based on commit
 # -------------------------------------------------------------------------------------
+
 
 #### change this if needed
 #libconf = /usr/lib/x86_64-linux-gnu/libconfig.a
@@ -32,16 +32,20 @@ APP = vfd
 # but dpdk make process shifts things away to the point that invoking a 
 # script here seemed even more dodgy.
 #
+
 VFD_VERSION = $(shell junk=$$( (git log -n 1 2>/dev/null || echo Commit non-git-build ) | awk '/^[Cc]ommit / { cid=$$NF; exit(0); } /Date:/ {$$1=""; d=$$0} END { printf( "%s|%s\n", cid, d ) }' );\
 	 cid="$${junk%%\|*}";\
 	 date="$${junk\#\#*\|}";\
 	 tag=$$( git tag -l --contains $$cid 2>/dev/null | head -1 );\
 	 mod=$$( git status 2>/dev/null | awk '/modified:/ { m="+++" } END { print m }' );\
-	 printf "%s%s%s\n" "$$mod" "$$cid($$tag)" "$$date"; )
+	 printf "%s%s%s\n" "$$mod" "$$cid-$${tag:-notag}" "$$date"; )
+	 
+
+
 
 # all source are stored in SRCS-y	(again, for the dpdk mk file)
 #SRCS-y := main.c sriov.c /usr/local/lib/libconfig.a
-SRCS-y := main.c sriov.c qos.c vfd_rif.c vfd_dcb.c $(libvfd) $(libjsmn)
+SRCS-y := main.c sriov.c qos.c vfd_rif.c vfd_dcb.c vfd_i40e.c vfd_ixgbe.c vfd_bnxt.c vfd_mlx5.c $(libvfd) $(libjsmn)
 
 CFLAGS += $(WERROR_FLAGS) -I $(PWD)/../lib/ -I $(RTE_SDK)
 #-lconfig
@@ -52,11 +56,12 @@ ifeq ($(CONFIG_RTE_TOOLCHAIN_GCC),y)
 CFLAGS_main.o += -Wno-return-type
 endif
 
+
 EXTRA_CFLAGS += -O3 -g -Wfatal-errors -DVFD_VERSION='"$(VFD_VERSION)"'
 
+
+
 include $(RTE_SDK)/mk/rte.extapp.mk
-
-
 
 clean: 
 	rm -rf build

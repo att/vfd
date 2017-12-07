@@ -1,19 +1,2 @@
 
-This is code originally written by Alex Zelezniak (AT&T Labs).
-
-It provides a daemon that configures PF/VFs in ways which are not possible through 
-the standard ixgbe driver.  This includes the ability to:
-
-	- ensure antispoofing (MAC and VLAN) is enabled
-	- set a list of MAC addresses which are associated with the guest
-	- set a list of VLAN IDs which the guest is allowed to receive traffic for
-	- enable/disable VLAN ID strip/insert
-	- enable/disable broadcast/mcast/un-unicast
-
-
-Future support for mirroring is planned.
-
-The daemon (VFD) has been extended to:
-	- read single configuration files as provided by nova (future)
-	- read all configuration files on restart (future)
-	- read requests from a named FIFO (future)
+Please see top level README, and the wiki,  for details.

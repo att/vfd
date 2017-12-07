@@ -2,7 +2,7 @@
 
 function usage
 {
-	echo "$argv0 [-b] [-B branch] [-d export-dir] [-p prefix-name] [-s src_dir] package-name version"
+	echo "$argv0 [-b] [-B branch] [-d export-dir] [-p prefix-name] [-s src_dir] dpdk-branch package-name version"
 	echo "  -b turns off the auto build before export"
 	echo "  if -s is not listed, then we expect VFD_SRC in the environment"
 }
@@ -19,8 +19,9 @@ function build_it
 	(
 		set -e
         cd $src_dir/src/lib
-        git clone http://dpdk.org/git/dpdk -b v16.11
+        git clone http://dpdk.org/git/dpdk -b $dpdk_branch
 		cd $src_dir/src/lib/dpdk
+        git apply --ignore-whitespace $src_dir/src/dpdk_patches/*.patch
 		echo "building dpdk...."
         cat <<endKat >config/defconfig_x86_64-vfd-linuxapp-gcc
 #include "common_linuxapp"
@@ -43,6 +44,8 @@ endKat
 		cd $src_dir/src/lib
 		make jsmn
         make libvfd.a
+        cd $src_dir/src/system
+        make
 		cd $src_dir/src/vfd
 		make
 
@@ -101,14 +104,21 @@ done
 
 if [[ -z $1 ]]
 then
-	echo "[FAIL] missing package name as first parameter (e.g) vfd"
-	usage
-	cleanup 1
+    echo "[FAIL] missing dpdk branch as first parameter (e.g) v17.08-rc1 or v17.08"
+    usage
+    cleanup 1
 fi
 
 if [[ -z $2 ]]
 then
-	echo "[FAIL] missing version number as second parameter"
+	echo "[FAIL] missing package name as second parameter (e.g) vfd"
+	usage
+	cleanup 1
+fi
+
+if [[ -z $3 ]]
+then
+	echo "[FAIL] missing version number as third parameter"
 	echo "last version was: "
 	cat last_export_ver.$1 2>/dev/null  # CHECK LATER
 	usage
@@ -121,8 +131,9 @@ then
 	cleanup 1
 fi
 
-pkg_name=$1
-ver="$2"
+dpdk_branch=$1
+pkg_name=$2
+ver="$3"
 name_ver=${pkg_name}_${ver}
 pkg_list=${pkg_name}.exlist
 
@@ -131,6 +142,7 @@ then
 	echo "pwd:		$PWD"
 	echo "branch: 	$branch"
 	echo "src:		$src_dir"
+    echo "dpdk_branch:  $dpdk_branch"
 	echo "pkg:		$pkg_name"
 	echo "ver:		$ver"
 	echo "list:		$pkg_list"

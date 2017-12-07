@@ -1,0 +1,79 @@
+TESTS:
+
+To run the tests we need two nodes(HOST1, HOST2 with Linux installed) connected with crossover cable.
+
+HOST1 (Install VFd and run "gobbler" dpdk app)
+HOST2 (The test scripts to run)
+
+HOST2 setup:
+apt install -y python-dev && libpcap-dev
+apt install -y python-virtualenv
+virtualenv venv
+source venv/bin/activate
+pip install -U pip
+pip install -r requirements.txt
+
+tests
+├── conftest.py
+├── helper_functions.py
+├── __init__.py
+├── packet.py
+├── parse_sample_data.py
+├── README
+├── requirements.txt
+├── sample_data.ini
+├── sample_data.ini.stripF
+├── sample_data.ini.stripT
+├── strip_vlan_disable
+│   ├── __init__.py
+│   ├── test_bcastF_mcastF_ucastF.py
+│   ├── test_bcastF_mcastT_ucastF.py
+│   ├── test_bcastT_mcastT_ucastF.py
+│   └── test_bcastT_mcastT_ucastT.py
+└── strip_vlan_enable
+    ├── __init__.py
+    ├── test_bcastF_mcastF_ucastF.py
+    ├── test_bcastF_mcastT_ucastF.py
+    ├── test_bcastT_mcastT_ucastF.py
+    └── test_bcastT_mcastT_ucastT.py
+
+sample_data.ini -> Where we feed the VF config details
+sample_data.ini.stripF -> sample data for strip disabled
+sample_data.ini.stripT -> sample data for strip enabled (strip=true, works with only single vlan for now)
+strip_vlan_disable/ -> test scripts with strip disabled in the VF config
+strip_vlan_enable/ -> test scripts with strip enabled in the VF config
+
+NOTE:
+Don't try to create all the VF configs (in this case VF1, VF2, VF3, VF4) once on HOST1 (VFd running).
+
+HOST1:
+iplex add vf1_config
+HOST2:
+pytest -v strip_vlan_disable/test_bcastT_mcastT_ucastF.py (This tag will run TARGET_VF1 config, bcast = true, mcast = true, unicast = false)
+
+HOST1:
+iplex delete vf1_config
+iplex add vf2_config
+HOST2:
+pytest -v strip_vlan_disable/test_bcastF_mcastT_ucastF.py (This tag will run TARGET_VF2 config, bcast = false, mcast = true, unicast = false)
+
+HOST1:
+iplex delete vf2_config
+iplex add vf3_config
+HOST2:
+pytest -v strip_vlan_disable/test_bcastF_mcastF_ucastF.py (This tag will run TARGET_VF3 config, bcast = false, mcast = false, unicast = false)
+
+HOST1:
+iplex delete vf3_config
+iplex add vf4_config
+HOST2:
+pytest -v strip_vlan_disable/test_bcastT_mcastT_ucastT.py (This tag will run TARGET_VF4 config, bcast = true, mcast = true, unicast = true)
+
+Repeat the above steps for strip enable case.
+
+TODO:
+- Auotmate the configuration of VF's on HOST1 and run the tests on HOST2
+- Remove the duplicate code
+- Add QinQ test cases
+- Add vlan antispoof test cases
+- Add MTU test cases

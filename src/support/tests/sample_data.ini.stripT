@@ -1,0 +1,52 @@
+# strip_stag = false/true
+# allow_bcast = true
+# allow_mcast = true
+# allow_unicast = false
+[TARGET_VF1]
+invalid_macs=6f:4d:45:a3:30:67,8d:b5:0d:78:8c:fc
+valid_vlans=104
+invalid_vlans=99, 999
+mcast_mac=01:00:5E:00:00:30
+bcast_mac=ff:ff:ff:ff:ff:ff
+mac_list=ec:f4:bb:dc:fb:30,ec:f4:bb:dc:fb:d4,ec:f4:bb:dd:9f:88
+
+# strip_stag = false/true
+# allow_bcast = false
+# allow_mcast = true
+# allow_unicast = false
+[TARGET_VF2]
+invalid_macs=20:49:14:c4:14:c5
+valid_vlans=202
+invalid_vlans=101, 104, 100, 103
+mcast_mac=01:00:5E:00:00:30
+bcast_mac=ff:ff:ff:ff:ff:ff
+mac_list=ec:f4:bb:de:ad:ac,ee:da:c2:58:34:9d
+
+# strip_stag = false/true
+# allow_bcast = false
+# allow_mcast = false
+# allow_unicast = false
+[TARGET_VF3]
+invalid_macs=dc:c2:67:26:0c:62
+valid_vlans=300
+invalid_vlans=200, 201, 202
+mcast_mac=01:00:5E:00:00:30
+bcast_mac=ff:ff:ff:ff:ff:ff
+mac_list=ec:f4:bb:dc:e2:68
+
+# strip_stag = false/true
+# allow_bcast = true
+# allow_mcast = true
+# allow_unicast = true
+[TARGET_VF4]
+invalid_macs=64:9d:07:2b:5f:c5,22:07:90:9e:8b:cb,8d:d5:44:22:c7:8b
+valid_vlans=401
+invalid_vlans=200, 202, 103, 101, 999
+mcast_mac=01:00:5E:00:00:30
+bcast_mac=ff:ff:ff:ff:ff:ff
+mac_list=ec:f4:bb:dc:e2:24,ec:f4:bb:de:24:e8
+
+# packet generator host interface
+[PG]
+iface=enp8s0f0
+mac=a0:36:9f:7d:4d:98

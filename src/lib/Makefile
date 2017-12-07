@@ -12,12 +12,12 @@ cflags = -I jsmn -g
 CC = gcc $(cflags)
 cc = gcc $(cflags)
 
-binaries = jwrapper_test parm_file_test list_test fifo_test bleat_test
+binaries = jwrapper_test parm_file_test list_test fifo_test bleat_test id_mgr_test
 
-all: libvfd.a
+all: libvfd.a jsmn
 
 lib = libvfd.a
-lib_src = jwrapper jw_xapi symtab config ng_flowmgr fifo list_files bleat hot_plug
+lib_src = jwrapper jw_xapi symtab config ng_flowmgr fifo list_files bleat hot_plug id_mgr
 $(lib): $(lib_src:=.o)
 	ar r $(lib) $^
 
@@ -44,6 +44,10 @@ list_test:	list_test.c $(lib)
 hot_plug:	hot_plug.c $(lib)
 	$(cc) $(cflags) hot_plug.c -o hot_plug -L. -lvfd $(jsmn_lib)
 
+id_mgr_test::   id_mgr_test.c $lib
+	$cc $cflags id_mgr_test.c -o id_mgr_test -L. -lvfd $jsmn_lib
+
+
 
 tests: $(binaries)
 
@@ -52,7 +56,7 @@ nuke:
 
 
 # ------ clone (if needed) and update and build jsmn -------
-jsmn:
+jsmn::
 	@if [ ! -d jsmn ] ;\
 	then \
 		git clone https://github.com/zserge/jsmn ;\
