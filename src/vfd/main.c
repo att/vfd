@@ -1602,7 +1602,13 @@ main(int argc, char **argv)
 			rte_exit(EXIT_FAILURE, "Cannot create refresh_queue thread\n");
 		}
 		bleat_printf( 1, "refresh queue management thread created" );
-	
+		
+		ret = rte_thread_setname(tid, "vfd-rq");
+		if (ret != 0) {
+			bleat_printf( 2, "error: failed to set thread name: %s", "vfd-rq" );
+		}
+		bleat_printf( 1, "refresh queue management thread created" );	
+		
 		bleat_printf( 1, "creating memory pool" ); 									// Creates a new mempool in memory to hold the mbufs.  
 		mbuf_pool = rte_pktmbuf_pool_create("sriovctl", NUM_MBUFS, MBUF_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
 		if (mbuf_pool == NULL) {
