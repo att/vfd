@@ -95,9 +95,9 @@
 #include "vfd_dcb.h"	// dcb related stuff
 #include "vfd_mlx5.h"
 
-//#include "ixgbe_ethdev.h"
-//#include "ixgbe_ethdev.h"
-
+#if VFD_KERNEL
+#include "vfd_nl.h"		// netlink 
+#endif
 
 #define DEBUG
 #define MAX_ARGV_LEN	64		// number of parms (max) passed on eal_init call
@@ -1601,13 +1601,16 @@ main(int argc, char **argv)
 			bleat_printf( 0, "CRI: abort: cannot crate refresh_queue thread" );
 			rte_exit(EXIT_FAILURE, "Cannot create refresh_queue thread\n");
 		}
-		bleat_printf( 1, "refresh queue management thread created" );
 		
 		ret = rte_thread_setname(tid, "vfd-rq");
 		if (ret != 0) {
 			bleat_printf( 2, "error: failed to set thread name: %s", "vfd-rq" );
 		}
 		bleat_printf( 1, "refresh queue management thread created" );	
+
+#if VFD_KERNEL 		
+		netlink_init();
+#endif
 		
 		bleat_printf( 1, "creating memory pool" ); 									// Creates a new mempool in memory to hold the mbufs.  
 		mbuf_pool = rte_pktmbuf_pool_create("sriovctl", NUM_MBUFS, MBUF_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
@@ -1760,6 +1763,11 @@ main(int argc, char **argv)
 	}
 
 	free( parm_file );			// now it's safe to free the parm file
+
+#if VFD_KERNEL
+	// send message to kernel module asking to update netdev list
+	device_message(0, 0, NL_PF_UPD_DEV_RQ, NL_PF_RESP_OK);
+#endif
 
 	while(!terminated)
 	{
