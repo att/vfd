@@ -71,6 +71,23 @@ static int is_port_vf_valid(int port, int vf)
 }
 
 
+static void delete_all_vfd_devs(void)
+{
+	int x, y;
+	
+	for (x = 0; x < MAX_PF; x++) {
+		
+		for (y = 0; y < MAX_VF; y++) {
+			
+			if(vfd_netdevs[x][y] != NULL){
+				
+				delete_vfd_net(x, y);
+			}
+		}
+	}
+}
+
+
 static void vfd_stats_callback(struct cn_msg *msg, struct netlink_skb_parms *nsp)
 {
 	struct vfd_nl_message *vfd_msg;	
@@ -153,7 +170,11 @@ static void vfd_stats_callback(struct cn_msg *msg, struct netlink_skb_parms *nsp
 			pr_debug("Update device list: Port: %d, VF: %d\n", vfd_msg->port, vfd_msg->vf);
 			update_vfd_net(); 			
 			break;	
-			
+
+		case NL_PF_RES_DEV_RQ:
+			pr_debug("Remove all devices Port: %d, VF: %d\n", vfd_msg->port, vfd_msg->vf);
+			delete_all_vfd_devs(); 			
+			break;				
 		
 		default:
 			pr_warning("unknown msg: PF = %u, VF = %u, REQ = %u, RESP = %u\n", vfd_msg->port, vfd_msg->vf, vfd_msg->req, vfd_msg->resp );
@@ -352,6 +373,7 @@ static int add_vfd_net(int pf, int vf, char * bdf, int len)
 	
 	spin_unlock(lock);
 		
+	pr_info("adding vfd_net: %s\n", netdev->name);
 	pr_debug("vfd-net: Storing netdev, port: %d, vf: %d\n", pf, vf);	
 				
 	result = register_netdev(netdev);
@@ -429,26 +451,6 @@ static int delete_vfd_net(int pf, int vf)
 	//spin_unlock(lock);
 		
 	return 0;
-}
-
-
-
-
-static void update_vfd_net(void)
-{
-	int x, y;
-	
-	for (x = 0; x < MAX_PF; x++) {
-		
-		for (y = 0; y < MAX_VF; y++) {
-			
-			if(vfd_netdevs[x][y] != NULL){
-				
-				delete_vfd_net(x, y);
-			}
-		}
-	}
-	send_get_dev_list_request();
 }
 
 
@@ -624,6 +626,11 @@ void vfd_init(struct net_device *dev)
 }
 
 
+static void update_vfd_net(void)
+{
+	delete_all_vfd_devs();
+	send_get_dev_list_request();
+}
 
 
 static void vfd_cleanup(void)

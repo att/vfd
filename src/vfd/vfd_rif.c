@@ -902,12 +902,6 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 
 	bleat_printf( 2, "VF was added: %s %s id=%d", vfc->name, vfc->pciid, vfc->vfid );
 	free_config( vfc );
-	
-#if VFD_KERNEL
-	// send message to kernel module asking to add netdev
-	device_message(port->rte_port_number, vfc->vfid , NL_PF_ADD_DEV_RQ, NL_PF_RESP_OK);
-#endif
-
 	return 1;
 }
 
@@ -1050,12 +1044,6 @@ extern int vfd_del_vf( parms_t* parms, sriov_conf_t* conf, char* fname, char** r
 		*reason = NULL;
 	}
 	bleat_printf( 2, "VF was deleted: %s %s id=%d", vfc->name, vfc->pciid, vfc->vfid );
-	
-#if VFD_KERNEL
-	// send message to kernel module asking to update netdev list
-	device_message(port->rte_port_number, vfc->vfid , NL_PF_DEL_DEV_RQ, NL_PF_RESP_OK);
-#endif
-
 	return 1;
 }
 

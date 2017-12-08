@@ -106,7 +106,7 @@ netlink_connect(void)
 	l_local.nl_groups = -1; /* bitmask of requested groups */
 	l_local.nl_pid = 0;
 
-	bleat_printf( 2, "nl subscribing to %u.%u\n", CN_TEST_IDX, CN_TEST_VAL);
+	bleat_printf( 2, "nl subscribing to %u.%u\n", CN_VFD_IDX, CN_VFD_VAL);
 
 	if (bind(nl_socket, (struct sockaddr *)&l_local, sizeof(struct sockaddr_nl)) == -1) {
 		bleat_printf( 2, "nl bind failed\n");
@@ -229,8 +229,8 @@ device_message(int port, int vf, int req, int resp)
 	
 	data = (struct cn_msg *)buf;
 
-	data->id.idx = CN_TEST_IDX;
-	data->id.val = CN_TEST_VAL;
+	data->id.idx = CN_VFD_IDX;
+	data->id.val = CN_VFD_VAL;
 	data->seq++;
 	data->ack = 0;
 	

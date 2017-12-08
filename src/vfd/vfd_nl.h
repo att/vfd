@@ -45,8 +45,8 @@
 // --------------------------------------------------------------------------------------
 #define NETLINK_CONNECTOR 	11
 
-#define CN_TEST_IDX		CN_NETLINK_USERS + 3
-#define CN_TEST_VAL		0x456
+#define CN_VFD_IDX		CN_NETLINK_USERS + 3
+#define CN_VFD_VAL		0x456
 
 
 
