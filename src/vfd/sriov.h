@@ -71,6 +71,10 @@
 #include <rte_string_fns.h>
 #include <rte_spinlock.h>
 
+#if VFD_KERNEL
+#include "vfd_nl.h"
+#endif
+
 #include <vfdlib.h>
 
 #include "vfd_bnxt.h"

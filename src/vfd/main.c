@@ -95,9 +95,9 @@
 #include "vfd_dcb.h"	// dcb related stuff
 #include "vfd_mlx5.h"
 
-//#include "ixgbe_ethdev.h"
-//#include "ixgbe_ethdev.h"
-
+#if VFD_KERNEL
+#include "vfd_nl.h"		// netlink 
+#endif
 
 #define DEBUG
 #define MAX_ARGV_LEN	64		// number of parms (max) passed on eal_init call
@@ -935,8 +935,18 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 				change2port = 1;
 
 				switch( vf->last_updated ) {
-					case ADDED:		reason = "add"; break;
-					case DELETED:	reason = "delete"; break;
+					case ADDED:		
+						reason = "add"; 
+#if VFD_KERNEL
+						device_message(port->rte_port_number, vf->num, NL_PF_ADD_DEV_RQ, NL_PF_RESP_OK);
+#endif
+						break;						
+					case DELETED:	
+						reason = "delete"; 
+#if VFD_KERNEL
+						device_message(port->rte_port_number, vf->num, NL_PF_DEL_DEV_RQ, NL_PF_RESP_OK);
+#endif						
+						break;					
 					case RESET:		reason = "reset"; break;
 					default:		reason = "unknown reason"; break;
 				}
@@ -1601,8 +1611,17 @@ main(int argc, char **argv)
 			bleat_printf( 0, "CRI: abort: cannot crate refresh_queue thread" );
 			rte_exit(EXIT_FAILURE, "Cannot create refresh_queue thread\n");
 		}
-		bleat_printf( 1, "refresh queue management thread created" );
-	
+		
+		ret = rte_thread_setname(tid, "vfd-rq");
+		if (ret != 0) {
+			bleat_printf( 2, "error: failed to set thread name: %s", "vfd-rq" );
+		}
+		bleat_printf( 1, "refresh queue management thread created" );	
+
+#if VFD_KERNEL 		
+		netlink_init();
+#endif
+		
 		bleat_printf( 1, "creating memory pool" ); 									// Creates a new mempool in memory to hold the mbufs.  
 		mbuf_pool = rte_pktmbuf_pool_create("sriovctl", NUM_MBUFS, MBUF_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
 		if (mbuf_pool == NULL) {
@@ -1755,6 +1774,11 @@ main(int argc, char **argv)
 
 	free( parm_file );			// now it's safe to free the parm file
 
+#if VFD_KERNEL
+	// send message to kernel module asking to update netdev list
+	device_message(0, 0, NL_PF_UPD_DEV_RQ, NL_PF_RESP_OK);
+#endif
+
 	while(!terminated)
 	{
 		usleep(50000);			// .5s
@@ -1766,6 +1790,11 @@ main(int argc, char **argv)
 
 	}		// end !terminated while
 
+#if VFD_KERNEL
+	// send message to kernel module asking to delete all netdevs
+	device_message(0, 0, NL_PF_RES_DEV_RQ, NL_PF_RESP_OK);
+#endif	
+
 	bleat_printf( 0, "terminating" );
 	log_port_state( NULL, "not ready" );								// mark all ports down in log
 	run_stop_cbs( running_config );										// run any user stop callback commands that were given in VF conf files
@@ -1776,8 +1805,8 @@ main(int argc, char **argv)
 
 	close_ports();				// clean up the PFs, terminate mirrors
 
-  gettimeofday(&st.endTime, NULL);
-  bleat_printf( 1, "duration %.f sec\n", timeDelta(&st.endTime, &st.startTime));
+	gettimeofday(&st.endTime, NULL);
+	bleat_printf( 1, "duration %.f sec\n", timeDelta(&st.endTime, &st.startTime));
 
-  return EXIT_SUCCESS;
+	return EXIT_SUCCESS;
 }
