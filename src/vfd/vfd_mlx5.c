@@ -497,3 +497,62 @@ vfd_mlx5_set_vf_promisc(uint16_t port_id, uint16_t vf_id, uint8_t on)
 
 	return 0;
 }
+
+int
+vfd_mlx5_set_mirror( portid_t port_id, uint32_t vf, uint8_t target, uint8_t direction )
+{
+	char ifname[IF_NAMESIZE];
+	char cmd_in[256] = "";
+	char cmd_eg[256] = "";
+	int ret;
+
+	if( target > MAX_VFS ) {
+		bleat_printf( 0, "mirror not set: target vf out of range: %d", (int) target );
+		return -1;
+	}
+
+	if (vfd_mlx5_get_ifname(port_id, ifname))
+		return -1;
+
+	switch( direction ) {
+		case MIRROR_OFF:
+			sprintf(cmd_in, "echo %s %d > /sys/class/net/%s/device/sriov/%d/ingress_mirr",
+				"rem", vf, ifname, target);
+			sprintf(cmd_eg, "echo %s %d > /sys/class/net/%s/device/sriov/%d/egress_mirr",
+				"rem", vf, ifname, target);
+			break;
+		case MIRROR_IN:
+			sprintf(cmd_in, "echo %s %d > /sys/class/net/%s/device/sriov/%d/ingress_mirr",
+				"rem", vf, ifname, target);
+			sprintf(cmd_eg, "echo %s %d > /sys/class/net/%s/device/sriov/%d/egress_mirr",
+				"add", vf, ifname, target);
+			break;
+		case MIRROR_OUT:
+			sprintf(cmd_in, "echo %s %d > /sys/class/net/%s/device/sriov/%d/ingress_mirr",
+				"add", vf, ifname, target);
+			sprintf(cmd_eg, "echo %s %d > /sys/class/net/%s/device/sriov/%d/egress_mirr",
+				"rem", vf, ifname, target);
+			break;
+		case MIRROR_ALL:
+			sprintf(cmd_in, "echo %s %d > /sys/class/net/%s/device/sriov/%d/ingress_mirr",
+				"add", vf, ifname, target);
+			sprintf(cmd_eg, "echo %s %d > /sys/class/net/%s/device/sriov/%d/egress_mirr",
+				"add", vf, ifname, target);
+			break;
+
+	}
+
+	ret = system(cmd_in);
+
+	if (ret < 0) {
+	//	printf("cmd exec returned %d\n", ret);
+	}
+
+	ret = system(cmd_eg);
+
+	if (ret < 0) {
+	//	printf("cmd exec returned %d\n", ret);
+	}
+
+	return 0;
+}

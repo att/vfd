@@ -75,6 +75,7 @@
 				16 Oct 2017 - mlx5: Add unknown unicast (promisc mode) for vf support.
 				30 Nov 2017 - Switch to using mac module functions to properly handle MACs during reset/delete
 								Restructure update_nic() from a forreal perspective.
+				10 Jan 2018 - mlx5: Add VF mirroring support.
 */
 
 
@@ -482,7 +483,7 @@ static void close_ports( void ) {
 		for( j = 0; j < MAX_VFS; j++ ) {					// run regardless of what we think the count is!
 			if( port->mirrors[j].dir != MIRROR_OFF ) {
 				bleat_printf( 0, "terminating active mirror on shutdown: pf=%d vf=%d", port->rte_port_number,  port->vfs[i].num );
-				set_mirror( port->rte_port_number, port->vfs[i].num,  port->mirrors[j].id, port->mirrors[j].target, MIRROR_OFF );
+				set_mirror_wrp( port->rte_port_number, port->vfs[i].num,  port->mirrors[j].id, port->mirrors[j].target, MIRROR_OFF );
 			}
 		}
 	}
@@ -964,7 +965,7 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 					}
 
 					if( port->mirrors[y].dir != MIRROR_OFF ) {													// stop the mirror on delete
-						set_mirror( port->rte_port_number, vf->num, port->mirrors[y].id, port->mirrors[y].target, MIRROR_OFF );		// turn off
+						set_mirror_wrp( port->rte_port_number, vf->num, port->mirrors[y].id, port->mirrors[y].target, MIRROR_OFF );		// turn off
 						port->mirrors[y].dir = MIRROR_OFF;
 						port->mirrors[y].target = MAX_VFS + 1;													// target is unsigned -- set out of range high
 						idm_return( conf->mir_id_mgr, port->mirrors[y].id );									// mark the id as unused in allocator
@@ -987,7 +988,7 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 					int v;
 
 					if( port->mirrors[y].dir != MIRROR_OFF ) {						// setup the mirror
-						set_mirror( port->rte_port_number, vf->num, port->mirrors[y].id, port->mirrors[y].target, port->mirrors[y].dir );		// set target and type (in/out/both)
+						set_mirror_wrp( port->rte_port_number, vf->num, port->mirrors[y].id, port->mirrors[y].target, port->mirrors[y].dir );		// set target and type (in/out/both)
 						port->num_mirrors++;
 					}
 

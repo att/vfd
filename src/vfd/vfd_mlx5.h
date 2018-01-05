@@ -35,5 +35,6 @@ int vfd_mlx5_set_vf_vlan_filter(uint16_t port_id, uint16_t vlan_id, uint64_t vf_
 int vfd_mlx5_set_vf_promisc(uint16_t port_id, uint16_t vf_id, uint8_t on);
 int vfd_mlx5_set_qos_pf(uint16_t port_id, sriov_port_t *pf);
 int vfd_mlx5_set_prio_trust(uint16_t port_id);
+int vfd_mlx5_set_mirror( portid_t port_id, uint32_t vf, uint8_t target, uint8_t direction);
 
 #endif

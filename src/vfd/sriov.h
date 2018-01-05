@@ -405,6 +405,7 @@ void init_port_config(void);
 
 int get_split_ctlreg( portid_t port_id, uint16_t vf_id );
 int set_mirror( portid_t port_id, uint32_t vf, uint8_t id, uint8_t target, uint8_t direction );
+int set_mirror_wrp( portid_t port_id, uint32_t vf, uint8_t id, uint8_t target, uint8_t direction );
 void set_queue_drop( portid_t port_id, int state );
 void set_split_erop( portid_t port_id, uint16_t vf_id, int state );
 
