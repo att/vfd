@@ -204,7 +204,7 @@ void gen_port_qshares( sriov_port_t *port ) {
 			}
 		} else {
 			bleat_printf( 3, "no qshare normalisation needed: tc=%d sum=%d", i,  sums[i] );
-			for( j = i; j < port->num_vfs; j++ ) {
+			for( j = 0; j < port->num_vfs; j++ ) {
 				if( (vfid = port->vfs[j].num) >= 0 ){								// active VF
 					norm_pctgs[(vfid * ntcs)+i] =  port->vfs[j].qshares[i];			// sum is 100, stash unchanged
 				}

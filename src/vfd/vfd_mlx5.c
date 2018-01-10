@@ -398,7 +398,7 @@ vfd_mlx5_set_prio_trust(uint16_t port_id)
 }
 
 int
-vfd_mlx5_set_qos_pf(uint16_t port_id, sriov_port_t *pf)
+vfd_mlx5_set_qos_pf(uint16_t port_id, tc_class_t **tc_config, uint8_t ntcs)
 {
 	char ifname[IF_NAMESIZE];
 	char cmd[256] = "";
@@ -409,7 +409,7 @@ vfd_mlx5_set_qos_pf(uint16_t port_id, sriov_port_t *pf)
 	if (vfd_mlx5_get_ifname(port_id, ifname))
 		return -1;
 
-	if (pf->ntcs != 8) {
+	if (ntcs != 8) {
 		printf("mlx5 devices don't support 4 TC configuration\n");
 		return -2;
 	}
@@ -418,11 +418,11 @@ vfd_mlx5_set_qos_pf(uint16_t port_id, sriov_port_t *pf)
 
 	rte_eth_link_get_nowait(port_id, &link);
 
-	for(i=0; i< pf->ntcs; i++) {
-		strcpy(tc_cfg[i].policy, (pf->tc_config[i]->flags & TCF_LNK_STRICTP) ? "strict" : "ets");
-		tc_cfg[i].min_bw = (pf->tc_config[i]->flags & TCF_LNK_STRICTP) ? 0 : pf->tc_config[i]->min_bw;
-		if (pf->tc_config[i]->max_bw < 100) {
-			tc_cfg[i].max_bw = (pf->tc_config[i]->max_bw * link.link_speed) / 100;
+	for(i=0; i< ntcs; i++) {
+		strcpy(tc_cfg[i].policy, (tc_config[i]->flags & TCF_LNK_STRICTP) ? "strict" : "ets");
+		tc_cfg[i].min_bw = (tc_config[i]->flags & TCF_LNK_STRICTP) ? 0 : tc_config[i]->min_bw;
+		if (tc_config[i]->max_bw < 100) {
+			tc_cfg[i].max_bw = (tc_config[i]->max_bw * link.link_speed) / 100;
 			if (tc_cfg[i].max_bw < 1000)
 				tc_cfg[i].max_bw = 1000;
 
@@ -549,6 +549,28 @@ vfd_mlx5_set_mirror( portid_t port_id, uint32_t vf, uint8_t target, uint8_t dire
 	}
 
 	ret = system(cmd_eg);
+
+	if (ret < 0) {
+	//	printf("cmd exec returned %d\n", ret);
+	}
+
+	return 0;
+}
+
+int
+vfd_mlx5_set_vf_tcqos( portid_t port_id, uint32_t vf, uint8_t tc, uint32_t rate )
+{
+	char ifname[IF_NAMESIZE];
+	char cmd[256] = "";
+	int ret;
+
+	if (vfd_mlx5_get_ifname(port_id, ifname))
+		return -1;
+
+	sprintf(cmd, "echo %d %d > /sys/class/net/%s/device/sriov/%d/min_tx_tc_rate",
+		tc, rate, ifname, vf);
+
+	ret = system(cmd);
 
 	if (ret < 0) {
 	//	printf("cmd exec returned %d\n", ret);
