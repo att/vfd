@@ -80,6 +80,7 @@
 #include "vfd_bnxt.h"
 #include "vfd_ixgbe.h"
 #include "vfd_i40e.h"
+#include "vfd_mlx5.h"
 
 
 // ---------------------------------------------------------------------------------------
@@ -513,6 +514,7 @@ void qos_set_credits( portid_t pf, int mtu, int* rates, int tc8_mode );
 extern void qos_enable_arb( portid_t pf );
 extern void qos_set_tdplane( portid_t pf, uint8_t* pctgs, uint8_t *bwgs, int ntcs, int mtu );
 extern void qos_set_txpplane( portid_t pf, uint8_t* pctgs, uint8_t *bwgs, int ntcs, int mtu );
+extern void mlx5_set_vf_tcqos( sriov_port_t *port, uint32_t link_speed );
 
 
 //------- these are hacks in the dpdk library and we  must find a good way to rid ourselves of them ------

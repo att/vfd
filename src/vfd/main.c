@@ -76,6 +76,7 @@
 				30 Nov 2017 - Switch to using mac module functions to properly handle MACs during reset/delete
 								Restructure update_nic() from a forreal perspective.
 				10 Jan 2018 - mlx5: Add VF mirroring support.
+				10 Jan 2018 - mlx5: Add VF queue sharing per TC.
 */
 
 
@@ -880,8 +881,11 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 	for (i = 0; i < conf->num_ports; ++i){												// run each port we know about to apply port only changes
 		int ret;
 		struct sriov_port_s* port;
+		struct rte_eth_link link;
 
 		port = &conf->ports[i];
+
+		rte_eth_link_get_nowait(port->rte_port_number, &link);
 
 		//  WHY is this and disable pool done every time?  why is it not just done at the time of add?
 		tx_set_loopback( port->rte_port_number, !!(port->flags & PF_LOOPBACK) );		// enable loopback if set (disabled: all vm-vm traffic must go to TOR and back
@@ -1047,10 +1051,6 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 				}
 
 				if( vf->rate || vf->min_rate ) {
-					struct rte_eth_link link;
-
-					rte_eth_link_get_nowait(port->rte_port_number, &link);
-
 					if( vf->rate ) {
 						bleat_printf( 1, "setting rate: %d", (int)  ( (float)link.link_speed * vf->rate ) );
 						set_vf_rate_limit( port->rte_port_number, vf->num, (uint16_t)( (float)link.link_speed * vf->rate ), 0x01 );
@@ -1122,9 +1122,11 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 			}
 
 			if( change2port && (g_parms->rflags & RF_ENABLE_QOS) ) {		// changes, we must recompute queue shares and push to nic
-				if (get_nic_type(port->rte_port_number) != VFD_MLX5) { // No support in mlx5 yet
+				gen_port_qshares( port );									// compute and save in the port struct
+				if (get_nic_type(port->rte_port_number) == VFD_MLX5) {
+					mlx5_set_vf_tcqos( port, link.link_speed );
+				} else {
 					//uint8_t* pp;
-					gen_port_qshares( port );									// compute and save in the port struct
 					qos_set_credits( port->rte_port_number, port->mtu, port->vftc_qshares, TC_4PERQ_MODE );	// push out to nic
 					//qos_set_credits( port->rte_port_number, port->mtu, pp, TC_4PERQ_MODE );	// push out to nic
 				}
