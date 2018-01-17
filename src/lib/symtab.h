@@ -11,6 +11,8 @@ extern void sym_clear( void *s );
 extern void sym_dump( void *s );
 extern void *sym_alloc( int size );
 extern void sym_del( void *s, const char *name, unsigned int class );
+extern void sym_free( void *vtable );
+extern int sym_fmap( void *vtable, const char *name, unsigned int class, void *val );
 extern void *sym_get( void *s,  const char *name, unsigned int class );
 extern int sym_put( void *s,  const char *name, unsigned int class, void *val );
 extern int sym_map( void *s,  const char *name, unsigned int class, void *val );
