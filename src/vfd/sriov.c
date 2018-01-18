@@ -428,6 +428,9 @@ set_vf_allow_bcast(portid_t port_id, uint16_t vf_id, int on)
 			ret = vfd_bnxt_set_vf_broadcast(port_id, vf_id, on);
 			break;
 			
+		case VFD_MLX5:
+			break;
+
 		default:
 			bleat_printf( 0, "set_vf_allow_bcast: unknown device type: %u, port: %u", port_id, dev_type);
 			break;	
@@ -711,6 +714,9 @@ set_vf_vlan_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 			diag = vfd_bnxt_set_vf_vlan_anti_spoof(port_id, vf, on);
 			break;
 			
+		case VFD_MLX5:
+			break;
+
 		default:
 			bleat_printf( 0, "set_vf_vlan_anti_spoofing: unknown device type: %u, port: %u", port_id, dev_type);
 			break;	
