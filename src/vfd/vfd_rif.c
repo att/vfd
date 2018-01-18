@@ -809,7 +809,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	}
 
 	if( vfc->mirror_dir != MIRROR_OFF ) {
-		if( vfc->mirror_target == vfc->vfid ||  vfc->mirror_target < 0 || vfc->mirror_target > port->num_vfs ) {
+		if( vfc->mirror_target == vfc->vfid ||  vfc->mirror_target < 0 || vfc->mirror_target > port->nvfs_config ) {
 			snprintf( mbuf, sizeof( mbuf ), "mirror target is out of range or is the same as this VF (%d): %d", (int) vfc->vfid, vfc->mirror_target );
 			if( reason ) {
 				*reason = strdup( mbuf );
