@@ -77,6 +77,7 @@
 								Restructure update_nic() from a forreal perspective.
 */
 
+#include <rte_version.h>
 
 #include <strings.h>
 #include <sys/types.h>
@@ -110,6 +111,7 @@ static parms_t *g_parms = NULL;											// dpdk callback does not allow data p
 
 const char *version = VFD_VERSION "    build: " __DATE__ " " __TIME__;
 const char *vnum = "v2";
+
 
 // --- misc support ----------------------------------------------------------------------------------------------
 
@@ -1500,7 +1502,8 @@ main(int argc, char **argv)
 		case 'h':
 		case '?':
 			printf( "\nVFd %s %s\n", vnum, version );
-			printf( "(17710)\n" );
+			printf( "based on: %s %d.%d%s.%d\n", RTE_VER_PREFIX, RTE_VER_YEAR,  RTE_VER_MONTH, RTE_VER_SUFFIX,  RTE_VER_RELEASE );
+			printf( "(18118)\n" );
 			printf("%s\n", main_help);
 			exit( 0 );
 			break;
