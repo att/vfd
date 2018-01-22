@@ -484,7 +484,7 @@ static void close_ports( void ) {
 		for( j = 0; j < MAX_VFS; j++ ) {					// run regardless of what we think the count is!
 			if( port->mirrors[j].dir != MIRROR_OFF ) {
 				bleat_printf( 0, "terminating active mirror on shutdown: pf=%d vf=%d", port->rte_port_number,  port->vfs[i].num );
-				set_mirror_wrp( port->rte_port_number, port->vfs[i].num,  port->mirrors[j].id, port->mirrors[j].target, MIRROR_OFF );
+				set_mirror_wrp( port->rte_port_number, port->vfs[j].num,  port->mirrors[j].id, port->mirrors[j].target, MIRROR_OFF );
 			}
 		}
 	}
