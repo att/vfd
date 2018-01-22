@@ -2,7 +2,7 @@
 #include "sriov.h"
 
 int  
-vfd_ixgbe_ping_vfs( __attribute__((__unused__)) uint16_t port_id,  __attribute__((__unused__)) int16_t vf_id)
+vfd_ixgbe_ping_vfs( __attribute__((__unused__)) portid_t port_id,  __attribute__((__unused__)) int16_t vf_id)
 {
 	int diag = 0;
 	int i;
@@ -33,7 +33,7 @@ vfd_ixgbe_ping_vfs( __attribute__((__unused__)) uint16_t port_id,  __attribute__
 
 
 int 
-vfd_ixgbe_set_vf_mac_anti_spoof(uint16_t port_id, uint16_t vf_id, uint8_t on)
+vfd_ixgbe_set_vf_mac_anti_spoof(portid_t port_id, uint16_t vf_id, uint8_t on)
 {
 	int diag = rte_pmd_ixgbe_set_vf_mac_anti_spoof(port_id, vf_id, on);
 	if (diag < 0) {
@@ -47,7 +47,7 @@ vfd_ixgbe_set_vf_mac_anti_spoof(uint16_t port_id, uint16_t vf_id, uint8_t on)
 
 
 int 
-vfd_ixgbe_set_vf_vlan_anti_spoof(uint16_t port_id, uint16_t vf_id, uint8_t on)
+vfd_ixgbe_set_vf_vlan_anti_spoof(portid_t port_id, uint16_t vf_id, uint8_t on)
 {
 	int diag = rte_pmd_ixgbe_set_vf_vlan_anti_spoof(port_id, vf_id, on);
 	if (diag < 0) {
@@ -61,7 +61,7 @@ vfd_ixgbe_set_vf_vlan_anti_spoof(uint16_t port_id, uint16_t vf_id, uint8_t on)
 
 
 int 
-vfd_ixgbe_set_tx_loopback(uint16_t port_id, uint8_t on)
+vfd_ixgbe_set_tx_loopback(portid_t port_id, uint8_t on)
 {
 	int diag = rte_pmd_ixgbe_set_tx_loopback(port_id, on);
 	if (diag < 0) {
@@ -75,7 +75,7 @@ vfd_ixgbe_set_tx_loopback(uint16_t port_id, uint8_t on)
 
 
 int 
-vfd_ixgbe_set_vf_unicast_promisc(uint16_t port_id, uint16_t vf_id, uint8_t on)
+vfd_ixgbe_set_vf_unicast_promisc(portid_t port_id, uint16_t vf_id, uint8_t on)
 {
 	int diag = rte_pmd_ixgbe_set_vf_rxmode(port_id, vf_id, ETH_VMDQ_ACCEPT_HASH_UC,(uint8_t) on);
 	if (diag < 0) {
@@ -89,7 +89,7 @@ vfd_ixgbe_set_vf_unicast_promisc(uint16_t port_id, uint16_t vf_id, uint8_t on)
 
 
 int 
-vfd_ixgbe_set_vf_multicast_promisc(uint16_t port_id, uint16_t vf_id, uint8_t on)
+vfd_ixgbe_set_vf_multicast_promisc(portid_t port_id, uint16_t vf_id, uint8_t on)
 {
 	int diag = rte_pmd_ixgbe_set_vf_rxmode(port_id, vf_id, ETH_VMDQ_ACCEPT_MULTICAST,(uint8_t) on);
 	if (diag < 0) {
@@ -110,7 +110,7 @@ vfd_ixgbe_set_vf_multicast_promisc(uint16_t port_id, uint16_t vf_id, uint8_t on)
 	should be made after all calls to this function have been made. 
 */
 int 
-vfd_ixgbe_set_vf_mac_addr(uint16_t port_id, uint16_t vf_id, struct ether_addr *mac_addr)
+vfd_ixgbe_set_vf_mac_addr(portid_t port_id, uint16_t vf_id, struct ether_addr *mac_addr)
 {
  	int diag = rte_eth_dev_mac_addr_add( port_id, mac_addr, vf_id );			// add to whitelist
 	if (diag < 0) {
@@ -142,7 +142,7 @@ int vfd_ixgbe_set_vf_default_mac_addr( portid_t port_id, uint16_t vf, struct eth
 
 
 int 
-vfd_ixgbe_set_vf_vlan_stripq(uint16_t port_id, uint16_t vf_id, uint8_t on)
+vfd_ixgbe_set_vf_vlan_stripq(portid_t port_id, uint16_t vf_id, uint8_t on)
 {
 	int diag = rte_pmd_ixgbe_set_vf_vlan_stripq(port_id, vf_id, on);
 	if (diag < 0) {
@@ -156,7 +156,7 @@ vfd_ixgbe_set_vf_vlan_stripq(uint16_t port_id, uint16_t vf_id, uint8_t on)
 
 
 int 
-vfd_ixgbe_set_vf_vlan_insert(uint16_t port_id, uint16_t vf_id, uint16_t vlan_id)
+vfd_ixgbe_set_vf_vlan_insert(portid_t port_id, uint16_t vf_id, uint16_t vlan_id)
 {
 	int diag = rte_pmd_ixgbe_set_vf_vlan_insert(port_id, vf_id, vlan_id);
 	if (diag < 0) {
@@ -170,7 +170,7 @@ vfd_ixgbe_set_vf_vlan_insert(uint16_t port_id, uint16_t vf_id, uint16_t vlan_id)
 
 
 int 
-vfd_ixgbe_set_vf_broadcast(uint16_t port_id, uint16_t vf_id, uint8_t on)
+vfd_ixgbe_set_vf_broadcast(portid_t port_id, uint16_t vf_id, uint8_t on)
 {
 	int diag = rte_pmd_ixgbe_set_vf_rxmode(port_id, vf_id, ETH_VMDQ_ACCEPT_BROADCAST,(uint8_t) on);
 	if (diag < 0) {
@@ -184,7 +184,7 @@ vfd_ixgbe_set_vf_broadcast(uint16_t port_id, uint16_t vf_id, uint8_t on)
 
 
 int 
-vfd_ixgbe_allow_untagged(uint16_t port_id, uint16_t vf_id, uint8_t on)
+vfd_ixgbe_allow_untagged(portid_t port_id, uint16_t vf_id, uint8_t on)
 {
 	
 	uint16_t rx_mode = 0;
@@ -202,7 +202,7 @@ vfd_ixgbe_allow_untagged(uint16_t port_id, uint16_t vf_id, uint8_t on)
 
 
 int 
-vfd_ixgbe_set_vf_vlan_filter(uint16_t port_id, uint16_t vlan_id, uint64_t vf_mask, uint8_t on)
+vfd_ixgbe_set_vf_vlan_filter(portid_t port_id, uint16_t vlan_id, uint64_t vf_mask, uint8_t on)
 {
 	int diag = rte_pmd_ixgbe_set_vf_vlan_filter(port_id, vlan_id, vf_mask, on);
 	if (diag < 0) {
@@ -216,7 +216,7 @@ vfd_ixgbe_set_vf_vlan_filter(uint16_t port_id, uint16_t vlan_id, uint64_t vf_mas
 
 
 int 
-vfd_ixgbe_get_vf_stats(uint16_t port_id, uint16_t vf_id, struct rte_eth_stats *stats)
+vfd_ixgbe_get_vf_stats(portid_t port_id, uint16_t vf_id, struct rte_eth_stats *stats)
 {
 	int diag = 0;
 	/* not implemented in DPDK yet */
@@ -250,7 +250,7 @@ vfd_ixgbe_get_vf_stats(uint16_t port_id, uint16_t vf_id, struct rte_eth_stats *s
 
 
 int 
-vfd_ixgbe_reset_vf_stats(uint16_t port_id, uint16_t vf_id)
+vfd_ixgbe_reset_vf_stats(portid_t port_id, uint16_t vf_id)
 {
 	int diag = 0;
 	
@@ -267,7 +267,7 @@ vfd_ixgbe_reset_vf_stats(uint16_t port_id, uint16_t vf_id)
 
 
 int 
-vfd_ixgbe_set_vf_rate_limit(uint16_t port_id, uint16_t vf_id, uint16_t tx_rate, uint64_t q_msk)
+vfd_ixgbe_set_vf_rate_limit(portid_t port_id, uint16_t vf_id, uint16_t tx_rate, uint64_t q_msk)
 {
 	int diag = rte_pmd_ixgbe_set_vf_rate_limit(port_id, vf_id, tx_rate, q_msk);
 	if (diag < 0) {
@@ -281,7 +281,7 @@ vfd_ixgbe_set_vf_rate_limit(uint16_t port_id, uint16_t vf_id, uint16_t tx_rate, 
 
 
 int 
-vfd_ixgbe_set_all_queues_drop_en(uint16_t port_id, uint8_t on)
+vfd_ixgbe_set_all_queues_drop_en(portid_t port_id, uint8_t on)
 {
 	int diag = rte_pmd_ixgbe_set_all_queues_drop_en(port_id, on);
 	if (diag < 0) {
@@ -298,9 +298,15 @@ vfd_ixgbe_set_all_queues_drop_en(uint16_t port_id, uint8_t on)
 	Called when a 'mailbox' message is received.  Examine and take action based on
 	the message type. (Somewhere after dpdk 17.05 data was inserted but is generally
 	NULL (hard set in their code).
+
+	for 17.08: typedef int (*rte_eth_dev_cb_fn)(uint8_t port_id, enum rte_eth_event_type event, void *cb_arg, void *ret_param);
+
+
 */
+//vfd_ixgbe_vf_msb_event_callback(portid_t port_id, enum rte_eth_event_type type, void *data ) {
+//vfd_ixgbe_vf_msb_event_callback(portid_t port_id, enum rte_eth_event_type type, void *data, void* param ) {
 int
-vfd_ixgbe_vf_msb_event_callback(uint16_t port_id, enum rte_eth_event_type type, void *data, void* param ) {
+vfd_ixgbe_vf_msb_event_callback( uint8_t port_id, enum rte_eth_event_type type, void *data, void* param ) {
 
 	struct rte_pmd_ixgbe_mb_event_param *p;
 	uint16_t vf;
@@ -494,7 +500,7 @@ vfd_ixgbe_vf_msb_event_callback(uint16_t port_id, enum rte_eth_event_type type, 
 
 
 uint32_t 
-vfd_ixgbe_get_pf_spoof_stats(uint16_t port_id)
+vfd_ixgbe_get_pf_spoof_stats(portid_t port_id)
 {
 	bleat_printf( 3, "vfd_ixgbe_get_pf_spoof_stats: port_id=%d", port_id);
 	return port_pci_reg_read(port_id, 0x08780);
@@ -502,7 +508,7 @@ vfd_ixgbe_get_pf_spoof_stats(uint16_t port_id)
 
 
 uint32_t 
-vfd_ixgbe_get_vf_spoof_stats(__attribute__((__unused__)) uint16_t port_id, __attribute__((__unused__)) uint16_t vf_id)
+vfd_ixgbe_get_vf_spoof_stats(__attribute__((__unused__)) portid_t port_id, __attribute__((__unused__)) uint16_t vf_id)
 {
 	/* not implemented */
 	bleat_printf( 3, "vfd_ixgbe_get_vf_spoof_stats not implemented: port_id=%d, vf_id=%d", port_id, vf_id);
@@ -510,7 +516,7 @@ vfd_ixgbe_get_vf_spoof_stats(__attribute__((__unused__)) uint16_t port_id, __att
 }
 
 void 
-vfd_ixgbe_disable_default_pool(uint16_t port_id)
+vfd_ixgbe_disable_default_pool(portid_t port_id)
 {
 	uint32_t ctrl = port_pci_reg_read(port_id, IXGBE_VT_CTL);
 	ctrl |= IXGBE_VT_CTL_DIS_DEFPL;
@@ -520,7 +526,7 @@ vfd_ixgbe_disable_default_pool(uint16_t port_id)
 
 
 int 
-vfd_ixgbe_is_rx_queue_on(uint16_t port_id, uint16_t vf_id, int* mcounter)
+vfd_ixgbe_is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter)
 {
 	int queue;						// queue to set (0-max-queues)
 	uint32_t reg_off;				// control register address
@@ -567,7 +573,7 @@ vfd_ixgbe_is_rx_queue_on(uint16_t port_id, uint16_t vf_id, int* mcounter)
 
 
 void 
-vfd_ixgbe_set_pfrx_drop(uint16_t port_id, int state)
+vfd_ixgbe_set_pfrx_drop(portid_t port_id, int state)
 {
 	uint16_t qstart;			// point where the queue starts (1 past the last VF)
 	int          i;
@@ -598,7 +604,7 @@ vfd_ixgbe_set_pfrx_drop(uint16_t port_id, int state)
 
 
 void 
-vfd_ixgbe_set_rx_drop(uint16_t port_id, uint16_t vf_id, int state)
+vfd_ixgbe_set_rx_drop(portid_t port_id, uint16_t vf_id, int state)
 {
 	int          i;
 	uint32_t reg_off;
@@ -622,7 +628,7 @@ vfd_ixgbe_set_rx_drop(uint16_t port_id, uint16_t vf_id, int state)
 
 
 void 
-vfd_ixgbe_set_split_erop(uint16_t port_id, uint16_t vf_id, int state)
+vfd_ixgbe_set_split_erop(portid_t port_id, uint16_t vf_id, int state)
 {
 	uint32_t reg_off = 0x01014; 							// split receive control regs (pg598)
 	uint32_t reg_value;
@@ -654,7 +660,7 @@ vfd_ixgbe_set_split_erop(uint16_t port_id, uint16_t vf_id, int state)
 
 
 int 
-vfd_ixgbe_get_split_ctlreg(uint16_t port_id, uint16_t vf_id)
+vfd_ixgbe_get_split_ctlreg(portid_t port_id, uint16_t vf_id)
 {
 	uint32_t reg_off = 0x01014; 	// split receive control regs (pg598)
 	int queue;						// the first queue for the vf (TODO: expand this to accept a queue 0-max_qpp)
@@ -672,7 +678,7 @@ vfd_ixgbe_get_split_ctlreg(uint16_t port_id, uint16_t vf_id)
 
 
 int 
-vfd_ixgbe_dump_all_vlans(uint16_t port_id)
+vfd_ixgbe_dump_all_vlans(portid_t port_id)
 {
 	uint32_t res;
 	uint32_t ix;

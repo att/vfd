@@ -1307,7 +1307,7 @@ timeDelta(struct timeval * now, struct timeval * before)
 	we are currently managing.
 */
 void
-restore_vf_setings(uint16_t port_id, int vf_id) {
+restore_vf_setings(portid_t port_id, int vf_id) {
 	int i;
 	int matched = 0;		// number matched for log
 
@@ -1503,7 +1503,7 @@ main(int argc, char **argv)
 		case '?':
 			printf( "\nVFd %s %s\n", vnum, version );
 			printf( "based on: %s %d.%d%s.%d\n", RTE_VER_PREFIX, RTE_VER_YEAR,  RTE_VER_MONTH, RTE_VER_SUFFIX,  RTE_VER_RELEASE );
-			printf( "(18118)\n" );
+			printf( "(18122 - retrofit of current nic_agnostic ontop of dpdk 17.08)\n" );
 			printf("%s\n", main_help);
 			exit( 0 );
 			break;
