@@ -172,8 +172,16 @@ vfd_mlx5_set_vf_vlan_insert(uint16_t port_id, uint16_t vf_id, uint16_t vlan_id)
 	if (vfd_mlx5_get_ifname(port_id, ifname))
 		return -1;
 
-	sprintf(cmd, "echo '%d:0:802.1ad' > /sys/class/net/%s/device/sriov/%d/vlan", vlan_id, ifname, vf_id);
+	if (vlan_id) {
+		sprintf(cmd, "echo rem 0 4095 > /sys/class/net/%s/device/sriov/%d/trunk", ifname, vf_id);
+		ret = system(cmd);
 
+		if (ret < 0) {
+			//	printf("cmd exec returned %d\n", ret);
+		}
+	}
+
+	sprintf(cmd, "echo '%d:0:802.1ad' > /sys/class/net/%s/device/sriov/%d/vlan", vlan_id, ifname, vf_id);
 	ret = system(cmd);
 
 	if (ret < 0) {
@@ -193,8 +201,16 @@ vfd_mlx5_set_vf_cvlan_insert(uint16_t port_id, uint16_t vf_id, uint16_t vlan_id)
 	if (vfd_mlx5_get_ifname(port_id, ifname))
 		return -1;
 
-	sprintf(cmd, "ip link set %s vf %d vlan %d", ifname, vf_id, vlan_id);
+	if (vlan_id) {
+		sprintf(cmd, "echo rem 0 4095 > /sys/class/net/%s/device/sriov/%d/trunk", ifname, vf_id);
+		ret = system(cmd);
 
+		if (ret < 0) {
+			//	printf("cmd exec returned %d\n", ret);
+		}
+	}
+
+	sprintf(cmd, "ip link set %s vf %d vlan %d", ifname, vf_id, vlan_id);
 	ret = system(cmd);
 
 	if (ret < 0) {
@@ -487,7 +503,8 @@ vfd_mlx5_set_vf_promisc(uint16_t port_id, uint16_t vf_id, uint8_t on)
 	if (vfd_mlx5_get_ifname(port_id, ifname))
 		return -1;
 
-	sprintf(cmd, "ip link set %s vf %d trust %s", ifname, vf_id, on ? "on" : "off");
+	sprintf(cmd, "echo \"%s\" > /sys/class/net/%s/device/sriov/%d/trust", on ? "ON" : "OFF", ifname, vf_id);
+	bleat_printf( 0, "allow_mcast cmd: %s", cmd );
 
 	ret = system(cmd);
 
