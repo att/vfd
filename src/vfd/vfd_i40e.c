@@ -104,9 +104,6 @@ vfd_i40e_set_vf_multicast_promisc(portid_t port_id, uint16_t vf_id, uint8_t on)
 int
 vfd_i40e_set_vf_mac_addr(portid_t port_id, uint16_t vf_id,  __attribute__((__unused__)) struct ether_addr *mac_addr)
 {
-	bleat_printf( 2, "set_vf_mac_addr ignored as rte_pmd_i40e_add_vf_mac_addr is not supported. pf/vf=%d %p", port_id, vf_id, mac_addr );
-	return 0;
-/* ---- not supported until 17.11 --------
 	int diag = rte_pmd_i40e_add_vf_mac_addr(port_id, vf_id, mac_addr);
 
 	if (diag < 0) {
@@ -116,7 +113,6 @@ vfd_i40e_set_vf_mac_addr(portid_t port_id, uint16_t vf_id,  __attribute__((__unu
 	}
 
 	return diag;
-*/
 }
 
 
