@@ -77,7 +77,6 @@
 								Restructure update_nic() from a forreal perspective.
 */
 
-#include <rte_version.h>
 
 #include <strings.h>
 #include <sys/types.h>

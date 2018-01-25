@@ -154,13 +154,13 @@ get_nic_type(portid_t port_id)
 	
 	if (strcmp(dev_info.driver_name, "net_bnxt") == 0)
 		return VFD_BNXT;
-	
+
 	if (strcmp(dev_info.driver_name, "net_ixgbe") == 0)
 		return VFD_NIANTIC;
 	
 	if (strcmp(dev_info.driver_name, "net_i40e") == 0)
 		return VFD_FVL25;
-
+	
 	if (strcmp(dev_info.driver_name, "net_mlx5") == 0)
 		return VFD_MLX5;
 	
@@ -1505,9 +1505,12 @@ dump_all_vlans(portid_t port_id)
 }
 
 
-//int lsi_event_callback(portid_t port_id, enum rte_eth_event_type type, void *param, void *ret_param)
-int lsi_event_callback(portid_t port_id, enum rte_eth_event_type type, void *param, void* data )
-{
+// callbacks must specifically define the port as int and can't use portid_t
+#if (RTE_VER_YEAR <= 17) && (RTE_VER_MONTH < 11)
+int lsi_event_callback( uint8_t port_id, enum rte_eth_event_type type, void *param, void* data ) {
+#else
+int lsi_event_callback( uint16_t port_id, enum rte_eth_event_type type, void *param, void* data ) {
+#endif
 	struct rte_eth_link link;
 
 	RTE_SET_USED(param);
@@ -1590,7 +1593,6 @@ port_init(portid_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_po
 			retval = rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vfd_i40e_vf_msb_event_callback, NULL);
 
 			break;
-
 		case VFD_BNXT:
 			retval = rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vfd_bnxt_vf_msb_event_callback, NULL);
 			break;

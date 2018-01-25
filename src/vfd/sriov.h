@@ -70,8 +70,16 @@
 #include <rte_ethdev.h>
 #include <rte_string_fns.h>
 #include <rte_spinlock.h>
+#include <rte_version.h>
 
-typedef uint8_t  portid_t;	// this MUST be defined before pulling in the other headers
+// this MUST be defined before pulling in the other headers. Port id length changed with 
+// dpdk v17.11; this allows us to revert to build with older dpdk versions. The default
+// (undefined) is to build with the current version size.
+#if (RTE_VER_YEAR <= 17) && (RTE_VER_MONTH < 11)
+	typedef uint8_t  portid_t;
+#else
+	typedef uint16_t  portid_t;	
+#endif
 
 #if VFD_KERNEL
 #include "vfd_nl.h"
@@ -453,8 +461,13 @@ int update_ports_config(void);
 int cmp_vfs (const void * a, const void * b);
 void disable_default_pool(portid_t port_id);
 
-int lsi_event_callback( portid_t port_id, enum rte_eth_event_type type, void *param, void* data );
-//int lsi_event_callback( portid_t port_id, enum rte_eth_event_type type, void *param, void *ret_param);
+// callback format changed in dpdk 17.11
+#if (RTE_VER_YEAR <= 17) && (RTE_VER_MONTH < 11)
+	int lsi_event_callback( uint8_t port_id, enum rte_eth_event_type type, void *param, void* data );
+#else
+	int lsi_event_callback( uint16_t port_id, enum rte_eth_event_type type, void *param, void* data );
+#endif
+
 void restore_vf_setings( portid_t port_id, int vf);
 
 // callback validation support

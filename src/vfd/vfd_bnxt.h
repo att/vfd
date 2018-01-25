@@ -28,8 +28,12 @@ int vfd_bnxt_set_vf_vlan_filter( portid_t port, uint16_t vlan_id, uint64_t vf_ma
 int vfd_bnxt_get_vf_stats( portid_t port, uint16_t vf_id, struct rte_eth_stats *stats);
 int vfd_bnxt_reset_vf_stats( portid_t port, uint16_t vf_id);
 
-// 17.11 int vfd_bnxt_vf_msb_event_callback(uint16_t port_id, enum rte_eth_event_type type, void *param, void* data );
-int vfd_bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param, void* data );
+// callback functions must specifically use int8_t or int16_t for port id else they are flagged at compile time
+#if (RTE_VER_YEAR <= 17) && (RTE_VER_MONTH < 11)
+	int vfd_bnxt_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *param, void* data );
+#else
+	int vfd_bnxt_vf_msb_event_callback(uint16_t port_id, enum rte_eth_event_type type, void *param, void* data );
+#endif
 
 int vfd_bnxt_allow_untagged( portid_t port, uint16_t vf_id, uint8_t on);
 

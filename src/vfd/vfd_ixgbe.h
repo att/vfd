@@ -27,8 +27,12 @@ int vfd_ixgbe_reset_vf_stats( portid_t port, uint16_t vf_id);
 int vfd_ixgbe_set_vf_rate_limit( portid_t port_id, uint16_t vf_id, uint16_t tx_rate, uint64_t q_msk);
 int vfd_ixgbe_set_all_queues_drop_en( portid_t port, uint8_t on);
 
-// 18.0x int vfd_ixgbe_vf_msb_event_callback(uint16_t port_id, enum rte_eth_event_type type, void *data, void* param );
-int vfd_ixgbe_vf_msb_event_callback(uint8_t port_id, enum rte_eth_event_type type, void *data, void* param );
+// callback functions must specifically use int8_t or int16_t for port id else they are flagged at compile time
+#if (RTE_VER_YEAR <= 17) && (RTE_VER_MONTH < 11)
+	int vfd_ixgbe_vf_msb_event_callback( uint8_t port_id, enum rte_eth_event_type type, void *data, void* param );
+#else
+	int vfd_ixgbe_vf_msb_event_callback( uint16_t port_id, enum rte_eth_event_type type, void *data, void* param );
+#endif
 
 
 uint32_t vfd_ixgbe_get_pf_spoof_stats( portid_t port_id);

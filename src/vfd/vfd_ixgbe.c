@@ -305,8 +305,13 @@ vfd_ixgbe_set_all_queues_drop_en(portid_t port_id, uint8_t on)
 */
 //vfd_ixgbe_vf_msb_event_callback(portid_t port_id, enum rte_eth_event_type type, void *data ) {
 //vfd_ixgbe_vf_msb_event_callback(portid_t port_id, enum rte_eth_event_type type, void *data, void* param ) {
-int
-vfd_ixgbe_vf_msb_event_callback( uint8_t port_id, enum rte_eth_event_type type, void *data, void* param ) {
+//int vfd_ixgbe_vf_msb_event_callback( uint8_t port_id, enum rte_eth_event_type type, void *data, void* param ) {
+
+#if RTE_VER_YEAR >= 17 && RTE_VER_MONTH < 11
+	int vfd_ixgbe_vf_msb_event_callback( uint8_t port_id, enum rte_eth_event_type type, void *data, void* param ) {
+#else
+	int vfd_ixgbe_vf_msb_event_callback( uint16_t port_id, enum rte_eth_event_type type, void *data, void* param ) {
+#endif
 
 	struct rte_pmd_ixgbe_mb_event_param *p;
 	uint16_t vf;
