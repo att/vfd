@@ -651,30 +651,6 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		return 0;
 	}
 
-#ifdef KEEP
-// now provided by mac_add()
-	if( vfc->nmacs + tot_macs > MAX_PF_MACS ) { 			// would bust the total across the whole PF
-		snprintf( mbuf, sizeof( mbuf ), "number of macs supplied (%d) cauess total for PF to exceed the maximum (%d)", vfc->nmacs, MAX_PF_MACS );
-		bleat_printf( 1, "vf not added: %s", mbuf );
-		if( reason ) {
-			*reason = strdup( mbuf );
-		}
-		free_config( vfc );
-		return 0;
-	}
-
-
-	if( vfc->nmacs > MAX_VF_MACS-1 ) {						// reduced by one so that the guest can push one down as the default mac
-		snprintf( mbuf, sizeof( mbuf ), "number of macs supplied (%d) exceeds the maximum (%d)", vfc->nmacs, MAX_VF_MACS-1 );
-		bleat_printf( 1, "vf not added: %s", mbuf );
-		if( reason ) {
-			*reason = strdup( mbuf );
-		}
-		free_config( vfc );
-		return 0;
-	}
-#endif
-
 	if( vfc->nvlans <= 0 ) {							// must have at least one VLAN defined or bad things happen on the NIC
 		snprintf( mbuf, sizeof( mbuf ), "vlan id list is empty; it must contain at least one id" );
 		bleat_printf( 1, "vf not added: %s", mbuf );
@@ -722,51 +698,25 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		}
 	}
 
-	for( i = 0; i < vfc->nmacs-1; i++ ) {			// if a mac is duplicated it will be weeded out when we add
-		if( ! can_add_mac( port->rte_port_number, vfc->vfid, vfc->macs[i] ) ) {
-			bleat_printf( 1, "vf not added: mac cannot be added to this port: %s", vfc->macs[i] );
-			return 0;
+	if( vfc->nmacs > MAX_VF_MACS ) {				// too many mac addresses specified for this (can_add cannot check this until VF/PF is actually added to config)
+		snprintf( mbuf, sizeof( mbuf ), "too many mac addresses given: %d > limit of %d", vfc->nmacs, MAX_VF_MACS );
+		bleat_printf( 0, "vf not added: %s", mbuf );
+		if( reason ) {
+			*reason = strdup( mbuf );
 		}
+		return 0;
 	}
 
-#ifdef KEEP
-// handled by can_add_mac() now
-	if( vfc->nmacs == 1 ) {											// only need range check if one
-		if( is_valid_mac_str( vfc->macs[0] ) < 0 ) {
-			snprintf( mbuf, sizeof( mbuf ), "invalid mac in list: %s", vfc->macs[0] );
-			bleat_printf( 1, "vf not added: %s", mbuf );
+	for( i = 0; i < vfc->nmacs-1; i++ ) {			// if a mac is duplicated it will be weeded out when we add
+		if( ! can_add_mac( port->rte_port_number, -1, vfc->macs[i] ) ) {			// must pass -1 for vfid as it's not in the config yet
+			snprintf( mbuf, sizeof( mbuf ), "mac cannot be added to this port (inuse, or max exceeded for VF): %s", vfc->macs[i] );
+			bleat_printf( 0, "vf not added: %s", mbuf );
 			if( reason ) {
 				*reason = strdup( mbuf );
 			}
-			free_config( vfc );
 			return 0;
 		}
-	} else {
-		for( i = 0; i < vfc->nmacs-1; i++ ) {
-			if( is_valid_mac_str( vfc->macs[i] ) < 0 ) {					// range check
-				snprintf( mbuf, sizeof( mbuf ), "invalid mac in list: %s", vfc->macs[i] );
-				bleat_printf( 1, "vf not added: %s", mbuf );
-				if( reason ) {
-					*reason = strdup( mbuf );
-				}
-				free_config( vfc );
-				return 0;
-			}
-
-			for( j = i+1; j < vfc->nmacs; j++ ) {
-				if( strcmp( vfc->macs[i], vfc->macs[j] ) == 0 ) {			// dup check
-					snprintf( mbuf, sizeof( mbuf ), "dupliate mac in list: %s", vfc->macs[i] );
-					bleat_printf( 1, "vf not added: %s", mbuf );
-					if( reason ) {
-						*reason = strdup( mbuf );
-					}
-					free_config( vfc );
-					return 0;
-				}
-			}
-		}
 	}
-#endif
 
 	if( ! (port->flags & PF_OVERSUB) ) {						// if in strict mode, ensure TC amounts can be added to current settings without busting 100% cap
 		if( check_qs_oversub( port, vfc->qshare ) != 0 ) {

@@ -136,7 +136,7 @@ extern int mac_init( void ) {
 	Checks to see if the MAC (human readable) is valid from the perspective of:
 
 		1) the addition of a MAC does not cause the PF limit to be exceeded 
-		2) the VF has room for another MAC.  
+		2) the VF has room for another MAC.  (see note)
 		3) the MAC is not duplicated on another VF on the same PF
 
 	O is returned if any of these does not hold;
@@ -144,6 +144,14 @@ extern int mac_init( void ) {
 	0 is also returned if we are not able to map the pf/vf combination. 
 
 	If valid; 1 is returned.
+
+	NOTE:
+	When adding a new mac to an _existing_ VF (e.g. guest pushes a mac)
+	we will expect a valid vfid and will check to see if the total for the 
+	VF isn't at max.  However, when adding a new VF via the request interface
+	(vfd_rif), the VF isn't yet on the config list, and this function cannot
+	validate that the total for the VF isn't busted; in this case we expect
+	that the VF number is < 0, and skip this check.
 */
 extern int can_add_mac( int port, int vfid, char* mac ) {
 	struct vf_s* vf = NULL;				// references to our pf/vf structs
@@ -158,13 +166,8 @@ extern int can_add_mac( int port, int vfid, char* mac ) {
 		return 0;
 	}
 
-	if( (p = suss_port( port )) == NULL ) {
+	if( (p = suss_port( port )) == NULL ) {									// port must be known to count currently defined macs
 		bleat_printf( 1, "can_add_mac: port doesn't map: %d", port );
-		return 0;
-	}
-
-	if( (vf = suss_vf( port, vfid )) == NULL ) {
-		bleat_printf( 1, "can_add_mac: vf doesn't map: pf/vf=%d/%d", port, vfid );
 		return 0;
 	}
 
@@ -182,9 +185,16 @@ extern int can_add_mac( int port, int vfid, char* mac ) {
 		return 0;
 	}
 
-	if( vf->num_macs +1 > MAX_VF_MACS ) {
-		bleat_printf( 1, "can_add_mac: adding mac would exceed VF limit: pf/vf=%d/%d current_vf=%d mac=%s", port, vfid, vf->num_macs, mac );
-		return 0;
+	if( vfid >= 0 ) {							// when adding a new VF, it won't be in the list; vfd_rif must check this
+		if( (vf = suss_vf( port, vfid )) == NULL ) {
+			bleat_printf( 1, "can_add_mac: vf doesn't map: pf/vf=%d/%d", port, vfid );
+			return 0;
+		}
+
+		if( vf->num_macs +1 > MAX_VF_MACS ) {
+			bleat_printf( 1, "can_add_mac: adding mac would exceed VF limit: pf/vf=%d/%d current_vf=%d mac=%s", port, vfid, vf->num_macs, mac );
+			return 0;
+		}
 	}
 
 	return 1;
