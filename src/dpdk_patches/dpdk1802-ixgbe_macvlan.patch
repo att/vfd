@@ -1,0 +1,13 @@
+--- a/drivers/net/ixgbe/ixgbe_pf.c	2018-01-17 21:10:53.027638657 +0000
++++ b/drivers/net/ixgbe/ixgbe_pf.c	2018-01-17 21:19:49.258188159 +0000
+@@ -784,6 +784,10 @@
+ 		if (retval == RTE_PMD_IXGBE_MB_EVENT_PROCEED)
+ 			retval = ixgbe_set_vf_mc_promisc(dev, vf, msgbuf);
+ 		break;
++	case IXGBE_VF_SET_MACVLAN:
++		if (retval == RTE_PMD_IXGBE_MB_EVENT_PROCEED)
++			retval = 0;
++		break;
+ 	default:
+ 		PMD_DRV_LOG(DEBUG, "Unhandled Msg %8.8x", (unsigned)msgbuf[0]);
+ 		retval = IXGBE_ERR_MBX;
