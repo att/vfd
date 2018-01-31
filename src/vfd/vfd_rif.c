@@ -16,6 +16,7 @@
 				22 Sep 2017 : Prevent hanging lock in add_ports if already called.
 				25 Sep 2017 : Fix validation of mirror target bug.
 				10 Oct 2017 : Add support for mirror update and show mirror commands.
+				30 Jan 2017 : correct bug in mirror target range check (issue #242)
 */
 
 
@@ -758,8 +759,8 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	}
 
 	if( vfc->mirror_dir != MIRROR_OFF ) {
-		if( vfc->mirror_target == vfc->vfid ||  vfc->mirror_target < 0 || vfc->mirror_target > port->num_vfs ) {
-			snprintf( mbuf, sizeof( mbuf ), "mirror target is out of range or is the same as this VF (%d): %d", (int) vfc->vfid, vfc->mirror_target );
+		if( vfc->mirror_target == vfc->vfid ||  vfc->mirror_target < 0 || vfc->mirror_target > port->nvfs_config ) {
+			snprintf( mbuf, sizeof( mbuf ), "mirror target is out of range or is the same as this VF (%d): target=%d range=0-%d", (int) vfc->vfid, vfc->mirror_target, port->nvfs_config );
 			if( reason ) {
 				*reason = strdup( mbuf );
 			}
