@@ -55,7 +55,7 @@ Via the VF's configuration file, the following may be specified:
 &item  The VLAN ID(s) that the VF participates in.  Transmitted packets
 	are ensured to have one of the ID specified, and received packets will
 	be passed to the guest only if the VLAN tag in the packet matches one
-	of the IDs in the configuration. (See also MAC addresses.)
+	of the IDs in the configuration. (In addition, see MAC addresses.)
 
 &item  The MAC addres(es) which will also be used to filter received packets
 	(along with the VLAN ID). Packets transmitted by the guest must also
@@ -76,6 +76,11 @@ accepted and added to the VF configuration by VFd.
 The MAC list in the configuration file is available for cases where the guest is
 unable to reset their MAC address, or the address must be supplied from an outside
 source. 
+.sp 1
+When no MAC addresses are given in a VF's configuration, a randomly generated address
+is configured for the VF at the time the VF is attachd to the guest.  
+When this is done it is still possible for the guest to override the random address
+with one of their choosing.
 
 &h2(Policy)
 VFd serves to enforce some policies with respect to limits and/or use of each 
@@ -119,7 +124,7 @@ The documents include:
 
 &beg_list(&lic1)
 &item User's guide
-&item Building the UIO driver
+&item Building the &cw(igb_uio) driver
 &item Debugging Tricks
 &item i40e Based Troubleshooting
 &end_list
@@ -146,27 +151,25 @@ The following steps are described in more detail below
 If you don't already have DPDK installed, you will need to pull the repo and build
 it.  
 You will need to do this even if you are not building VFd (you have a VFd binary
-or .deb file) in order to have a working copy of the UIO driver which has been 
+or .deb file) in order to have a working copy of the &cw(igb_uio) driver which has been 
 compiled on the system. 
-The following steps can be followed to build the UIO driver, and will also 
+The following steps can be followed to build the &cw(igb_uio) driver, and will also 
 prepare the DPDK library for a VFd build if needed.
 
 &def_list( .35i &boldtext a=1 f=%d. )
 &auto_num() Create a directory; we'll assume $HOME/build
 &auto_num() Switch to the build directory
-&auto_num( ) git clone http://dpdk.org/git/dpdk
+&auto_num( ) Execute: git clone http://dpdk.org/git/dpdk
 &auto_num() Switch to the  dpdk/usertools directory
 &auto_num() Execute the dpdk-setup.sh script and when prompted enter the  
-	menu option that builds the library on your system. 
-	This will also build the UIO driver.
-&auto_num() Following a successful build, return to the main menu and select
-	the option that installs the UIO driver
+	menu option that builds the library on your system.  This will also build the &cw(igb_uio) driver.
+&auto_num() Following a successful build, return to the main menu and select the option that installs the &cw(igb_uio) driver
 &auto_num() Exit the script
 &auto_num() Set the following environment variables (the values given are 
 	likely to be correct, however if you opted for a different
 	directory, or are building on a different type of system the values
 	will need to reflect your environment):
-	&break
+	.sp 1
 	export RTE_SDK=$HOME/build/dpdk
 	&break
 	export RTE_TARGET=x86_64-native-linuxapp-gcc
@@ -209,14 +212,14 @@ indicate the date and time that the build occurred.
 &h2(Creating VFs) 
 For each PF on each NIC that will be under the control of VFd, you need
 to establish one or more VFs.  
-This is accomplished by binding the UIO driver to the PF(s), and then 
+This is accomplished by binding the &cw(igb_uio) driver to the PF(s), and then 
 writing the number of desired VFs for each PF into a device file associated with 
 the PF. 
 The following paragraphs provide the necessary commands to accomplish this.
 
-&h3(Binding The UIO Driver)
+&h3(Binding The igb_uio Driver)
 The &cw(dpdk-devbind.py) script in the DPDK directory &cw($HOME/build/dpdk/usertools)
-can be used to display a list of available devices to which the UIO driver 
+can be used to display a list of available devices to which the &cw(igb_uio) driver 
 can be attached. 
 Executing the script with the &cw(-s) option causes a status display to be 
 written to the tty device; it  will include the following information for 
@@ -231,7 +234,7 @@ Network devices using kernel driver
 
 The important pieces of information in the output are the PCI address for the device (column 0) and 
 the list of unused drivers for the device. 
-Assuming the UIO driver was successfully loaded, and the device is capable,
+Assuming the &cw(igb_uio) driver was successfully loaded, and the device is capable,
 the unused list should contain the igb_uio driver.
 The driver can be bound to these devices with the &cw(dpdk-devbind.py) script:
 
@@ -240,10 +243,10 @@ The driver can be bound to these devices with the &cw(dpdk-devbind.py) script:
 &ex_end
 
 This command will need to be executed for each device; all devices which share a NIC must be 
-bound to the UIO driver.
+bound to the &cw(igb_uio) driver.
 Once bound, running the script with the status option should show these devices listed
 under those uing a DPDK compatible driver, and the drv= parameter should indicate
-that it is indeed bound to the UIO driver.
+that it is indeed bound to the &cw(igb_uio) driver.
 
 &ex_start
 Network devices using DPDK-compatible driver
@@ -501,9 +504,9 @@ ID (number), and other parameters as illustrated below.
         { "priority": 3, "share": "10%" },
     ]
 }
-&ex_end_nosp
+&ex_end
 .fg A sample VF configuration file.
-.sp
+.sp 1
 
 For most guests, there is no need to specify any MAC addresses, and allowing unknown
 unicast should generally be &cw(false) unless you are very sure that you want the guest
@@ -514,7 +517,8 @@ On transmit, the VLAN ID listed, if only one is listed, will automatically be
 inserted by the NIC.  
 When more than one VLAN IDs are listed, and stripping is set to &cw(true,) it is
 the responsibility of the guest, or DPDK application in the guest, to identify the
-correct VLAN ID to insert into the packet on transmit.  
+correct VLAN ID to insert into the packet on transmit and to place the ID into the packet's
+transmit descriptor.  
 When stripping is &cw(false,) the VLAN ID is not removed, and the guest must place
 the ID into each packet transmitted. 
 
