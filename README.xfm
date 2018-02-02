@@ -40,6 +40,7 @@ enforcement over, VFs which have been allocated on one or more PFs of a NIC.
 For each VF that VFd is to manage a JSON configuration file outlining the 
 desired setup for the VF is made available to VFd either at process start time
 or dynamically while VFd is running. 
+The overall vision for VFd is to be the hypervisor of the NIC world. 
 .sp 1
 
 This &ital(README) will provide a brief overview of VFd capabilities with respect to 
@@ -506,8 +507,7 @@ ID (number), and other parameters as illustrated below.
 
 For most guests, there is no need to specify any MAC addresses, and allowing unknown
 unicast should generally be &cw(false) unless you are very sure that you want the guest
-to receive every packet on the indicated VLAN(s) which is not destined for a known
-MAC address. 
+to receive every packet destined for an unknown MAC address on one of the conifigured VLANs. 
 When the &cw(strip_stag) setting is true, the NIC will remove the VLAN ID (the outer
 tag if QinQ encapsulation is being used) before the packet is presented to the VF. 
 On transmit, the VLAN ID listed, if only one is listed, will automatically be 
