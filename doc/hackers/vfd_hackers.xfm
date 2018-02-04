@@ -52,9 +52,9 @@ controlled:
 .bl &lic1
 .li VLAN and MAC filtering (inbound)
 .sp .3
-.li Stripping of VLAN ID (single) from inbound traffic
+.li Stripping of VLAN ID from inbound traffic
 .sp .3
-.li Addition of VLAN ID (single) to outbound traffic
+.li Addition of VLAN ID to outbound traffic
 .sp .3
 .li Enabling/disabling broadcast, multicast, unicast 
 .el
