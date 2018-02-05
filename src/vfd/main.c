@@ -499,6 +499,12 @@ static void close_ports( void ) {
 		//bleat_printf( 2, "device closed and detached: %s", dev_name );
 	}
 
+#if RTE_VER_YEAR >= 18     
+        bleat_printf( 0, "cleaning up eal" );
+        if (rte_eal_cleanup())
+            bleat_printf( 0, "rte_eal_cleanup error" );
+#endif
+    
 	bleat_printf( 0, "close ports finished" );
 }
 
