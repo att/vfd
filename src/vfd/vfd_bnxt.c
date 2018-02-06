@@ -4,7 +4,7 @@
 
 
 int  
-vfd_bnxt_ping_vfs(uint16_t port_id, int16_t vf_id)
+vfd_bnxt_ping_vfs(portid_t port_id, int16_t vf_id)
 {
 		/* TODO */
 	bleat_printf( 0, "vfd_bnxt_ping_vfs(): not implemented for port=%d, vf=%d, qstart=%d ", port_id, vf_id );
@@ -13,7 +13,7 @@ vfd_bnxt_ping_vfs(uint16_t port_id, int16_t vf_id)
 
 
 int 
-vfd_bnxt_set_vf_mac_anti_spoof(uint16_t port_id, uint16_t vf_id, uint8_t on)
+vfd_bnxt_set_vf_mac_anti_spoof(portid_t port_id, uint16_t vf_id, uint8_t on)
 {
 	int diag = rte_pmd_bnxt_set_vf_mac_anti_spoof(port_id, vf_id, on);
 	if (diag < 0) {
@@ -27,7 +27,7 @@ vfd_bnxt_set_vf_mac_anti_spoof(uint16_t port_id, uint16_t vf_id, uint8_t on)
 
 
 int 
-vfd_bnxt_set_vf_vlan_anti_spoof(uint16_t port_id, uint16_t vf_id, uint8_t on)
+vfd_bnxt_set_vf_vlan_anti_spoof(portid_t port_id, uint16_t vf_id, uint8_t on)
 {
 
 
@@ -43,7 +43,7 @@ vfd_bnxt_set_vf_vlan_anti_spoof(uint16_t port_id, uint16_t vf_id, uint8_t on)
 
 
 int 
-vfd_bnxt_set_tx_loopback(uint16_t port_id, uint8_t on)
+vfd_bnxt_set_tx_loopback(portid_t port_id, uint8_t on)
 {
 	int diag = rte_pmd_bnxt_set_tx_loopback(port_id, on);
 	if (diag < 0) {
@@ -57,7 +57,7 @@ vfd_bnxt_set_tx_loopback(uint16_t port_id, uint8_t on)
 
 
 int 
-vfd_bnxt_set_vf_unicast_promisc(uint16_t port_id, uint16_t vf_id, uint8_t on)
+vfd_bnxt_set_vf_unicast_promisc(portid_t port_id, uint16_t vf_id, uint8_t on)
 {
 	int diag = rte_pmd_bnxt_set_vf_rxmode(port_id, vf_id, ETH_VMDQ_ACCEPT_HASH_UC,(uint8_t) on);
 	if (diag < 0) {
@@ -71,7 +71,7 @@ vfd_bnxt_set_vf_unicast_promisc(uint16_t port_id, uint16_t vf_id, uint8_t on)
 
 
 int 
-vfd_bnxt_set_vf_multicast_promisc(uint16_t port_id, uint16_t vf_id, uint8_t on)
+vfd_bnxt_set_vf_multicast_promisc(portid_t port_id, uint16_t vf_id, uint8_t on)
 {
 	int diag = rte_pmd_bnxt_set_vf_rxmode(port_id, vf_id, ETH_VMDQ_ACCEPT_MULTICAST,(uint8_t) on);
 	if (diag < 0) {
@@ -89,7 +89,7 @@ vfd_bnxt_set_vf_multicast_promisc(uint16_t port_id, uint16_t vf_id, uint8_t on)
 	for adding a MAC as the default (guest visible) MAC address.
 */
 int 
-vfd_bnxt_set_vf_mac_addr(uint16_t port_id, uint16_t vf_id, struct ether_addr *mac_addr)
+vfd_bnxt_set_vf_mac_addr(portid_t port_id, uint16_t vf_id, struct ether_addr *mac_addr)
 {
 	int diag = rte_pmd_bnxt_mac_addr_add(port_id, mac_addr, vf_id );
 	if (diag < 0) {
@@ -104,7 +104,7 @@ vfd_bnxt_set_vf_mac_addr(uint16_t port_id, uint16_t vf_id, struct ether_addr *ma
 /*
 	Set the default rx MAC address for the pf/vf. This is the address that will be visible into the guest.
 */
-int vfd_bnxt_set_vf_default_mac_addr( uint16_t port_id, uint16_t vf_id, struct ether_addr *mac_addr ) {
+int vfd_bnxt_set_vf_default_mac_addr( portid_t port_id, uint16_t vf_id, struct ether_addr *mac_addr ) {
 	int diag;
 
 	diag  = rte_pmd_bnxt_set_vf_mac_addr(port_id, vf_id, mac_addr);
@@ -122,7 +122,7 @@ int vfd_bnxt_set_vf_default_mac_addr( uint16_t port_id, uint16_t vf_id, struct e
 
 
 int 
-vfd_bnxt_set_vf_vlan_stripq(uint16_t port_id, uint16_t vf_id, uint8_t on)
+vfd_bnxt_set_vf_vlan_stripq(portid_t port_id, uint16_t vf_id, uint8_t on)
 {
 	int diag = rte_pmd_bnxt_set_vf_vlan_stripq(port_id, vf_id, on);
 	if (diag < 0) {
@@ -136,7 +136,7 @@ vfd_bnxt_set_vf_vlan_stripq(uint16_t port_id, uint16_t vf_id, uint8_t on)
 
 
 int 
-vfd_bnxt_set_vf_vlan_insert(uint16_t port_id, uint16_t vf_id, uint16_t vlan_id)
+vfd_bnxt_set_vf_vlan_insert(portid_t port_id, uint16_t vf_id, uint16_t vlan_id)
 {
 	int diag = rte_pmd_bnxt_set_vf_vlan_insert(port_id, vf_id, vlan_id);
 	if (diag < 0) {
@@ -150,7 +150,7 @@ vfd_bnxt_set_vf_vlan_insert(uint16_t port_id, uint16_t vf_id, uint16_t vlan_id)
 
 
 int 
-vfd_bnxt_set_vf_broadcast(uint16_t port_id, uint16_t vf_id, uint8_t on)
+vfd_bnxt_set_vf_broadcast(portid_t port_id, uint16_t vf_id, uint8_t on)
 {
 	int diag = rte_pmd_bnxt_set_vf_rxmode(port_id, vf_id, ETH_VMDQ_ACCEPT_BROADCAST,(uint8_t) on);
 	if (diag < 0) {
@@ -164,7 +164,7 @@ vfd_bnxt_set_vf_broadcast(uint16_t port_id, uint16_t vf_id, uint8_t on)
 
 
 int 
-vfd_bnxt_set_vf_vlan_tag(uint16_t port_id, uint16_t vf_id, uint8_t on)
+vfd_bnxt_set_vf_vlan_tag(portid_t port_id, uint16_t vf_id, uint8_t on)
 {
 
 	bleat_printf( 0, "vfd_bnxt_set_vf_vlan_tag(): not implemented for port=%d, vf=%d, on/off=%d", port_id, vf_id, !!on );
@@ -184,7 +184,7 @@ vfd_bnxt_set_vf_vlan_tag(uint16_t port_id, uint16_t vf_id, uint8_t on)
 
 
 int 
-vfd_bnxt_set_vf_vlan_filter(uint16_t port_id, uint16_t vlan_id, __attribute__((__unused__)) uint64_t vf_mask,  __attribute__((__unused__)) uint8_t on)
+vfd_bnxt_set_vf_vlan_filter(portid_t port_id, uint16_t vlan_id, __attribute__((__unused__)) uint64_t vf_mask,  __attribute__((__unused__)) uint8_t on)
 {
 
 	int diag = rte_pmd_bnxt_set_vf_vlan_filter(port_id, vlan_id, vf_mask, on);
@@ -201,7 +201,7 @@ vfd_bnxt_set_vf_vlan_filter(uint16_t port_id, uint16_t vlan_id, __attribute__((_
 
 
 int 
-vfd_bnxt_get_vf_stats(uint16_t port_id, uint16_t vf_id, struct rte_eth_stats *stats)
+vfd_bnxt_get_vf_stats(portid_t port_id, uint16_t vf_id, struct rte_eth_stats *stats)
 {
 	int diag = rte_pmd_bnxt_get_vf_stats(port_id, vf_id, stats);
 	if (diag < 0) {
@@ -216,7 +216,7 @@ vfd_bnxt_get_vf_stats(uint16_t port_id, uint16_t vf_id, struct rte_eth_stats *st
 
 
 int 
-vfd_bnxt_reset_vf_stats(uint16_t port_id, uint16_t vf_id)
+vfd_bnxt_reset_vf_stats(portid_t port_id, uint16_t vf_id)
 {
 	int diag = rte_pmd_bnxt_reset_vf_stats(port_id, vf_id);
 	if (diag < 0) {
@@ -234,7 +234,7 @@ vfd_bnxt_reset_vf_stats(uint16_t port_id, uint16_t vf_id)
 	Called when a 'mailbox' message is received.  Examine and take action based on
 	the message type.
 */
-static bool verify_mac_address(uint16_t port_id, uint16_t vf, void *mac, void *mask)
+static bool verify_mac_address(portid_t port_id, uint16_t vf, void *mac, void *mask)
 {
 	struct vf_s *vf_cfg = suss_vf(port_id, vf);
 	struct ether_addr mac_addr;
@@ -267,7 +267,7 @@ static bool verify_mac_address(uint16_t port_id, uint16_t vf, void *mac, void *m
 	return false;
 }
 
-static void apply_rx_restrictions(uint16_t port_id, uint16_t vf, struct hwrm_cfa_l2_set_rx_mask_input *mi)
+static void apply_rx_restrictions(portid_t port_id, uint16_t vf, struct hwrm_cfa_l2_set_rx_mask_input *mi)
 {
 	struct vf_s *vf_cfg = suss_vf(port_id, vf);
 
@@ -296,7 +296,7 @@ static void apply_rx_restrictions(uint16_t port_id, uint16_t vf, struct hwrm_cfa
 
 
 int
-vfd_bnxt_vf_msb_event_callback(uint16_t port_id, enum rte_eth_event_type type, void *data, void *param)
+vfd_bnxt_vf_msb_event_callback( uint8_t port_id, enum rte_eth_event_type type, void *data, void *param)
 {
 	struct rte_pmd_bnxt_mb_event_param *p;
 	struct input *req_base;
@@ -483,7 +483,7 @@ vfd_bnxt_vf_msb_event_callback(uint16_t port_id, enum rte_eth_event_type type, v
 
 
 int 
-vfd_bnxt_allow_untagged(uint16_t port_id, uint16_t vf_id, uint8_t on)
+vfd_bnxt_allow_untagged(portid_t port_id, uint16_t vf_id, uint8_t on)
 {
 	/* not implemented */
 	bleat_printf( 3, "vfd_bnxt_allow_untagged not implemented: port_id=%d, vf_id=%d, on=%d", port_id, vf_id, on);
@@ -492,7 +492,7 @@ vfd_bnxt_allow_untagged(uint16_t port_id, uint16_t vf_id, uint8_t on)
 
 
 int 
-vfd_bnxt_set_all_queues_drop_en(uint16_t port_id, uint8_t on)
+vfd_bnxt_set_all_queues_drop_en(portid_t port_id, uint8_t on)
 {
 	int diag  = rte_pmd_bnxt_set_all_queues_drop_en( port_id, on );			
 
@@ -506,7 +506,7 @@ vfd_bnxt_set_all_queues_drop_en(uint16_t port_id, uint8_t on)
 
 
 uint32_t
-vfd_bnxt_get_pf_spoof_stats(uint16_t port_id)
+vfd_bnxt_get_pf_spoof_stats(portid_t port_id)
 {
 	uint64_t spoffed = 0;
 	bleat_printf( 3, "vfd_bnxt_get_pf_spoof_stats: port_id=%d", port_id);
@@ -561,7 +561,7 @@ vfd_bnxt_get_pf_spoof_stats(uint16_t port_id)
 }
 
 uint32_t
-vfd_bnxt_get_vf_spoof_stats(uint16_t port_id, uint16_t vf_id)
+vfd_bnxt_get_vf_spoof_stats(portid_t port_id, uint16_t vf_id)
 {
 	uint64_t vf_spoffed = 0;
 	bleat_printf( 3, "vfd_bnxt_get_vf_spoof_stats not implemented: port_id=%d, on=%d", port_id, vf_id);
@@ -571,7 +571,7 @@ vfd_bnxt_get_vf_spoof_stats(uint16_t port_id, uint16_t vf_id)
 }
 
 int 
-vfd_bnxt_is_rx_queue_on(uint16_t port_id, uint16_t vf_id, __attribute__((__unused__)) int* mcounter)
+vfd_bnxt_is_rx_queue_on(portid_t port_id, uint16_t vf_id, __attribute__((__unused__)) int* mcounter)
 {
 	int queues = rte_pmd_bnxt_get_vf_rx_status(port_id, vf_id);
 	
@@ -585,7 +585,7 @@ vfd_bnxt_is_rx_queue_on(uint16_t port_id, uint16_t vf_id, __attribute__((__unuse
 
 
 void 
-vfd_bnxt_set_rx_drop(uint16_t port_id, uint16_t vf_id, int state)
+vfd_bnxt_set_rx_drop(portid_t port_id, uint16_t vf_id, int state)
 {
 	/* TODO */
 	bleat_printf( 0, "vfd_bnxt_set_rx_drop(): not implemented for port=%d, vf=%d, qstart=%d on/off=%d", port_id, vf_id, !!state );
@@ -593,14 +593,14 @@ vfd_bnxt_set_rx_drop(uint16_t port_id, uint16_t vf_id, int state)
 
 
 void 
-vfd_bnxt_set_split_erop(uint16_t port_id, uint16_t vf_id, int state)
+vfd_bnxt_set_split_erop(portid_t port_id, uint16_t vf_id, int state)
 {
 	/* TODO */
 	bleat_printf( 0, "vfd_bnxt_set_split_erop(): not implemented for port=%d, vf=%d, qstart=%d on/off=%d", port_id, vf_id, !!state );	
 }
 
 int 
-vfd_bnxt_dump_all_vlans(uint16_t port_id)
+vfd_bnxt_dump_all_vlans(portid_t port_id)
 {
 	/* TODO */
 	bleat_printf( 0, "vfd_bnxt_dump_all_vlans(): not implemented for port=%d", port_id );	

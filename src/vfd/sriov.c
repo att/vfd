@@ -154,13 +154,13 @@ get_nic_type(portid_t port_id)
 	
 	if (strcmp(dev_info.driver_name, "net_bnxt") == 0)
 		return VFD_BNXT;
-	
+
 	if (strcmp(dev_info.driver_name, "net_ixgbe") == 0)
 		return VFD_NIANTIC;
 	
 	if (strcmp(dev_info.driver_name, "net_i40e") == 0)
 		return VFD_FVL25;
-
+	
 	if (strcmp(dev_info.driver_name, "net_mlx5") == 0)
 		return VFD_MLX5;
 	
@@ -1264,7 +1264,7 @@ nic_stats_clear(portid_t port_id)
 
 
 int
-nic_stats_display(uint16_t port_id, char * buff, int bsize)
+nic_stats_display(portid_t port_id, char * buff, int bsize)
 {
 	struct rte_eth_stats stats;
 	struct rte_eth_link link;
@@ -1324,7 +1324,7 @@ nic_stats_display(uint16_t port_id, char * buff, int bsize)
 	It is converted to uint32 for calculations here.
 */
 int
-vf_stats_display(uint16_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsize)
+vf_stats_display(portid_t port_id, uint32_t pf_ari, int ivf, char * buff, int bsize)
 {
 	uint32_t vf;
 	int result = 0;
@@ -1420,7 +1420,7 @@ vf_stats_display(uint16_t port_id, uint32_t pf_ari, int ivf, char * buff, int bs
 	eturns number of characters placed into buff.
 */
 int
-port_xstats_display(uint16_t port_id, char * buff, int bsize)
+port_xstats_display(portid_t port_id, char * buff, int bsize)
 {
 	struct rte_eth_xstat *xstats;
 	int cnt_xstats, idx_xstat;
@@ -1505,9 +1505,12 @@ dump_all_vlans(portid_t port_id)
 }
 
 
-//int lsi_event_callback(uint16_t port_id, enum rte_eth_event_type type, void *param, void *ret_param)
-int lsi_event_callback(uint16_t port_id, enum rte_eth_event_type type, void *param, void* data )
-{
+// callbacks must specifically define the port as int and can't use portid_t
+#if (RTE_VER_YEAR <= 17) && (RTE_VER_MONTH < 11)
+int lsi_event_callback( uint8_t port_id, enum rte_eth_event_type type, void *param, void* data ) {
+#else
+int lsi_event_callback( uint16_t port_id, enum rte_eth_event_type type, void *param, void* data ) {
+#endif
 	struct rte_eth_link link;
 
 	RTE_SET_USED(param);
@@ -1544,7 +1547,7 @@ int lsi_event_callback(uint16_t port_id, enum rte_eth_event_type type, void *par
 	If hw_strip_crc is false, the default will be overridden.
 */
 int
-port_init(uint16_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_pool, int hw_strip_crc, __attribute__((__unused__)) sriov_port_t *pf )
+port_init(portid_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_pool, int hw_strip_crc, __attribute__((__unused__)) sriov_port_t *pf )
 {
 	struct rte_eth_conf port_conf = port_conf_default;
 	const uint16_t rx_rings = 1;
@@ -1583,13 +1586,13 @@ port_init(uint16_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_po
 	uint dev_type = get_nic_type(port);
 	switch (dev_type) {
 		case VFD_NIANTIC:
-			retval = rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vfd_ixgbe_vf_msb_event_callback, NULL);
+			retval = rte_eth_dev_callback_register( port, RTE_ETH_EVENT_VF_MBOX, vfd_ixgbe_vf_msb_event_callback, NULL);
 			break;
 			
 		case VFD_FVL25:		
 			retval = rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vfd_i40e_vf_msb_event_callback, NULL);
-			break;
 
+			break;
 		case VFD_BNXT:
 			retval = rte_eth_dev_callback_register(port, RTE_ETH_EVENT_VF_MBOX, vfd_bnxt_vf_msb_event_callback, NULL);
 			break;

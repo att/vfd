@@ -14,6 +14,7 @@
 					Fix comment in same initialisation.
 				16 May 2017 - Add flow control flag constant.
 				10 Oct 2017 - Change set_mirror proto.
+				25 Jan 2018 - Add support for building with older DPDK.
 */
 
 #ifndef _SRIOV_H_
@@ -65,11 +66,21 @@
 #include <rte_mbuf.h>
 #include <rte_interrupts.h>
 #include <rte_pci.h>
-#include <rte_bus_pci.h>
+//#include <rte_bus_pci.h>
 #include <rte_ether.h>
 #include <rte_ethdev.h>
 #include <rte_string_fns.h>
 #include <rte_spinlock.h>
+#include <rte_version.h>
+
+// this MUST be defined before pulling in the other headers. Port id length changed with 
+// dpdk v17.11; this allows us to revert to build with older dpdk versions. The default
+// (undefined) is to build with the current version size.
+#if (RTE_VER_YEAR <= 17) && (RTE_VER_MONTH < 11)
+	typedef uint8_t  portid_t;
+#else
+	typedef uint16_t  portid_t;	
+#endif
 
 #if VFD_KERNEL
 #include "vfd_nl.h"
@@ -77,9 +88,9 @@
 
 #include <vfdlib.h>
 
-#include "vfd_bnxt.h"
 #include "vfd_ixgbe.h"
 #include "vfd_i40e.h"
+#include "vfd_bnxt.h"
 
 
 // ---------------------------------------------------------------------------------------
@@ -151,9 +162,9 @@ typedef unsigned int uint128_t __attribute__((mode(TI)));
 #define MAX_PF_MACS  128	// mac count across all PFs cannot exceed
 
 typedef uint8_t  lcoreid_t;
-typedef uint16_t  portid_t;
 typedef uint16_t queueid_t;
 typedef uint16_t streamid_t;
+typedef rte_eth_dev_cb_fn cbfn_t;	// 17.08 callback function type
 
 #define MAX_QUEUE_ID ((1 << (sizeof(queueid_t) * 8)) - 1)
 
@@ -425,13 +436,13 @@ int set_vf_min_rate(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk
 int set_vf_link_status(portid_t port_id, uint16_t vf, int status);
 
 void nic_stats_clear(portid_t port_id);
-int nic_stats_display(uint16_t port_id, char * buff, int blen);
-int vf_stats_display(uint16_t port_id, uint32_t pf_ari, int vf, char * buff, int bsize);
-int port_xstats_display(uint16_t port_id, char * buff, int bsize);
+int nic_stats_display( portid_t port_id, char * buff, int blen);
+int vf_stats_display( portid_t port_id, uint32_t pf_ari, int vf, char * buff, int bsize);
+int port_xstats_display( portid_t port_id, char * buff, int bsize);
 int dump_all_vlans(portid_t port_id);
 void ping_vfs(portid_t port_id, int vf);
 
-int port_init(uint16_t port, struct rte_mempool *mbuf_pool, int hw_strip_crc, sriov_port_t *pf );
+int port_init( portid_t port, struct rte_mempool *mbuf_pool, int hw_strip_crc, sriov_port_t *pf );
 void tx_set_loopback(portid_t port_id, u_int8_t on);
 
 void ether_aton_r(const char *asc, struct ether_addr * addr);
@@ -451,9 +462,14 @@ int update_ports_config(void);
 int cmp_vfs (const void * a, const void * b);
 void disable_default_pool(portid_t port_id);
 
-int lsi_event_callback(uint16_t port_id, enum rte_eth_event_type type, void *param, void* data );
-//int lsi_event_callback(uint16_t port_id, enum rte_eth_event_type type, void *param, void *ret_param);
-void restore_vf_setings(uint16_t port_id, int vf);
+// callback format changed in dpdk 17.11
+#if (RTE_VER_YEAR <= 17) && (RTE_VER_MONTH < 11)
+	int lsi_event_callback( uint8_t port_id, enum rte_eth_event_type type, void *param, void* data );
+#else
+	int lsi_event_callback( uint16_t port_id, enum rte_eth_event_type type, void *param, void* data );
+#endif
+
+void restore_vf_setings( portid_t port_id, int vf);
 
 // callback validation support
 int valid_mtu( int port, int mtu );
