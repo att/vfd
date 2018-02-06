@@ -14,6 +14,7 @@
 					Fix comment in same initialisation.
 				16 May 2017 - Add flow control flag constant.
 				10 Oct 2017 - Change set_mirror proto.
+				25 Jan 2018 - Add support for building with older DPDK.
 */
 
 #ifndef _SRIOV_H_
