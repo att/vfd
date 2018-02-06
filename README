@@ -1,19 +1,17 @@
 Virtual Function Daemon 
 
+See the main or nic_agnostic branches for the complete readme.
 
-VFD is a daemon which is used to configures NIC PF/VFs in ways which are not possible through 
-the standard ixgbe driver.
+This branch has been altered to allow it to build the latest code
+(merged in from nic_agnostic) with older versions of DPDK. It has
+been specifically tested with 17.08. 
 
-The directories here contain the VFD code and some system tools such as the iplex 
-command line interface tool which is used to interact with the daemon. 
+The main difference is there is now a typedef used for the pf-id
+variable passed into most functions allowing it to be int-8 or int-16
+depending on flavour of DPDK (17.11 changed it from 8 bit to 16 bit).
 
-
-Some requirements:
-   - DPDK version v17.11
-	  1) clone http://dpdk.org/git/dpdk
-	  2) run 'git checkout v17.11
-	  3) build DPDK
-
-   - Linux kernel version  3.13 or later.  (VFd may execute on earlier kernels,
-     however odd behavour has been observed with respect to packet dropping in one 
-     or both directions with seem to be related to shared memory.)
+The primary reason for building this was to verify the changes that
+were made to VFd on an older DPDK as there are some odd issues 
+(memory and cpu stalls) that have been reported that we have not
+been able to conclusively determine the source of the problem (our
+code, or something underlying in the new DPDK).
