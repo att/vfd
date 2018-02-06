@@ -54,6 +54,7 @@ SRCS-y := main.c sriov.c qos.c vfd_mac.c vfd_rif.c vfd_dcb.c vfd_i40e.c vfd_ixgb
 endif
 
 CFLAGS += $(WERROR_FLAGS) -I $(PWD)/../lib/ -I $(RTE_SDK) -DVFD_KERNEL=${VFD_KERNEL}
+CFLAGS += -DALLOW_EXPERIMENTAL_API
 
 #-lconfig
 

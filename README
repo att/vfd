@@ -1,4 +1,4 @@
-Virtual Function Daemon 
+      
 
 See the main or nic_agnostic branches for the complete readme.
 
@@ -15,3 +15,4 @@ were made to VFd on an older DPDK as there are some odd issues
 (memory and cpu stalls) that have been reported that we have not
 been able to conclusively determine the source of the problem (our
 code, or something underlying in the new DPDK).
+
