@@ -6,6 +6,8 @@
 	Date:		04 Mar 2016
 
 	Mods:		07 Apr 2017 - Correct default mode on open/create.
+				29 Nov 2017 - Fix possible buffer overrun, add blocking and timeout
+					oriented read functions.
 */
 
 #define _GNU_SOURCE
@@ -23,10 +25,12 @@
 #define RBUF_SIZE 8192		// our read buffer sizes
 
 typedef struct {
-	int 	fd;			// fd of the open fifo
-	char*	fname;		// filename -- policy is to unlink on close so we need to track this
-	void*	flow;		// the managing flow 'handle'
-	char*	rbuf;		// raw read buffer
+	int 	fd;					// fd of the open fifo
+	int		wfd;				// write file des to ensure we don't block
+	int		close_on_data;		// flag that will cause write fd to close on first read so we detect external writer close
+	char*	fname;				// filename -- policy is to unlink on close so we need to track this
+	void*	flow;				// the managing flow 'handle'
+	char*	rbuf;				// raw read buffer
 } fifo_t;
 
 /*
@@ -49,7 +53,7 @@ extern void* rfifo_create( char* fname, int mode ) {
 		return NULL;								// can't make send back err errno still set
 	}
 
-	if( (fd =  open( fname, O_RDWR | O_NONBLOCK, mode )) >= 0 ) {				// open in read AND write mode so that we don't block
+	if( (fd =  open( fname, O_RDONLY | O_NONBLOCK, mode )) >= 0 ) {				// open for reading (create) and in non-blocking mode so we continue initialisation
 		if( (fifo = malloc( sizeof( *fifo ) )) == NULL ) {
 			return NULL;
 		}
@@ -66,11 +70,28 @@ extern void* rfifo_create( char* fname, int mode ) {
 			return NULL;
 		}
 
-		fcntl( fd, F_SETPIPE_SZ, 1024 * 60 );		// ensure a 60k buffer even though 4k is the atomic write size
+		fifo->wfd =  open( fname, O_WRONLY | O_NONBLOCK, mode );		// open writer to ensure prevent 0 len reads
+
+		fcntl( fd, F_SETPIPE_SZ, 1024 * 60 );		// ensure a 60k buffer (atomic writes are still just 4k)
 		fifo->fname = strdup( fname );
 	}
 
 	return fifo;
+}
+
+
+/*
+	Causes us to detect when the last writer has closed the pipe and to return
+	a non-nil buffer, with a single 0 to indicate this.
+*/
+extern void rfifo_detect_close( void* vfifo ) {
+	fifo_t*	fifo;
+
+	if( (fifo = (fifo_t *) vfifo ) == NULL ) {
+		return;
+	}
+	
+	fifo->close_on_data = 1;
 }
 
 /*
@@ -110,6 +131,17 @@ extern void rfifo_close( void* vfifo ) {
 	that we do here.
 
 	Caller must free the pointer returned.
+
+	CAUTION:
+	This has issues if the pipe buffer is small (it shouldn't be, but 
+	if something cannot be sized to a large buffer and the sender must
+	write multiple times, this could not behave as expected. Use either
+	rfifo_blk_rdln() to read a line at a time with the assumption that 
+	an empty line (one byte returned which is a 0) marks the end of the 
+	block. The rfifo_readln() function can also be used if non-blocking
+	behavour is desired. A NULL return indciates nothing read as long
+	as errno == EAGAIN; a single character buffer (0) indicates an 
+	empty line was read.
 */
 extern char* rfifo_read( void* vfifo ) {
 	fifo_t* fifo;
@@ -155,12 +187,14 @@ extern char* rfifo_read( void* vfifo ) {
 }
 
 /*
-	Read up until the next newline. If we don't get anyting from a
-	read() call,  assume end of data.
+	Non-blocking read, reads up to the next newline. This returns nil if no data 
+	was available to read (when errno is EAGAIN, error otherwise). When an empty 
+	buffer is read, the pointer returned will not be nil and the buffer will have
+	a single character (0).
 */
 extern char* rfifo_readln( void* vfifo ) {
 	fifo_t* fifo;
-	char	*rbuf;				// return buffer
+	char	*rbuf = NULL;		// return buffer
 	char	*nb;				// next buffer from flow manager
 	int		len;				// actual byte count read from fifo
 	int		tlen = 0;			// total bytes put into buffer for caller
@@ -169,23 +203,74 @@ extern char* rfifo_readln( void* vfifo ) {
 		return NULL;
 	}
 
-	if( (rbuf = (char *) malloc( sizeof( char ) * RBUF_SIZE )) == NULL ) {
-		return NULL;
-	}
-
-	*rbuf = 0;
 	do {
 		if( (nb = ng_flow_get( fifo->flow, '\n' )) != NULL ) {
-			strcat( rbuf, nb );
-			strcat( rbuf, "\n" );
+			len = strlen( nb );
+			if( (rbuf = (char *) malloc( sizeof( char ) * (len + 2)  )) == NULL ) {
+				return NULL;
+			}
+			memcpy( rbuf, nb, len );
+			rbuf[len] = '\n';
+			rbuf[len+1] = 0;
+
 			return rbuf;
 		}	
 
 		if( (len = read( fifo->fd, fifo->rbuf, RBUF_SIZE )) > 0 ) {		// something read
 			ng_flow_ref( fifo->flow, fifo->rbuf, len );					// register the buffer (zero copy)
+			if( fifo->wfd >= 0 && fifo->close_on_data ) {
+				close( fifo->wfd );
+				fifo->wfd = -1;
+			}
+		} else {
+			if( len == 0 ) {
+				return strdup( "" );
+			}
 		}
-
 	} while( len > 0 );
 
-	return rbuf;
+	return rbuf;			// errno will be left set when we return here; EAGAIN indicates would block and anything else is an error.
 }
+
+/*
+	Read from the pipe and stash into the flow buffer until we see a newline at
+	which point a buffer (newline and zero terminated) is returned. The fifo is
+	open in non-blocking mode; this function will block until a complete new-line
+	buffer is read. The caller is responsible for freeing the returned buffer.
+
+	If the return is nil, the caller can assume an error; errno should indicate
+	the problem.
+*/
+extern char* rfifo_blk_readln( void* vfifo ) {
+	char* nb = NULL;
+
+	while( ! nb ) {
+		if( ! (nb = rfifo_readln( vfifo )) ) {
+			usleep( 250000 );					// ~.25 of a second
+		}
+	}
+
+	return nb;
+}
+
+/*
+	Blocking read with a timeout. Timeout is in tenths of seconds and is approximate
+	as we don't check for interrupts shorting out a sleep call.
+*/
+extern char* rfifo_to_readln( void* vfifo, int to ) {
+	char* nb = NULL;
+
+	if( to <= 0 ) {									// full on blocking if timeout is 0
+		nb = rfifo_blk_readln( vfifo );
+	} else {
+		while( ! nb && to > 0  ) {
+			if( ! (nb = rfifo_readln( vfifo )) ) {
+				usleep( 100000 );					// ~.1 of a second
+				to--;
+			}
+		}
+	}
+
+	return nb;
+}
+

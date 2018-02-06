@@ -73,6 +73,8 @@
 				16 Oct 2017 - mlx5: Add vlan list support.
 				16 Oct 2017 - mlx5: Add mac list support.
 				16 Oct 2017 - mlx5: Add unknown unicast (promisc mode) for vf support.
+				30 Nov 2017 - Switch to using mac module functions to properly handle MACs during reset/delete
+								Restructure update_nic() from a forreal perspective.
 */
 
 
@@ -93,9 +95,9 @@
 #include "vfd_dcb.h"	// dcb related stuff
 #include "vfd_mlx5.h"
 
-//#include "ixgbe_ethdev.h"
-//#include "ixgbe_ethdev.h"
-
+#if VFD_KERNEL
+#include "vfd_nl.h"		// netlink 
+#endif
 
 #define DEBUG
 #define MAX_ARGV_LEN	64		// number of parms (max) passed on eal_init call
@@ -108,6 +110,7 @@ static parms_t *g_parms = NULL;											// dpdk callback does not allow data p
 
 const char *version = VFD_VERSION "    build: " __DATE__ " " __TIME__;
 const char *vnum = "v2";
+
 
 // --- misc support ----------------------------------------------------------------------------------------------
 
@@ -136,54 +139,6 @@ extern int stricmp(const char *s1, const char *s2)
     } while ( (c1 != 0) && (c1 == c2) );
 
     return (int)(c1 - c2);
-}
-
-/*
-	Validate the string passed in contains a plausable MAC address of the form:
-		hh:hh:hh:hh:hh:hh
-
-	Returns -1 if invalid, 0 if ok.
-*/
-int is_valid_mac_str( char* mac ) {
-	char*	dmac;				// dup so we can bugger it
-	char*	tok;				// pointer at token
-	char*	strtp = NULL;		// strtok_r reference
-	int		ccount = 0;
-	
-
-	if( strlen( mac ) < 17 ) {
-		return -1;
-	}
-
-	for( tok = mac; *tok; tok++ ) {
-		if( ! isxdigit( *tok ) ) {
-			if( *tok != ':' ) {				// invalid character
-				return -1;
-			} else {
-				ccount++;					// count colons to ensure right number of tokens
-			}
-		}
-	}
-
-	if( ccount != 5 ) {				// bad number of colons
-		return -1;
-	}
-	
-	if( (dmac = strdup( mac )) == NULL ) {
-		return -1;							// shouldn't happen, but be parinoid
-	}
-
-	tok = strtok_r( dmac, ":", &strtp );
-	while( tok ) {
-		if( atoi( tok ) > 255 ) {			// can't be negative or sign would pop earlier check
-			free( dmac );
-			return -1;
-		}
-		tok = strtok_r( NULL, ":", &strtp );
-	}
-	free( dmac );
-
-	return 0;
 }
 
 /*
@@ -428,6 +383,7 @@ int valid_mtu( int port, int mtu ) {
 	return 0;
 }
 
+#ifdef KEEP
 /*
 	Pushes the mac string onto the head of the list for the given port/vf combination. Sets
 	the first mac index to be 0 so that it is used if a port/vf reset is triggered.
@@ -448,13 +404,18 @@ extern void push_mac( int port, int vfid, char* mac ) {
 }
 
 /*
-	Accepts a mac string and adds it to the list of MACs for the pf/vf provided that
-	1) the addition of a MAC does not cause the PF limit to be exceeded, and 2)
-	the VF has room for another MAC.  O is returned if either of these does not hold;
-	1 is returned if the mac was added. mac is expected to be an ASCII-z string in 
-	human readable xx:xx... form.
+	Accepts a mac string and adds it to the list of MACs for the pf/vf provided that:
 
-	Return true on success.
+		1) the addition of a MAC does not cause the PF limit to be exceeded 
+		2) the VF has room for another MAC.  
+		3) the MAC is not duplicated on another VF on the same PF
+
+	O is returned if any of these does not hold;
+
+	If the MAC is already listed for the PF/VF given, then we do nothing and silently
+	ignore the call returning 1 (success).
+
+	The parm mac is expected to be an ASCII-z string in human readable xx:xx... form.
 */
 extern int add_mac( int port, int vfid, char* mac ) {
 	struct vf_s* vf = NULL;				// references to our pf/vf structs
@@ -500,6 +461,7 @@ extern int add_mac( int port, int vfid, char* mac ) {
 
 	return 1;
 }
+#endif
 
 // ---------------------------------------------------------------------------------------------------------------
 /*
@@ -908,55 +870,52 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 		return 0;
 	}
 
+	if( ! parms->forreal ) {
+		bleat_printf( 1, "nic update skipped: -n mode set" );
+		return 0;
+	}
+
 	rte_spinlock_lock( &running_config->update_lock );
 	
-	for (i = 0; i < conf->num_ports; ++i){							// run each port we know about
+	for (i = 0; i < conf->num_ports; ++i){												// run each port we know about to apply port only changes
 		int ret;
 		struct sriov_port_s* port;
 
 		port = &conf->ports[i];
 
-		if( parms->forreal ) {
-			tx_set_loopback( port->rte_port_number, !!(port->flags & PF_LOOPBACK) );		// enable loopback if set (disabled: all vm-vm traffic must go to TOR and back
+		//  WHY is this and disable pool done every time?  why is it not just done at the time of add?
+		tx_set_loopback( port->rte_port_number, !!(port->flags & PF_LOOPBACK) );		// enable loopback if set (disabled: all vm-vm traffic must go to TOR and back
 
-			// do NOT call set_queue_drop() as it causes packetloss; drop enable handled by callback process now
+		// do NOT call set_queue_drop() as it causes packetloss; drop enable handled by callback process now
 
-			disable_default_pool( port->rte_port_number );
-		}
+		disable_default_pool( port->rte_port_number );
 
 		if( port->last_updated == ADDED ) {								// updated since last call, reconfigure
 			port->num_mirrors = 0;
+			need_ready_msg = 1;											// log port ready when VFs are finished configuring
 
-			if( parms->forreal ) {
-				need_ready_msg = 1;										// log port ready when VFs are finished configuring
+			bleat_printf( 1, "port updated: %s/%s",  port->name, port->pciid );
 
-				bleat_printf( 1, "port updated: %s/%s",  port->name, port->pciid );
-
-				if( port->flags & PF_PROMISC ) {
-					bleat_printf( 1, "enabling promiscuous mode for port %d", port->rte_port_number );
-					rte_eth_promiscuous_enable(port->rte_port_number);
-				}
-				else {
-					bleat_printf( 1, "disabling promiscuous mode for port %d", port->rte_port_number );
-					rte_eth_promiscuous_disable(port->rte_port_number);
-				}
-				
-				if (get_nic_type(port->rte_port_number) == VFD_BNXT)
-					rte_eth_allmulticast_disable(port->rte_port_number);
-				else
-					rte_eth_allmulticast_enable(port->rte_port_number);
-			
-				if (get_nic_type(port->rte_port_number) == VFD_NIANTIC) {
-					ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
-					
-					if (ret < 0)
-						bleat_printf( 0, "ERR: bad unicast hash table parameter, return code = %d", ret);
-				}	
-
-	
-			} else {
-				bleat_printf( 1, "port update commands not sent (forreal is off): %s/%s",  port->name, port->pciid );
+			if( port->flags & PF_PROMISC ) {
+				bleat_printf( 1, "enabling promiscuous mode for port %d", port->rte_port_number );
+				rte_eth_promiscuous_enable(port->rte_port_number);
 			}
+			else {
+				bleat_printf( 1, "disabling promiscuous mode for port %d", port->rte_port_number );
+				rte_eth_promiscuous_disable(port->rte_port_number);
+			}
+			
+			if (get_nic_type(port->rte_port_number) == VFD_BNXT)
+				rte_eth_allmulticast_disable(port->rte_port_number);
+			else
+				rte_eth_allmulticast_enable(port->rte_port_number);
+		
+			if (get_nic_type(port->rte_port_number) == VFD_NIANTIC) {
+				ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
+				
+				if (ret < 0)
+					bleat_printf( 0, "ERR: bad unicast hash table parameter, return code = %d", ret);
+			}	
 
 			port->last_updated = UNCHANGED;								// mark that we did this for next go round
 		} else {
@@ -965,8 +924,6 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 
 	    for(y = 0; y < port->num_vfs; ++y){ 							/* go through all VF's and (un)set VLAN's/macs for any vf that has changed */
 			int v;
-			int m;
-			char *mac;
 			int	change2port;							// set true if one or more VFs changed; need to redo qos allotment if so
 			struct vf_s *vf = &port->vfs[y];   			// at the VF to work on
 
@@ -979,8 +936,18 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 				change2port = 1;
 
 				switch( vf->last_updated ) {
-					case ADDED:		reason = "add"; break;
-					case DELETED:	reason = "delete"; break;
+					case ADDED:		
+						reason = "add"; 
+#if VFD_KERNEL
+						device_message(port->rte_port_number, vf->num, NL_PF_ADD_DEV_RQ, NL_PF_RESP_OK);
+#endif
+						break;						
+					case DELETED:	
+						reason = "delete"; 
+#if VFD_KERNEL
+						device_message(port->rte_port_number, vf->num, NL_PF_DEL_DEV_RQ, NL_PF_RESP_OK);
+#endif						
+						break;					
 					case RESET:		reason = "reset"; break;
 					default:		reason = "unknown reason"; break;
 				}
@@ -1014,21 +981,9 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 						int vlan = vf->vlans[v];
 						int strip_on = (vf->strip_stag || vf->strip_ctag) ? 1 : 0;
 						bleat_printf( 2, "delete vlan: port: %d vf: %d vlan: %d", port->rte_port_number, vf->num, vlan );
-						if( parms->forreal )
-							if ((get_nic_type(port->rte_port_number) != VFD_MLX5) || !strip_on) // strip/insert vlan is set differently in mlx5
-								set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, SET_OFF );		// remove the vlan id from the list
+						if ((get_nic_type(port->rte_port_number) != VFD_MLX5) || !strip_on) // strip/insert vlan is set differently in mlx5
+							set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, SET_OFF );		// remove the vlan id from the list
 					}
-
-					// this is done below -- why is it duplicated here? commenting out for now.
-					/*
-					for( m = vf->first_mac; m <= vf->num_macs; ++m ) {				// delete MAC addresses 
-						mac = vf->macs[m];
-						bleat_printf( 2, "delete mac: port: %d vf: %d mac: %s", port->rte_port_number, vf->num, mac );
-		
-						if( parms->forreal )
-							set_vf_rx_mac(port->rte_port_number, mac, vf->num, SET_OFF );
-					}
-					*/
 				} else {
 					int v;
 
@@ -1041,9 +996,8 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 						int vlan = vf->vlans[v];
 						int strip_on = (vf->strip_stag || vf->strip_ctag) ? 1 : 0;
 						bleat_printf( 2, "add vlan: port: %d vf=%d vlan=%d", port->rte_port_number, vf->num, vlan );
-						if( parms->forreal )
-							if ((get_nic_type(port->rte_port_number) != VFD_MLX5) || !strip_on) // strip/insert vlan is set differently in mlx5
-								set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, on );		// add the vlan id to the list
+						if ((get_nic_type(port->rte_port_number) != VFD_MLX5) || !strip_on) // strip/insert vlan is set differently in mlx5
+							set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, on );		// add the vlan id to the list
 					}
 				}
 
@@ -1053,20 +1007,28 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 						set_vf_mac_anti_spoofing(port->rte_port_number, vf->num, SET_OFF);
 					}
 
+					clear_macs( port->rte_port_number, vf->num, RESET_DEFAULT );	// remove all MAC addresses and set a random default
+
+/*
+// TODO -- remove this once clear_macs() is verified
 					for( m = vf->first_mac; m <= vf->num_macs; ++m ) {
 						mac = vf->macs[m];
 						bleat_printf( 2, "delete mac: port: %d vf: %d mac: %s", port->rte_port_number, vf->num, mac );
 		
-						if( parms->forreal ) {
-							if ((get_nic_type(port->rte_port_number) == VFD_MLX5) && (m == vf->first_mac))
-								vfd_mlx5_vf_mac_remove(port->rte_port_number, vf->num);
-							else
-								set_vf_rx_mac(port->rte_port_number, mac, vf->num, SET_OFF );
-						}
+						if ((get_nic_type(port->rte_port_number) == VFD_MLX5) && (m == vf->first_mac))
+							vfd_mlx5_vf_mac_remove(port->rte_port_number, vf->num);  ///##### this call is wrong!  
+						else
+							set_vf_rx_mac(port->rte_port_number, mac, vf->num, SET_OFF );
 					}
 
 					vf->num_macs = 0;							// shouldn't be referenced, but prevent accidents
+*/
 				} else {
+					set_macs( port->rte_port_number, vf->num );
+
+/*
+// remove when set_macs verified
+//TODO:  use stuff in mac module to set macs so that verification on the PF level happens (either here or when we populate this struct)
 					bleat_printf( 2, "configuring %d mac addresses: port: %d vf: %d firstmac=%d", vf->num_macs, port->rte_port_number, vf->num, vf->first_mac );
 					for( m = vf->num_macs; m >= vf->first_mac; m-- ) {				// must run in reverse order because of FV oddness
 						mac = vf->macs[m];
@@ -1081,6 +1043,7 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 							}
 						}
 					}
+*/
 				}
 
 				if( vf->rate || vf->min_rate ) {
@@ -1100,61 +1063,57 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 				}
 
 				if( vf->last_updated == DELETED ) {				// do this last!
-					if( parms->forreal ) { 
-						if( vf->rate > 0 ) { //disable rate limit
-							bleat_printf( 1, "disabling rate limit");
-							set_vf_rate_limit( port->rte_port_number, vf->num, 0, 0x01 );
-						}
-
-						if( vf->min_rate > 0 ) { //disable rate guarantee
-							bleat_printf( 1, "disabling min rate guarantee");
-							set_vf_min_rate( port->rte_port_number, vf->num, 0, 0x01 );
-						}
-
-						/* retoring VF cfg to default */
-						vfd_set_ins_strip( port, vf );
-
-						bleat_printf( 2, "port: %d vf: %d set link status to %d", port->rte_port_number, vf->num, VF_LINK_AUTO);
-						set_vf_link_status( port->rte_port_number, vf->num, VF_LINK_AUTO);
-
-						bleat_printf( 2, "port: %d vf: %d set allow un-ucast to %d", port->rte_port_number, vf->num, SET_OFF );
-						set_vf_allow_un_ucast(port->rte_port_number, vf->num, SET_OFF);
-
-						bleat_printf( 2, "port: %d vf: %d set allow mcast to %d", port->rte_port_number, vf->num, SET_OFF );
-						set_vf_allow_mcast(port->rte_port_number, vf->num, SET_OFF);
+					if( vf->rate > 0 ) { //disable rate limit
+						bleat_printf( 1, "disabling rate limit");
+						set_vf_rate_limit( port->rte_port_number, vf->num, 0, 0x01 );
 					}
+
+					if( vf->min_rate > 0 ) { //disable rate guarantee
+						bleat_printf( 1, "disabling min rate guarantee");
+						set_vf_min_rate( port->rte_port_number, vf->num, 0, 0x01 );
+					}
+
+					/* retoring VF cfg to default */
+					vfd_set_ins_strip( port, vf );
+
+					bleat_printf( 2, "port: %d vf: %d set link status to %d", port->rte_port_number, vf->num, VF_LINK_AUTO);
+					set_vf_link_status( port->rte_port_number, vf->num, VF_LINK_AUTO);
+
+					bleat_printf( 2, "port: %d vf: %d set allow un-ucast to %d", port->rte_port_number, vf->num, SET_OFF );
+					set_vf_allow_un_ucast(port->rte_port_number, vf->num, SET_OFF);
+
+					bleat_printf( 2, "port: %d vf: %d set allow mcast to %d", port->rte_port_number, vf->num, SET_OFF );
+					set_vf_allow_mcast(port->rte_port_number, vf->num, SET_OFF);
+				
 					vf->num = -1;								// must reset this so an add request with the now deleted number will succeed
 					// TODO -- is there anything else that we need to clean up in the struct?
 				}
 
 				if( vf->num >= 0 ) {
-					if( parms->forreal ) {
-						if (get_nic_type(port->rte_port_number) == VFD_BNXT) {
-							bleat_printf( 2, "%s vf: %d set keep stats", port->name, vf->num);
-							rte_pmd_bnxt_set_vf_persist_stats(port->rte_port_number, vf->num, 1);
-						}
-						bleat_printf( 2, "port: %d vf: %d set anti-spoof to %d", port->rte_port_number, vf->num, vf->vlan_anti_spoof );
-						set_vf_vlan_anti_spoofing(port->rte_port_number, vf->num, vf->vlan_anti_spoof);
-	
-						bleat_printf( 2, "port: %d vf: %d set mac-anti-spoof to %d", port->rte_port_number, vf->num, vf->mac_anti_spoof );
-						set_vf_mac_anti_spoofing(port->rte_port_number, vf->num, vf->mac_anti_spoof);
-	
-						vfd_set_ins_strip( port, vf );				// set insert/strip options
-
-						bleat_printf( 2, "port: %d vf: %d set allow broadcast to %d", port->rte_port_number, vf->num, vf->allow_bcast );
-						set_vf_allow_bcast(port->rte_port_number, vf->num, vf->allow_bcast);
-
-						bleat_printf( 2, "port: %d vf: %d set allow multicast to %d", port->rte_port_number, vf->num, vf->allow_mcast );
-						set_vf_allow_mcast(port->rte_port_number, vf->num, vf->allow_mcast);
-
-						bleat_printf( 2, "port: %d vf: %d set allow un-ucast to %d", port->rte_port_number, vf->num, vf->allow_un_ucast );
-						set_vf_allow_un_ucast(port->rte_port_number, vf->num, vf->allow_un_ucast);
-	
-						bleat_printf( 2, "port: %d vf: %d set link status to %d", port->rte_port_number, vf->num, vf->link);
-						set_vf_link_status( port->rte_port_number, vf->num, vf->link);
-					} else {
-						bleat_printf( 1, "update vf skipping setup for spoofing, bcast, mcast, etc; forreal is off: %d vf=%d", port->rte_port_number, vf->num );
+					if (get_nic_type(port->rte_port_number) == VFD_BNXT) {
+						bleat_printf( 2, "%s vf: %d set keep stats", port->name, vf->num);
+						rte_pmd_bnxt_set_vf_persist_stats(port->rte_port_number, vf->num, 1);
 					}
+					bleat_printf( 2, "port: %d vf: %d set anti-spoof to %d", port->rte_port_number, vf->num, vf->vlan_anti_spoof );
+					set_vf_vlan_anti_spoofing(port->rte_port_number, vf->num, vf->vlan_anti_spoof);
+
+					bleat_printf( 2, "port: %d vf: %d set mac-anti-spoof to %d", port->rte_port_number, vf->num, vf->mac_anti_spoof );
+					set_vf_mac_anti_spoofing(port->rte_port_number, vf->num, vf->mac_anti_spoof);
+
+					vfd_set_ins_strip( port, vf );				// set insert/strip options
+
+					bleat_printf( 2, "port: %d vf: %d set allow broadcast to %d", port->rte_port_number, vf->num, vf->allow_bcast );
+					set_vf_allow_bcast(port->rte_port_number, vf->num, vf->allow_bcast);
+
+					bleat_printf( 2, "port: %d vf: %d set allow multicast to %d", port->rte_port_number, vf->num, vf->allow_mcast );
+					set_vf_allow_mcast(port->rte_port_number, vf->num, vf->allow_mcast);
+
+					bleat_printf( 2, "port: %d vf: %d set allow un-ucast to %d", port->rte_port_number, vf->num, vf->allow_un_ucast );
+					set_vf_allow_un_ucast(port->rte_port_number, vf->num, vf->allow_un_ucast);
+
+					bleat_printf( 2, "port: %d vf: %d set link status to %d", port->rte_port_number, vf->num, vf->link);
+					set_vf_link_status( port->rte_port_number, vf->num, vf->link);
+				
 				}
 
 
@@ -1172,39 +1131,35 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 			}
 
 			if( change2port && vf->num >= 0 ) {
-				if( parms->forreal ) {
-					bleat_printf( 3, "set promiscuous: port: %d, vf: %d ", port->rte_port_number, vf->num);
-			
-					// az says: figure out if we have to update it every time we change VLANS/MACS
-					// 			or once when update ports config
-					if( port->flags & PF_PROMISC ) {
-						bleat_printf( 1, "enabling promiscuous mode for port %d", port->rte_port_number );
-						rte_eth_promiscuous_enable(port->rte_port_number);
-					}
-					else {
-						bleat_printf( 1, "disabling promiscuous mode for port %d", port->rte_port_number );
-						rte_eth_promiscuous_disable(port->rte_port_number);
-					}
-					
-					if (get_nic_type(port->rte_port_number) == VFD_BNXT)
-						rte_eth_allmulticast_disable(port->rte_port_number);
-					else
-						rte_eth_allmulticast_enable(port->rte_port_number);
-					
-					if (get_nic_type(port->rte_port_number) == VFD_NIANTIC) {
-						ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
-						
-						if (ret < 0)
-							bleat_printf( 0, "ERR: bad unicast hash table parameter, return code = %d", ret);
-					}					
-					
-					
-					// don't accept untagged frames
-					set_vf_allow_untagged(port->rte_port_number, vf->num, !on);
-
-				} else {
-					bleat_printf( 1, "skipped end round updates to port: %d", port->rte_port_number );
+				bleat_printf( 3, "set promiscuous: port: %d, vf: %d ", port->rte_port_number, vf->num);
+		
+				// az says: figure out if we have to update it every time we change VLANS/MACS
+				// 			or once when update ports config
+				if( port->flags & PF_PROMISC ) {
+					bleat_printf( 1, "enabling promiscuous mode for port %d", port->rte_port_number );
+					rte_eth_promiscuous_enable(port->rte_port_number);
 				}
+				else {
+					bleat_printf( 1, "disabling promiscuous mode for port %d", port->rte_port_number );
+					rte_eth_promiscuous_disable(port->rte_port_number);
+				}
+				
+				if (get_nic_type(port->rte_port_number) == VFD_BNXT)
+					rte_eth_allmulticast_disable(port->rte_port_number);
+				else
+					rte_eth_allmulticast_enable(port->rte_port_number);
+				
+				if (get_nic_type(port->rte_port_number) == VFD_NIANTIC) {
+					ret = rte_eth_dev_uc_all_hash_table_set(port->rte_port_number, on);
+					
+					if (ret < 0)
+						bleat_printf( 0, "ERR: bad unicast hash table parameter, return code = %d", ret);
+				}					
+				
+				// don't accept untagged frames
+				set_vf_allow_untagged(port->rte_port_number, vf->num, !on);
+
+			
 			}
 		}				// end for each vf on this port
 
@@ -1351,7 +1306,7 @@ timeDelta(struct timeval * now, struct timeval * before)
 	we are currently managing.
 */
 void
-restore_vf_setings(uint16_t port_id, int vf_id) {
+restore_vf_setings(portid_t port_id, int vf_id) {
 	int i;
 	int matched = 0;		// number matched for log
 
@@ -1393,6 +1348,14 @@ restore_vf_setings(uint16_t port_id, int vf_id) {
 	Runs the current in memory configuration and dumps stuff to the log.
 	Only mods were to replace tracelog calls with bleat calls to allow
 	for dynamic level changes and file rolling.
+
+	Number of macs:  The num_macs var is the number of MAC addresses that have
+	been added starting at [1] in the array. [0] is reserved for the address
+	that is set as the default from within the guest, if it is different than
+	what is set as the first MAC in the config.  MACs added to the white list
+	are pushed onto the tail of the list.  When we list the number of MACs we
+	add 1 if the [0] position is being used as this makes more sense to the 
+	operator.
 */
 void
 dump_sriov_config( sriov_conf_t* sriov_config)
@@ -1433,7 +1396,7 @@ dump_sriov_config( sriov_conf_t* sriov_config)
 					sriov_config->ports[i].vfs[y].min_rate,
 					sriov_config->ports[i].vfs[y].link,
 					sriov_config->ports[i].vfs[y].num_vlans,
-					sriov_config->ports[i].vfs[y].num_macs,
+					sriov_config->ports[i].vfs[y].num_macs + (sriov_config->ports[i].vfs[y].first_mac ? 0 : 1),
 					split_ctl,
 					sriov_config->ports[i].mirrors[y].target,
 					sriov_config->ports[i].mirrors[y].dir,
@@ -1446,7 +1409,7 @@ dump_sriov_config( sriov_conf_t* sriov_config)
 				}
 	
 				int z;
-				for (z = sriov_config->ports[i].vfs[y].first_mac; z < sriov_config->ports[i].vfs[y].num_macs; z++) {
+				for (z = sriov_config->ports[i].vfs[y].first_mac; z <= sriov_config->ports[i].vfs[y].num_macs; z++) {
 					bleat_printf( 2, "dump: pf/vf: %d/%d mac[%d] %s ", sriov_config->ports[i].rte_port_number, sriov_config->ports[i].vfs[y].num, z, sriov_config->ports[i].vfs[y].macs[z]);
 				}
 			} else {
@@ -1538,7 +1501,8 @@ main(int argc, char **argv)
 		case 'h':
 		case '?':
 			printf( "\nVFd %s %s\n", vnum, version );
-			printf( "(17710)\n" );
+			printf( "based on: %s %d.%d%s.%d\n", RTE_VER_PREFIX, RTE_VER_YEAR,  RTE_VER_MONTH, RTE_VER_SUFFIX,  RTE_VER_RELEASE );
+			printf( "(18122 - retrofit of current nic_agnostic ontop of dpdk 17.08)\n" );
 			printf("%s\n", main_help);
 			exit( 0 );
 			break;
@@ -1608,6 +1572,7 @@ main(int argc, char **argv)
 
 														// set up config structs. these always succeeed (see notes in README)
 	vfd_add_ports( g_parms, running_config );			// add the pciid info from parms to the ports list (must do before dpdk init, config file adds wait til after)
+	mac_init();											// init the mac symtab etc to track MACs assigned to PFs.
 
 	if( g_parms->forreal ) {										// begin dpdk setup and device discovery
 		int ret;					// returned value from some call
@@ -1648,8 +1613,17 @@ main(int argc, char **argv)
 			bleat_printf( 0, "CRI: abort: cannot crate refresh_queue thread" );
 			rte_exit(EXIT_FAILURE, "Cannot create refresh_queue thread\n");
 		}
-		bleat_printf( 1, "refresh queue management thread created" );
-	
+		
+		ret = rte_thread_setname(tid, "vfd-rq");
+		if (ret != 0) {
+			bleat_printf( 2, "error: failed to set thread name: %s", "vfd-rq" );
+		}
+		bleat_printf( 1, "refresh queue management thread created" );	
+
+#if VFD_KERNEL 		
+		netlink_init();
+#endif
+		
 		bleat_printf( 1, "creating memory pool" ); 									// Creates a new mempool in memory to hold the mbufs.  
 		mbuf_pool = rte_pktmbuf_pool_create("sriovctl", NUM_MBUFS, MBUF_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
 		if (mbuf_pool == NULL) {
@@ -1802,6 +1776,11 @@ main(int argc, char **argv)
 
 	free( parm_file );			// now it's safe to free the parm file
 
+#if VFD_KERNEL
+	// send message to kernel module asking to update netdev list
+	device_message(0, 0, NL_PF_UPD_DEV_RQ, NL_PF_RESP_OK);
+#endif
+
 	while(!terminated)
 	{
 		usleep(50000);			// .5s
@@ -1813,6 +1792,11 @@ main(int argc, char **argv)
 
 	}		// end !terminated while
 
+#if VFD_KERNEL
+	// send message to kernel module asking to delete all netdevs
+	device_message(0, 0, NL_PF_RES_DEV_RQ, NL_PF_RESP_OK);
+#endif	
+
 	bleat_printf( 0, "terminating" );
 	log_port_state( NULL, "not ready" );								// mark all ports down in log
 	run_stop_cbs( running_config );										// run any user stop callback commands that were given in VF conf files
@@ -1823,8 +1807,8 @@ main(int argc, char **argv)
 
 	close_ports();				// clean up the PFs, terminate mirrors
 
-  gettimeofday(&st.endTime, NULL);
-  bleat_printf( 1, "duration %.f sec\n", timeDelta(&st.endTime, &st.startTime));
+	gettimeofday(&st.endTime, NULL);
+	bleat_printf( 1, "duration %.f sec\n", timeDelta(&st.endTime, &st.startTime));
 
-  return EXIT_SUCCESS;
+	return EXIT_SUCCESS;
 }

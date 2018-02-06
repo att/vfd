@@ -14,6 +14,7 @@
 					Fix comment in same initialisation.
 				16 May 2017 - Add flow control flag constant.
 				10 Oct 2017 - Change set_mirror proto.
+				25 Jan 2018 - Add support for building with older DPDK.
 */
 
 #ifndef _SRIOV_H_
@@ -65,23 +66,40 @@
 #include <rte_mbuf.h>
 #include <rte_interrupts.h>
 #include <rte_pci.h>
-#include <rte_bus_pci.h>
+//#include <rte_bus_pci.h>
 #include <rte_ether.h>
 #include <rte_ethdev.h>
 #include <rte_string_fns.h>
 #include <rte_spinlock.h>
+#include <rte_version.h>
+
+// this MUST be defined before pulling in the other headers. Port id length changed with 
+// dpdk v17.11; this allows us to revert to build with older dpdk versions. The default
+// (undefined) is to build with the current version size.
+#if (RTE_VER_YEAR <= 17) && (RTE_VER_MONTH < 11)
+	typedef uint8_t  portid_t;
+#else
+	typedef uint16_t  portid_t;	
+#endif
+
+#if VFD_KERNEL
+#include "vfd_nl.h"
+#endif
 
 #include <vfdlib.h>
 
-#include "vfd_bnxt.h"
 #include "vfd_ixgbe.h"
 #include "vfd_i40e.h"
+#include "vfd_bnxt.h"
 
 
 // ---------------------------------------------------------------------------------------
 #define SET_ON				1		// on/off parm constants
 #define SET_OFF				0
 #define FORCE				1
+
+#define KEEP_DEFAULT		0		// keep default mac when clearing
+#define RESET_DEFAULT		1		// reset default mac with a random address
 
 #define VF_VAL_MCAST		0		// constants passed to get_vf_value()
 #define VF_VAL_BCAST		1
@@ -144,9 +162,9 @@ typedef unsigned int uint128_t __attribute__((mode(TI)));
 #define MAX_PF_MACS  128	// mac count across all PFs cannot exceed
 
 typedef uint8_t  lcoreid_t;
-typedef uint16_t  portid_t;
 typedef uint16_t queueid_t;
 typedef uint16_t streamid_t;
+typedef rte_eth_dev_cb_fn cbfn_t;	// 17.08 callback function type
 
 #define MAX_QUEUE_ID ((1 << (sizeof(queueid_t) * 8)) - 1)
 
@@ -226,7 +244,7 @@ struct vf_s
 	int     num_macs;
 	int		first_mac;				// index of first mac in list (1 if VF has not changed their mac, 0 if they've pushed one down)
 	int     vlans[MAX_VF_VLANS];
-	char    macs[MAX_VF_MACS][18];
+	char    macs[MAX_VF_MACS][18];	// human readable MAC strings
 	int     rx_q_ready;
 	int 	default_mac_set;
 
@@ -262,8 +280,8 @@ typedef struct sriov_port_s
 	int     	num_mirrors;
 	int			nvfs_config;			// actual number of configured vfs; could be less than max
 	int			ntcs;					// number traffic clases (must be 4 or 8)
-	int     	num_vfs;
-	struct  	mirror_s mirrors[MAX_VFS];		// mirror info for each VF
+	int     	num_vfs;					// number of VF spaces in the list used, NOT the total allocated on the port
+	struct  	mirror_s mirrors[MAX_VFS];	// mirror info for each VF
 	struct  	vf_s vfs[MAX_VFS];
 	tc_class_t*	tc_config[MAX_TCS];		// configuration information (max/min lsp/gsp) for the TC	(set from config)
 	int*		vftc_qshares;			// queue percentages arranged by vf/tc (computed with each add/del of a vf)
@@ -282,7 +300,7 @@ typedef struct sriov_conf_c
 	int     num_ports;						// number of ports actually used in ports array
 	struct sriov_port_s ports[MAX_PORTS];	// ports; CAUTION: order may not be device id order
 	rte_spinlock_t update_lock;				// we lock the config during update and deployment
-	void*	mir_id_mgr;							// reference point for the id manager to allocate mirror ids
+	void*	mir_id_mgr;						// reference point for the id manager to allocate mirror ids
 } sriov_conf_t;
 
 
@@ -418,13 +436,13 @@ int set_vf_min_rate(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk
 int set_vf_link_status(portid_t port_id, uint16_t vf, int status);
 
 void nic_stats_clear(portid_t port_id);
-int nic_stats_display(uint16_t port_id, char * buff, int blen);
-int vf_stats_display(uint16_t port_id, uint32_t pf_ari, int vf, char * buff, int bsize);
-int port_xstats_display(uint16_t port_id, char * buff, int bsize);
+int nic_stats_display( portid_t port_id, char * buff, int blen);
+int vf_stats_display( portid_t port_id, uint32_t pf_ari, int vf, char * buff, int bsize);
+int port_xstats_display( portid_t port_id, char * buff, int bsize);
 int dump_all_vlans(portid_t port_id);
 void ping_vfs(portid_t port_id, int vf);
 
-int port_init(uint16_t port, struct rte_mempool *mbuf_pool, int hw_strip_crc, sriov_port_t *pf );
+int port_init( portid_t port, struct rte_mempool *mbuf_pool, int hw_strip_crc, sriov_port_t *pf );
 void tx_set_loopback(portid_t port_id, u_int8_t on);
 
 void ether_aton_r(const char *asc, struct ether_addr * addr);
@@ -444,9 +462,14 @@ int update_ports_config(void);
 int cmp_vfs (const void * a, const void * b);
 void disable_default_pool(portid_t port_id);
 
-int lsi_event_callback(uint16_t port_id, enum rte_eth_event_type type, void *param, void* data );
-//int lsi_event_callback(uint16_t port_id, enum rte_eth_event_type type, void *param, void *ret_param);
-void restore_vf_setings(uint16_t port_id, int vf);
+// callback format changed in dpdk 17.11
+#if (RTE_VER_YEAR <= 17) && (RTE_VER_MONTH < 11)
+	int lsi_event_callback( uint8_t port_id, enum rte_eth_event_type type, void *param, void* data );
+#else
+	int lsi_event_callback( uint16_t port_id, enum rte_eth_event_type type, void *param, void* data );
+#endif
+
+void restore_vf_setings( portid_t port_id, int vf);
 
 // callback validation support
 int valid_mtu( int port, int mtu );
@@ -457,8 +480,7 @@ int suss_loopback( int port );
 struct sriov_port_s *suss_port( int portid );
 struct vf_s *suss_vf( int port, int vfid );
 struct mirror_s*  suss_mirror( int port, int vfid );
-void push_mac( int port, int vf, char* mac );
-extern int add_mac( int port, int vfid, char* mac );
+
 
 void add_refresh_queue(u_int8_t port_id, uint16_t vf_id);
 void process_refresh_queue(void);
@@ -466,7 +488,7 @@ int is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter );
 
 int vfd_update_nic( parms_t* parms, sriov_conf_t* conf );
 int vfd_init_fifo( parms_t* parms );
-int is_valid_mac_str( char* mac );
+//int is_valid_mac_str( char* mac );
 char*  gen_stats( sriov_conf_t* conf, int pf_only, int pf );
 int get_nic_type(portid_t port_id);
 int get_mac_antispoof( portid_t port_id );
@@ -475,6 +497,14 @@ int get_num_vfs( uint32_t port_id );
 void discard_pf_traffic( portid_t portid );
 
 void log_port_state( struct sriov_port_s* port, const_str msg );
+
+// ---- mac support ---------------------------------------
+extern int mac_init( void );
+extern int add_mac( int port, int vfid, char* mac );
+extern int can_add_mac( int port, int vfid, char* mac );
+extern int clear_macs( int port, int vfid, int assign_random );
+extern int push_mac( int port, int vfid, char* mac );
+extern int set_macs( int port, int vfid );
 
 //-- testing --
 extern void set_fc_on( portid_t pf, int force );

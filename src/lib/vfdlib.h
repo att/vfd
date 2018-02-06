@@ -156,8 +156,11 @@ void ng_flow_ref( void *vf, char *buf, long len );
 // ---------------- fifo ---------------------------------------------------------------------------------
 extern void* rfifo_create( char* fname, int mode );
 extern void rfifo_close( void* vfifo );
+extern void rfifo_detect_close( void* vfifo );
 extern char* rfifo_read( void* vfifo );
 extern char* rfifo_readln( void* vfifo );
+extern char* rfifo_blk_readln( void* vfifo );
+extern char* rfifo_to_readln( void* vfifo, int to );
 
 
 // --------------- list ----------------------------------------------------------------------------------
@@ -200,12 +203,18 @@ extern float jw_value_ele( void* st, const char* name, int idx );
 extern void* jw_obj_ele( void* st, const char* name, int idx );
 extern int jw_array_len( void* st, const char* name );
 
+extern int jw_is_value( void* st, const char* name );
+extern int jw_is_bool( void* st, const char* name );
+extern int jw_is_null( void* st, const char* name );
+extern int jw_is_value_ele( void* st, const char* name, int idx );
+extern int jw_is_bool_ele( void* st, const char* name, int idx );
+
 // ---------------- jw_xapi ---------------------------------------------------------------------------------
-extern int get_bool( void* jblob, char const* field_name, int def_value );
-extern float get_value( void* jblob, char const* field_name, float def_value );
-extern int get_ivalue( void* jblob, char const* field_name, int def_value );
-extern char* get_value_as_str( void* jblob, char const* field_name, char const* def_value, int  fmt );
-extern char* get_str( void* jblob, char const* field_name, char const* def_value );
+extern int jwx_get_bool( void* jblob, char const* field_name, int def_value );
+extern float jwx_get_value( void* jblob, char const* field_name, float def_value );
+extern int jwx_get_ivalue( void* jblob, char const* field_name, int def_value );
+extern char* jwx_get_value_as_str( void* jblob, char const* field_name, char const* def_value, int  fmt );
+extern char* jwx_get_str( void* jblob, char const* field_name, char const* def_value );
 
 //----------------- idmgr -----------------------------------------------------------------------------------
 extern void* mk_idm( int num_ids );
