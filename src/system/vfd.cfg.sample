@@ -10,6 +10,7 @@
     "config_dir":   "/var/lib/vfd/config",
     "fifo":         "/var/lib/vfd/request",
     "cpu_mask":		"0x01",
+	"numa_mem":		"64,64",
     "default_mtu":	1500,
 	"enable_qos":	false,
 	"enable_flowcontrol": false,

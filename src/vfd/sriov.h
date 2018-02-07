@@ -70,6 +70,7 @@
 #include <rte_ethdev.h>
 #include <rte_string_fns.h>
 #include <rte_spinlock.h>
+#include <rte_version.h>
 
 #if VFD_KERNEL
 #include "vfd_nl.h"

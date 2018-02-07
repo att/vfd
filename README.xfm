@@ -298,28 +298,29 @@ lrwxrwxrwx  1 root root       0 Jan 26 08:31 virtfn11 -> ../0000:08:12.6
 &ex_start
 {   
  "log_dir":      "/var/log/vfd",
- "log_keep":     10,
- "log_level":    1,
- "init_log_level": 3,
- "dpdk_log_level": 1,
+ "log_keep":           10,
+ "log_level":           1,
+ "init_log_level":      3,
+ "dpdk_log_level":      1,
  "dpdk_init_log_level": 2,
  "config_dir":   
     "/var/lib/vfd/config",
  "fifo":
     "/var/lib/vfd/request",
- "cpu_mask":      "0x01",
- "default_mtu":   1500,
- "enable_qos":   false,
+ "cpu_mask":           "0x01",
+ "numa_mem":           "64,64",
+ "default_mtu":        1500,
+ "enable_qos":         false,
  "enable_flowcontrol": false,
     
  "pciids": [ 
    { "id": "0000:08:00.0",
      "promiscuous": false,
      "mtu": 9240,
-     "hw_strip_crc":   true,
+     "hw_strip_crc":    true,
      "enable_loopback": true,
-     "pf_driver": "igb-uio",
-     "vf_driver": "vfio-pci",
+     "pf_driver":   "igb-uio",
+     "vf_driver":   "vfio-pci",
      "vf_oversubscription": 
                          true,
      "tclasses": [

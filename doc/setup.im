@@ -1,9 +1,9 @@
 .** generic setup that most docs will use to generate posscript, txt or md output.
 
-.dh 1 p=14 f=Helvetica-Bold s=1.5,1 r=.75i e=no u=yes m=0i
-.dh 2 p=12 f=Helvetica-Bold s=1,.5 r=.75i m=0i
-.dh 3 p=10 f=Helvetica-Bold s=1,0 r=.75i m=0i
-.dh 4 p=10 f=Helvetica-Bold s=0,0  m=0i
+.dh 1 p=14 f=Helvetica-Bold s=1.5,1 r=.75i e=no u=yes m=1i
+.dh 2 p=12 f=Helvetica-Bold s=1,.5 r=.75i m=1i
+.dh 3 p=10 f=Helvetica-Bold s=1,0 r=.75i m=1i
+.dh 4 p=10 f=Helvetica-Bold s=0,0  m=1i
 
 .** ------ macros which hold across most desired output formats ---------------------
 .dv fontsize 10p
@@ -14,10 +14,10 @@
 .dv difont Helvetica-bold
 .dv cwfont Courier
 
-.dv indent .ll -.75i .in +.5i
-.dv uindent .in -.5i .ll +.75i
-.dv smindent .ll -1i .in +.25i
-.dv smuindent .in -.25i .ll +1i
+.dv indent .ll -.5i .in +.25i
+.dv uindent .in -.25i .ll +.5i
+.dv smindent .ll -.3i .in +.15i
+.dv smuindent .in -.15i .ll +.3i
 
 .dv ex_start .sp .5 .cc 4 .ll -.25i .in +.25i .sf Courier .st &extextsize .fo off
 .** ex_end macro _must_ be placed in col 0 to cause an exit from no-format mode.
@@ -57,7 +57,8 @@
 
 .**  ---- specialised macros based on output format; might override above ------------------------------------
 .if pfm
-	.cd 1 6i i=1.25i m=0i
+	.** .cd 1 6i i=1.25i m=0i
+	.cd 1 6i i=.5i m=0i
 	.dv cw .tf Courier 8p  $1 ^:
 	.dv bold .tf Helvetica-bold  ^&fontsize $1  ^:
 	.dv ital .tf Helvetica-Oblique  ^&fontsize $1  ^:
@@ -83,6 +84,9 @@
 	.** if the env var is set, redefine macros to generate the limited markdown things
 	.gv e MARKDOWN markdown
 	.if &markdown 0 >
+		.** tfm is adding a blank at the end of each line, so for a break we just pop on a second one
+		.dv break `^` ^`` .br
+
 		.ju off
 
 		.dv http xxxx://
@@ -98,7 +102,7 @@
 		.dv ed .ed
 
 		.dv line ***
-		.** markdown doesn't have any indention as indention is significant
+		.** markdown doesn't have any indention as indention is significant; grrrrr.
 		.in 0i
 		.dv indent 
 		.dv uindent .sp 2
@@ -111,8 +115,10 @@
 		.dv h2 .sp 2 ## $1 .br
 		.dv h3 .sp 2 ### $1 .br
 
+		.** when ex_end* macros are used, they MUST be placed in column 0 in order to be recognised in nf mode
 		.dv ex_start .ll -4 .in .5i .sp 2 .fo off 
 		.dv ex_end .fo on .in 0i .ll +4 .sp 2
+		.dv ex_end_nosp .fo on .sf ^&textfont .st ^&textsize .in 0i .ll +.25i 
 		.dv ifroom .im $2
 
 	.ei
