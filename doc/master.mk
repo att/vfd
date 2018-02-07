@@ -1,5 +1,6 @@
 # master makefile for inclusion
 
+# install transfig package to get fig2dev
 %.eps: %.fig
     fig2dev -L eps ${prereq} ${target}
 

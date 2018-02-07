@@ -17,6 +17,7 @@
 				26 May 2017 : Allow promisc to be set (default is true to match original behavour)
 				08 Jun 2017 : Allow huge_pages to be set (defult is on)
 				10 Jul 2017 : We now support "mac": "addr" rather than an array.
+				07 Feb 2018 : Add memory support back.
 
 	TODO:		convert things to the new jw_xapi functions to make for easier to read code.
 */
@@ -244,6 +245,12 @@ extern parms_t* read_parms( char* fname ) {
 		if( (stuff = jw_string( jblob, "cpu_mask" )) ) {
 			parms->cpu_mask = ltrim( stuff );
 		}
+		
+		if( (stuff = jw_string( jblob, "numa_mem" )) ) {
+			parms->numa_mem = ltrim( stuff );
+		} else {
+			parms->numa_mem = strdup( "64,64" );
+		}
 
 		if( (parms->npciids = jw_array_len( jblob, "pciids" )) > 0 ) {			// pick up the list of pciids
 			if( (parms->pciids = (pfdef_t *) malloc( sizeof( *parms->pciids ) * parms->npciids )) == NULL ) {
@@ -401,6 +408,7 @@ extern void free_parms( parms_t* parms ) {
 	SFREE( parms->pciids );
 	SFREE( parms->pid_fname );
 	SFREE( parms->stats_path );
+	SFREE( parms->numa_mem );
 
 	free( parms );
 }

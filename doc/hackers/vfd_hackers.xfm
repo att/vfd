@@ -280,9 +280,6 @@ The configuration file, &cw(vfd.conf,) must be created in &cw(/etc/vfd) before V
 The file contains a set of JSON encoded variables which are illustrated in figure &_fig.
 
 .ca start conf.ca 
-.pu
-.in .5i
-.ll 6i
 &ex_start
  {
    "comments": [
@@ -291,16 +288,17 @@ The file contains a set of JSON encoded variables which are illustrated in figur
      " revised for agave207 2016/04/06"
    ],
 
-   "fifo": "/var/lib/vfd/request",
-   "log_dir": "/var/log/vfd",
-   "log_keep": 60,
+   "fifo":           "/var/lib/vfd/request",
+   "log_dir":        "/var/log/vfd",
+   "log_keep":       60,
    "init_log_level": 2,
-   "log_level": 2,
-   "config_dir": "/var/lib/vfd/config",
-   "cpu_mask": "0x04",
+   "log_level":      2,
+   "config_dir":     "/var/lib/vfd/config",
+   "cpu_mask":       "0x04",
+   "numa_mem":       "64,64"
    "dpdk_log_level": 2,
    "dpdk_init_log_level": 8,
-   "default_mtu": 1500,
+   "default_mtu":    1500,
 
    "pciids": [ 
       { "id": "0000:01:00.0", "mtu": 9000, "enable_loopback": false }, 
@@ -310,7 +308,6 @@ The file contains a set of JSON encoded variables which are illustrated in figur
 &ex_end
 .fg A sample vfd.cfg configuration file.
 .sp
-.po
 .ca end
 .gv remain
 &ifroom(3:conf.ca)
@@ -335,6 +332,12 @@ Items worth noting in the config file are:
 &di(cpu_mask) This is a single bit which indicates which CPU the DPDK library will associate with. 
 	VFd limits this value to a single bit, and odd results may occur if a multi-bit integer 
 	is given.
+.sp .4
+&di(numa_mem) This is a string which supplies a comma separated set of values (e.g. 64,64). Each
+	value is the amount of memory that the DPDK library will attempt to allocate on each respective
+	NUMA socket 0 throgh n.  If this parameter is not given, "64,64" is assumed. For single
+	socket machines, a single value must be given or the DPDK library will fail during allocation
+	and abort the process.
 .sp .4
 &di(pciids) Explained in the following section
 &end_dlist

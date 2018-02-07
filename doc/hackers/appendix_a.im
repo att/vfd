@@ -9,25 +9,26 @@
 &ex_start
 
 {   
-    "comment":      "config for agave207",
-    "log_dir":      "/var/log/vfd",
-    "log_keep":     9,
-    "log_level":    3,
+    "comment":        "config for agave207",
+    "log_dir":        "/var/log/vfd",
+    "log_keep":       9,
+    "log_level":      3,
     "init_log_level": 2,
-    "config_dir":   "/var/lib/vfd/config",
-    "fifo":   "/var/lib/vfd/request",
-    "cpu_mask":   "0x01",
+    "config_dir":     "/var/lib/vfd/config",
+    "fifo":           "/var/lib/vfd/request",
+    "cpu_mask":       "0x01",
+    "numa_mem":       "64,64",
     "dpdk_log_level": 2,
     "dpdk_init_log_level": 8,
-    "default_mtu": 9000,
-    "enable_qos": true,
+    "default_mtu":    9000,
+    "enable_qos":    true,
 
     "pciids": [ 
-     {       "id": "0000:08:00.0",
-      "mtu": 9000,
+     { "id":             "0000:08:00.0",
+      "mtu":             9000,
       "enable_loopback": false,
-      "pf_driver": "igb-uio",
-      "vf_driver": "vfio-pci",
+      "pf_driver":       "igb-uio",
+      "vf_driver":       "vfio-pci",
       "vf_oversubscription": true,
 
       "tc_comment": "traffic classes define human readable name, tc number (priority) and other parms",
@@ -78,11 +79,11 @@
       }
     },
 
-    {       "id": "0000:08:00.1",
-      "mtu": 9000,
+    { "id":              "0000:08:00.1",
+      "mtu":              9000,
       "enable_loopback": false,
-      "pf_driver": "igb-uio",
-      "vf_driver": "vfio-pci",
+      "pf_driver":       "igb-uio",
+      "vf_driver":       "vfio-pci",
       "vf_oversubscription": false,
       "tclasses": [
         {
@@ -129,7 +130,7 @@
         "bwg2": [3]
       }
     }
-    ]
+   ]
 }
 &ex_end
 
@@ -138,23 +139,23 @@
  {
     "comments":      "",
 
-    "name":       "daniels_0_1",
-    "pciid":      "0000:08:00.0",
-    "vfid":       2,
+    "name":             "daniels_0_1",
+    "pciid":            "0000:08:00.0",
+    "vfid":             2,
     "strip_stag":       true,
     "allow_bcast":      true,
     "allow_mcast":      true,
-    "allow_un_ucast":   true,
+    "allow_un_ucast":   false,
     "vlan_anti_spoof":  true,
     "mac_anti_spoof":   true,
-    "vlans":      [ 10 ],
-    "macs":       [ ],
+    "vlans":            [ 10 ],
+    "macs":             [ "04:30:86:11:04:17" ],
 
     "queues": [
-  { "priority": 0, "share": "10%" },
-  { "priority": 1, "share": "10%" },
-  { "priority": 2, "share": "10%" },
-  { "priority": 3, "share": "10%" },
+        { "priority": 0, "share": "10%" },
+        { "priority": 1, "share": "10%" },
+        { "priority": 2, "share": "10%" },
+        { "priority": 3, "share": "10%" },
     ]
  }
 &ex_end
