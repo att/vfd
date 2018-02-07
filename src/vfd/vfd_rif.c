@@ -340,6 +340,7 @@ static char* gen_mirror_stats( struct sriov_conf_c* conf, int limit ) {
 						case MIRROR_IN: dir = "in"; break;
 						case MIRROR_OUT: dir = "out"; break;
 						case MIRROR_ALL: dir = "all"; break;
+						default: dir = "off";
 					}
 
 					blen += snprintf( wbuf, sizeof( wbuf ), "  vf %d (%s) ==> vf %d\n", v, dir, mirror->target );
