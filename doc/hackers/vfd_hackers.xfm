@@ -13,13 +13,14 @@
 .ju on
 .hn off
 
-.** pick up boilar plate configuration for our docs
-.im ../setup.im
+.** pick up boiler plate configuration for our docs
+.im ../markdown.im
 
 
 .st 18p
 .sf Helvetica
 .gv date
+.dv http http://
 
 .if pfm
 	.bc start
@@ -29,7 +30,12 @@
 	User's Guide
 	.bc end
 	.st &fontsize
+
 .ei
+	.** links omitted if markdown because it seems to flag the submitter as a bot and suspends their id
+	.if &markdown 0 >
+		.dv http link:
+	.fi
 	.im caution.im 
 
 	&bold(Virtual Function Daemon -- VFd)
@@ -43,8 +49,12 @@ A basic primer on SR-IOV can be found at .br
 &{http}www.intel.com/content/dam/doc/application-note/pci-sig-sr-iov-primer-sr-iov-technology-paper.pdf
 .sp .3
 &end_note
+&start_note
+The VFd community is currently supporting various NICs produced by Mellanox, Broadcom, and Intel. 
+.sp .3
+&end_note
 VFd is a daemon which manages the configuration of virtual and physical functions (VFs and PFs) which 
-are exposed by an SR-IOV &super capable network interface card (NIC).  
+are exposed by an SR-IOV &note &note capable network interface card (NIC).  
 Configuration and management is accomplished via DPDK and allows for the following attributes to be
 controlled:
 .sp .5
@@ -295,7 +305,7 @@ The file contains a set of JSON encoded variables which are illustrated in figur
    "log_level":      2,
    "config_dir":     "/var/lib/vfd/config",
    "cpu_mask":       "0x04",
-   "numa_mem":       "64,64"
+   "numa_mem":       "64,64",
    "dpdk_log_level": 2,
    "dpdk_init_log_level": 8,
    "default_mtu":    1500,
@@ -547,11 +557,11 @@ find them may be set in the main VFd configuration file.
   "strip_stag":       false,
   "allow_bcast":      true,
   "allow_mcast":      true,
-  "allow_un_ucast":   true,
+  "allow_un_ucast":   false,
   "start_cb":         "/var/lib/vmman/hot_plug daniels-1",
   "stop_cb":          "/var/lib/vmman/unplug daniels-1",
   "vlans":            [ 10, 11, 12, 33 ],
-  "macs":             [ "aa:bb:cc:dd:ee:f0", 
+  "macs":             [ "86:04:30:18:11:04", 
                         "11:22:33:44:55:66", 
                         "ff:ff:ff:ff:ff:ff" ]
 }
@@ -632,6 +642,28 @@ Each element in the QoS &ital( queues ) array defines the bandwidth share for ea
 that are supported.
 Traffic classes are numbered from 0 (low priority) to 3 (highest priority). 
 In the illustration, the VF being configured would be allocated 20% of the priority 2 traffic class. 
+
+&h3( Mirroring Traffic )
+Traffic into a VF, out from a VF, or both, can be mirrored to another VF on the same PF.
+Configuring this can be accomplished by setting a mirror definition in the VF's config file
+before it is added, or by using the &cw(iplex mirror) command. 
+The latter is preferred as it allows dynamic changes without affecting the current flow of
+traffic to/from the VF, and as such the configuration file support is not discussed here.
+(Refer to the debugging wiki page in the repo for a more detailed coverage on mirroring.)
+.sp 1
+
+To alter the mirroring for a PF/VF pair the general syntax is:
+
+&ex_start
+  sudo iplex mirror <pf> <vf> <direction> <target>
+&ex_end
+
+Where &ital(pf) and &ital(vf) define the VF whose traffic is to be mirrored and &ital(target)
+defines the VF (on the same PF) that will receive the mirrored traffic.
+The &ital(direction) indicates which traffic is to be mirrored, and is specified from the 
+perspective of the VF, and &ital(NOT) from the perspective of the NIC.  
+Valid values are &ital(in) to mirror Rx traffic (inbound), &ital(out) to mirror Tx traffic (outbound),
+&ital(all) to mirror all traffic, and &ital(off) to disable mirroring. 
 
 
 &h3( Adding a configuration  )
@@ -808,11 +840,11 @@ behaviour with earlier versions.
 .gv Date
 &def_list( .75i &ditext )
 &di(Source) vfd_hackers.xfm
-.sp 1
+&break
 &di(Original) 12 April 2016
-.sp 1
+&break
 &di(Revised) &_date
-.sp 1
+&break
 &di(Formatter) &_ver
 &end_dlist
 
