@@ -246,11 +246,7 @@ extern parms_t* read_parms( char* fname ) {
 			parms->cpu_mask = ltrim( stuff );
 		}
 		
-		if( (stuff = jw_string( jblob, "numa_mem" )) ) {
-			parms->numa_mem = ltrim( stuff );
-		} else {
-			parms->numa_mem = strdup( "64,64" );
-		}
+		parms->numa_mem = jwx_get_value_as_str( jblob, "numa_mem", "64,64", JWFMT_INT );
 
 		if( (parms->npciids = jw_array_len( jblob, "pciids" )) > 0 ) {			// pick up the list of pciids
 			if( (parms->pciids = (pfdef_t *) malloc( sizeof( *parms->pciids ) * parms->npciids )) == NULL ) {
