@@ -51,6 +51,3 @@ dpdk1708-dev-v3-1-2-net-i40e-new-API-to-add-VF-MAC-address-from-PF.patch
 	Adds the rte_pmd_i40e_add_vf_mac_addr() function
 
 dpdk1708-net-i40e-take-port-register-for-PF-packet-count.patch
-
-
-
