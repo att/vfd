@@ -25,7 +25,7 @@
 .** use markdown.im to set up for any of the formatters, not just when MARKDOWN
 .** is set.
 .** 
-.im &{lib}/markdown.im
+.im doc/setup.im
 
 .if ! super
 	.dv msg ###ERROR### markdown.im seems to be missing or incomplete
@@ -505,7 +505,7 @@ ID (number), and other parameters as illustrated below.
         { "priority": 3, "share": "10%" },
     ]
 }
-&ex_end
+&ex_end_nosp
 .fg A sample VF configuration file.
 .sp 1
 
