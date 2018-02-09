@@ -149,8 +149,20 @@ ether_aton_r(const char *asc, struct ether_addr *addr)
 int
 get_nic_type(portid_t port_id)
 {
+	static int warned = 0;
 	struct rte_eth_dev_info dev_info;
+
+	memset( &dev_info, 0, sizeof( dev_info ) );			// keep valgrind from complaining
 	rte_eth_dev_info_get(port_id, &dev_info);
+
+	if( dev_info.driver_name == NULL ) {
+		if( ! warned ) {
+			bleat_printf( 0, "ERR: device info get returned nil poniter for device name" );
+			warned = 1;
+		}
+
+		return 0;
+	}
 	
 	if (strcmp(dev_info.driver_name, "net_bnxt") == 0)
 		return VFD_BNXT;

@@ -17,6 +17,7 @@
 				25 Sep 2017 : Fix validation of mirror target bug.
 				10 Oct 2017 : Add support for mirror update and show mirror commands.
 				30 Jan 2017 : correct bug in mirror target range check (issue #242)
+				09 Feb 2018 : Fix potential memory leak if no json files exist in directory.
 */
 
 
@@ -874,6 +875,7 @@ extern void vfd_add_all_vfs(  parms_t* parms, sriov_conf_t* conf ) {
 	flist = list_files( parms->config_dir, "json", 1, &llen );
 	if( flist == NULL || llen <= 0 ) {
 		bleat_printf( 1, "zero vf configuration files (*.json) found in %s; nothing restored", parms->config_dir );
+		free_list( flist, 0 );			// still must free core structure
 		return;
 	}
 
