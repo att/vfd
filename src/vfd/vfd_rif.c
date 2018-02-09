@@ -206,7 +206,7 @@ void gen_port_qshares( sriov_port_t *port ) {
 			}
 		} else {
 			bleat_printf( 3, "no qshare normalisation needed: tc=%d sum=%d", i,  sums[i] );
-			for( j = 1; j < port->num_vfs; j++ ) {
+			for( j = 0; j < port->num_vfs; j++ ) {
 				if( (vfid = port->vfs[j].num) >= 0 ){								// active VF
 					norm_pctgs[(vfid * ntcs)+i] =  port->vfs[j].qshares[i];			// sum is 100, stash unchanged
 				}
@@ -572,6 +572,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		if( reason ) {
 			*reason = strdup( mbuf );
 		}
+		free_config( vfc );
 		return 0;
 	}
 
@@ -708,6 +709,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		if( reason ) {
 			*reason = strdup( mbuf );
 		}
+		free_config( vfc );
 		return 0;
 	}
 
@@ -718,6 +720,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 			if( reason ) {
 				*reason = strdup( mbuf );
 			}
+			free_config( vfc );
 			return 0;
 		}
 	}
@@ -729,6 +732,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 			if( reason ) {
 				*reason = strdup( mbuf );
 			}
+			free_config( vfc );
 			return 0;
 		}
 	}
@@ -739,6 +743,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		if( reason ) {
 			*reason = strdup( mbuf );
 		}
+		free_config( vfc );
 		return 0;
 	}
 
@@ -978,6 +983,7 @@ extern int vfd_del_vf( parms_t* parms, sriov_conf_t* conf, char* fname, char** r
 		if( reason ) {
 			*reason = strdup( mbuf );
 		}
+		free_config( vfc );
 		return 0;
 	}
 
@@ -999,6 +1005,7 @@ extern int vfd_del_vf( parms_t* parms, sriov_conf_t* conf, char* fname, char** r
 		*reason = NULL;
 	}
 	bleat_printf( 2, "VF was deleted: %s %s id=%d", vfc->name, vfc->pciid, vfc->vfid );
+	free_config( vfc );
 	return 1;
 }
 
