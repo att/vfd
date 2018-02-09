@@ -612,9 +612,10 @@ extern void free_config( vf_config_t *vfc ) {
 	SFREE( vfc->start_cb );
 	SFREE( vfc->stop_cb );
 
-	for( i = 0; i < vfc->nmacs; i++ ) {
+	for( i = 0; i < vfc->nmacs; i++ ) {		// drop each referenced string
 		SFREE( vfc->macs[i] );
 	}
+	SFREE( vfc->macs );						// finally drop the buffer itself
 
 	free( vfc );
 }
