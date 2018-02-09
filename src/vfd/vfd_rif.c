@@ -17,6 +17,8 @@
 				25 Sep 2017 : Fix validation of mirror target bug.
 				10 Oct 2017 : Add support for mirror update and show mirror commands.
 				30 Jan 2017 : correct bug in mirror target range check (issue #242)
+				09 Feb 2018 : Fix potential memory leak if no json files exist in directory.
+								Correct loop initialisation bug; $259
 */
 
 
@@ -204,7 +206,7 @@ void gen_port_qshares( sriov_port_t *port ) {
 			}
 		} else {
 			bleat_printf( 3, "no qshare normalisation needed: tc=%d sum=%d", i,  sums[i] );
-			for( j = i; j < port->num_vfs; j++ ) {
+			for( j = 0; j < port->num_vfs; j++ ) {
 				if( (vfid = port->vfs[j].num) >= 0 ){								// active VF
 					norm_pctgs[(vfid * ntcs)+i] =  port->vfs[j].qshares[i];			// sum is 100, stash unchanged
 				}
@@ -570,6 +572,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		if( reason ) {
 			*reason = strdup( mbuf );
 		}
+		free_config( vfc );
 		return 0;
 	}
 
@@ -706,6 +709,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		if( reason ) {
 			*reason = strdup( mbuf );
 		}
+		free_config( vfc );
 		return 0;
 	}
 
@@ -716,6 +720,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 			if( reason ) {
 				*reason = strdup( mbuf );
 			}
+			free_config( vfc );
 			return 0;
 		}
 	}
@@ -727,6 +732,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 			if( reason ) {
 				*reason = strdup( mbuf );
 			}
+			free_config( vfc );
 			return 0;
 		}
 	}
@@ -737,6 +743,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		if( reason ) {
 			*reason = strdup( mbuf );
 		}
+		free_config( vfc );
 		return 0;
 	}
 
@@ -874,6 +881,7 @@ extern void vfd_add_all_vfs(  parms_t* parms, sriov_conf_t* conf ) {
 	flist = list_files( parms->config_dir, "json", 1, &llen );
 	if( flist == NULL || llen <= 0 ) {
 		bleat_printf( 1, "zero vf configuration files (*.json) found in %s; nothing restored", parms->config_dir );
+		free_list( flist, 0 );			// still must free core structure
 		return;
 	}
 
@@ -975,6 +983,7 @@ extern int vfd_del_vf( parms_t* parms, sriov_conf_t* conf, char* fname, char** r
 		if( reason ) {
 			*reason = strdup( mbuf );
 		}
+		free_config( vfc );
 		return 0;
 	}
 
@@ -996,6 +1005,7 @@ extern int vfd_del_vf( parms_t* parms, sriov_conf_t* conf, char* fname, char** r
 		*reason = NULL;
 	}
 	bleat_printf( 2, "VF was deleted: %s %s id=%d", vfc->name, vfc->pciid, vfc->vfid );
+	free_config( vfc );
 	return 1;
 }
 

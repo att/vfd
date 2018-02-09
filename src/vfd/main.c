@@ -1256,6 +1256,7 @@ static void set_signals( void ) {
 	int i;
 	int nele;		// number of elements in the list
 	
+	memset( &sa, 0, sizeof( sa ) );
 	sa.sa_handler = sig_ign;						// we ignore hup, so special function for this
 	if( sigaction( SIGHUP, &sa, NULL ) < 0 ) {
 		bleat_printf( 0, "WRN: unable to set signal trap for %d: %s", SIGHUP, strerror( errno ) );
