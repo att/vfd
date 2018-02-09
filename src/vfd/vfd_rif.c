@@ -18,6 +18,7 @@
 				10 Oct 2017 : Add support for mirror update and show mirror commands.
 				30 Jan 2017 : correct bug in mirror target range check (issue #242)
 				09 Feb 2018 : Fix potential memory leak if no json files exist in directory.
+								Correct loop initialisation bug; $259
 */
 
 
@@ -205,7 +206,7 @@ void gen_port_qshares( sriov_port_t *port ) {
 			}
 		} else {
 			bleat_printf( 3, "no qshare normalisation needed: tc=%d sum=%d", i,  sums[i] );
-			for( j = i; j < port->num_vfs; j++ ) {
+			for( j = 1; j < port->num_vfs; j++ ) {
 				if( (vfid = port->vfs[j].num) >= 0 ){								// active VF
 					norm_pctgs[(vfid * ntcs)+i] =  port->vfs[j].qshares[i];			// sum is 100, stash unchanged
 				}
