@@ -723,6 +723,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 			free_config( vfc );
 			return 0;
 		}
+		bleat_printf( 2, "mac address added to config: %s",  vfc->macs[i] );
 	}
 
 	if( ! (port->flags & PF_OVERSUB) ) {						// if in strict mode, ensure TC amounts can be added to current settings without busting 100% cap
