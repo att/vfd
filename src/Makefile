@@ -4,8 +4,10 @@
 all:
 	(cd lib; make jsmn && make libvfd.a)
 	(cd vfd; make clean && make)
+	(cd system; make clean && make)
 
 clean:
 	(cd vfd; make clean)
 	(cd lib; make nuke)
+	(cd system; make nuke)
 	(cd lib/jsmn; make clean)
