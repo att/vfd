@@ -75,6 +75,7 @@
 				16 Oct 2017 - mlx5: Add unknown unicast (promisc mode) for vf support.
 				30 Nov 2017 - Switch to using mac module functions to properly handle MACs during reset/delete
 								Restructure update_nic() from a forreal perspective.
+				19 Feb 2018 - Add support to ensure config directories exist. (#263)
 */
 
 
@@ -113,6 +114,37 @@ const char *vnum = "v2";
 
 
 // --- misc support ----------------------------------------------------------------------------------------------
+
+/*
+	Ensure various directories specified in the config file exist. Returns
+	false if one or more is missing. This will create the directories if 
+	they aren't found, though that might fail is parms in upper level
+	directories don't allow that.
+*/
+static int check_dirs( parms_t* parms ) {
+	char wbuf[2048];
+
+	if( ! parms->config_dir ) {
+		bleat_printf( 0, "CRI: no config directory supplied in main parm file" );
+		return 0;
+	}
+
+	if( ! ensure_dir( parms->config_dir ) ) {
+		bleat_printf( 0, "CRI: cannot find or access config directory: %s", parms->config_dir );
+		return 0;
+	}
+
+	if( snprintf( wbuf, sizeof( wbuf ), "%s_live", parms->config_dir ) >= (int) sizeof( wbuf ) ) {
+		bleat_printf( 0, "CRI: pathname to config directory is too long: %s", parms->config_dir );
+		return 0;
+	}
+	if( ! ensure_dir( wbuf ) ) {
+		bleat_printf( 0, "CRI: cannot find or create live config directory: %s", wbuf );
+		return 0;
+	}
+
+	return 1;
+}
 
 /*
 	stricmp will compair two strins in strcmp() fashion, but will
@@ -1546,6 +1578,10 @@ main(int argc, char **argv)
 	}
 
 	g_parms->forreal = forreal;
+
+	if( ! check_dirs( g_parms ) ) { // ensure config directories are good	
+		exit( 1 );
+	}
 
 	if( (running_config = (sriov_conf_t *) malloc( sizeof( *running_config ) )) == NULL ) {
 		bleat_printf( 0, "abort: unable to allocate memory for running config" );

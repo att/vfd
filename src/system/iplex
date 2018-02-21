@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# vi: sw=4 ts=4:
+# vi: sw=4 ts=4 expandtab :
 """
     Mnemonic:   iplex.py
     Abstract:   iplex is a cli to VF Daemon, used by nova (compute) and operators
@@ -16,6 +16,7 @@
                 2017 13 Jan - Allow any argument to follow show to enable show pfn[:vfn]
                               where n:m supplies a pf and vf number rather than all or pfs.
                 2017 09 Oct - Add mirror update command and support for config option.
+                2018 21 Feb - Add support for live config directory
 """
 
 __doc__ = """ iplex
@@ -99,7 +100,7 @@ class Iplex(object):
         return
 
     def delete(self, port_id):
-        self.filename = self.__validate_file(port_id)
+        self.filename = self.__assert_live_vfconfig(port_id)
         self.resp_fifo = self.__create_fifo()
         msg = self.__request_message('delete')
         self.__write_read_fifo(msg)
@@ -167,6 +168,19 @@ class Iplex(object):
             self.__errMsg("VF config for {} doesn't exist".format(port_id))
             self.log.error("VF config for %s doesn't exist", port_id)
             sys.exit(1)
+
+    # Verify that a VF config file in the live (active) directory exists.
+    # returns the filename if valid, and aborts the whole process if it is not.
+    #
+    def __assert_live_vfconfig( self, port_id ) :
+        filename = os.path.join(self.config_data['config_dir'] + "_live", port_id)+'.json'
+        if os.path.isfile( filename ) :
+            self.log.info("valid vf config file: %s", filename)
+            return filename
+        else:
+            self.__errMsg( "VF live config for {} doesn't exist".format(port_id) )
+            self.log.error( "VF live config for %s doesn't exist", port_id )
+            sys.exit( 1 )
 
     # Create private fifo
     def __create_fifo(self):
