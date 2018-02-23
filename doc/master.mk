@@ -7,6 +7,9 @@
 %.png: %.fig
     fig2dev -L png ${prereq} ${target}
 
+%.png: %.fig
+    fig2dev -L png ${prereq} ${target}
+
 
 %_slides :  %_slides.xfm
 	pfm -g 8ix11i ${prereq%% *} $target.ps
