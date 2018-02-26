@@ -18,6 +18,7 @@
 				08 Jun 2017 : Allow huge_pages to be set (defult is on)
 				10 Jul 2017 : We now support "mac": "addr" rather than an array.
 				07 Feb 2018 : Add memory support back.
+				14 Feb 2018 : Add default for vf config name.
 
 	TODO:		convert things to the new jw_xapi functions to make for easier to read code.
 */
@@ -466,6 +467,8 @@ extern vf_config_t*	read_config( char* fname ) {
 
 		if(  (stuff = jw_string( jblob, "name" )) ) {
 			vfc->name = strdup( stuff );
+		} else {
+			vfc->name = strdup( "unnamed" );
 		}
 
 		if(  (stuff = jw_string( jblob, "pciid" )) ) {

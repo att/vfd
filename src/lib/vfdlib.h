@@ -40,6 +40,8 @@
 #define MAX_TCS			8			// max number of traffic classes supported (0 - 7)
 #define NUM_BWGS		8			// number of bandwidth groups
 
+typedef char const* const_str;		// pointer to an unmutable string
+
 typedef struct {
     char* hr_name;          // human readable name used for diagnostics
     unsigned int flags;     // TCF_ flasg constants
@@ -224,6 +226,11 @@ extern int idm_use( void* vid, int id_val );
 extern int idm_is_used( void* vid, int id_val );
 extern void idm_return( void* vid, int id_val );
 extern void idm_free( void* vid );
+
+//----------------- filesys  -----------------------------------------------------------------------------------
+extern int rm_file( const_str fname, int backup );
+extern int mv_file( const_str fname, char* target );
+extern int ensure_dir( const_str pathname );
 
 
 #endif
