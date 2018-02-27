@@ -13,9 +13,9 @@
                 2016 03 May - Add dump action
                 2016 11 July- Add update action
                 2016 20 July - Add list pf's, per vf status functionality
-				2017 13 Jan - Allow any argument to follow show to enable show pfn[:vfn]
-                      where n:m supplies a pf and vf number rather than all or pfs.
-				2017 09 Oct - Add mirror update command and support for config option.
+                2017 13 Jan - Allow any argument to follow show to enable show pfn[:vfn]
+                              where n:m supplies a pf and vf number rather than all or pfs.
+                2017 09 Oct - Add mirror update command and support for config option.
 """
 
 __doc__ = """ iplex
@@ -44,6 +44,8 @@ import sys
 import ast
 import time
 from logging.handlers import RotatingFileHandler
+import fcntl
+import platform
 
 VFD_CONFIG = '/etc/vfd/vfd.cfg'		# default; --conf= overrides from command line
 
@@ -217,6 +219,10 @@ class Iplex(object):
             os.write(writeFd, str(msg)+'\n\n')
             os.close(writeFd)
             readFd = os.open(self.resp_fifo, os.O_RDONLY)
+            if not hasattr(fcntl, 'F_SETPIPE_SZ'):
+                if platform.system() == 'Linux':
+                    fcntl.F_SETPIPE_SZ = 1031
+                    fcntl.fcntl(readFd, fcntl.F_SETPIPE_SZ, 1024 * 60)
             buf = self.__read_fd(readFd)
             resp_data = json.dumps(buf.strip(' \n\t'))
             print(ast.literal_eval(resp_data))

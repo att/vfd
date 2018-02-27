@@ -19,6 +19,8 @@ ifeq ($(RTE_SDK),)
 $(error "Please define RTE_SDK environment variable")
 endif
 
+VFD_KERNEL=0
+
 # Default target, can be overridden by command line or environment
 RTE_TARGET ?= x86_64-vfd-linuxapp-gcc
 
@@ -45,9 +47,15 @@ VFD_VERSION = $(shell junk=$$( (git log -n 1 2>/dev/null || echo Commit non-git-
 
 # all source are stored in SRCS-y	(again, for the dpdk mk file)
 #SRCS-y := main.c sriov.c /usr/local/lib/libconfig.a
-SRCS-y := main.c sriov.c qos.c vfd_rif.c vfd_dcb.c vfd_i40e.c vfd_ixgbe.c vfd_bnxt.c vfd_mlx5.c $(libvfd) $(libjsmn)
+ifeq ($(VFD_KERNEL),1)
+SRCS-y := main.c sriov.c qos.c vfd_mac.c vfd_rif.c vfd_dcb.c vfd_i40e.c vfd_ixgbe.c vfd_bnxt.c vfd_mlx5.c vfd_nl.c $(libvfd) $(libjsmn) 
+else
+SRCS-y := main.c sriov.c qos.c vfd_mac.c vfd_rif.c vfd_dcb.c vfd_i40e.c vfd_ixgbe.c vfd_bnxt.c vfd_mlx5.c $(libvfd) $(libjsmn)
+endif
 
-CFLAGS += $(WERROR_FLAGS) -I $(PWD)/../lib/ -I $(RTE_SDK)
+CFLAGS += $(WERROR_FLAGS) -I $(PWD)/../lib/ -I $(RTE_SDK) -DVFD_KERNEL=${VFD_KERNEL}
+CFLAGS += -DALLOW_EXPERIMENTAL_API
+
 #-lconfig
 
 # workaround for a gcc bug with noreturn attribute

@@ -1,27 +1,133 @@
-{
-        "comment": "sample config",
-        "log_dir": "/var/log/vfd",
-        "log_keep": 9,
-        "log_level": 4,
-        "init_log_level": 2,
-        "config_dir": "/var/lib/vfd/config",
-        "fifo": "/var/lib/vfd/request",
-        "cpu_mask": "0x01",
-        "dpdk_log_level": 2,
-        "dpdk_init_log_level": 8,
-        "default_mtu": 1500,
+{   
+	"comment":      "sample VFd configuration",
+	"huge": 		true,
+    "log_dir":      "/var/log/vfd",
+    "log_keep":     10,
+    "log_level":    1,
+    "init_log_level": 3,
+    "dpdk_log_level": 1,
+    "dpdk_init_log_level": 2,
+    "config_dir":   "/var/lib/vfd/config",
+    "fifo":         "/var/lib/vfd/request",
+    "cpu_mask":		"0x01",
+	"numa_mem":		"64,64",
+    "default_mtu":	1500,
+	"enable_qos":	false,
+	"enable_flowcontrol": false,
 
-        "pciids": [{
-                "id": "<pfid>",
-                "vfs_count": <no of vfs to create>,
-                "pf_driver": "igb_uio",
-                "vf_driver": "vfio-pci",
-                "mtu": 1500
-        }, {
-                "id": "<pfid>",
-                "vfs_count": <no of vfs to create>,
-                "pf_driver": "igb_uio",
-                "vf_driver": "vfio-pci",
-                "mtu": 1500
-        }]
+    "pciids": [ 
+		{	"id": "0000:08:00.0",
+			"promiscuous": false,
+			"mtu": 9240,
+			"hw_strip_crc":	true,
+			"enable_loopback": true,
+			"pf_driver": "igb-uio",
+			"vf_driver": "vfio-pci",
+			"vf_oversubscription": true,
+
+			"tc_comment": "traffic classes define human readable name, tc number (priority) and other parms",
+			"tclasses": [
+				{
+					"name": "best effort",
+					"pri": 0,
+					"llatency": false,
+					"lsp": false,
+					"bsp": false,
+					"max_bw": 100,
+					"min_bw": 10
+				},
+				{
+					"name": "realtime",
+					"pri": 1,
+					"llatency": false,
+					"lsp": false,
+					"bsp": false,
+					"max_bw": 100,
+					"min_bw": 40
+				},
+				{
+					"name": "voice",
+					"pri": 2,
+					"llatency": false,
+					"lsp": false,
+					"bsp": false,
+					"max_bw": 100,
+					"min_bw": 40
+				},
+				{
+					"name": "control",
+					"pri": 3,
+					"llatency": false,
+					"lsp": false,
+					"bsp": false,
+					"max_bw": 100,
+					"min_bw": 10
+				}
+			],
+
+			"bwg_comment": "groups traffic classes together, min derived from TC values",
+			"bw_grps":
+			{
+				"bwg0": [0],
+				"bwg1": [1, 2],
+				"bwg2": [3]
+			}
+		},
+
+		{	"id": "0000:08:00.1",
+			"hw_strip_crc":	false,
+			"promiscuous": false,
+			"mtu": 9240,
+			"enable_loopback": true,
+			"pf_driver": "igb-uio",
+			"vf_driver": "vfio-pci",
+			"vf_oversubscription": false,
+
+			"tclasses": [
+				{
+					"name": "best effort",
+					"pri": 0,
+					"llatency": false,
+					"lsp": false,
+					"bsp": false,
+					"max_bw": 100,
+					"min_bw": 10
+				},
+				{
+					"name": "realtime",
+					"pri": 1,
+					"llatency": false,
+					"lsp": false,
+					"bsp": false,
+					"max_bw": 100,
+					"min_bw": 40
+				},
+				{
+					"name": "voice",
+					"pri": 2,
+					"llatency": false,
+					"lsp": false,
+					"bsp": false,
+					"max_bw": 100,
+					"min_bw": 40
+				},
+				{
+					"name": "control",
+					"pri": 3,
+					"llatency": false,
+					"lsp": false,
+					"bsp": false,
+					"max_bw": 100,
+					"min_bw": 10
+				}
+			],
+
+			"bw_grps":
+			{
+				"bwg0": [0],
+				"bwg1": [1, 2],
+				"bwg2": [3]
+			}
+		}
+    ]
 }
