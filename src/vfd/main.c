@@ -77,6 +77,7 @@
 								Restructure update_nic() from a forreal perspective.
 				10 Jan 2018 - mlx5: Add VF mirroring support.
 				10 Jan 2018 - mlx5: Add VF queue sharing per TC.
+				19 Feb 2018 - Add support to ensure config directories exist. (#263)
 */
 
 
@@ -115,6 +116,37 @@ const char *vnum = "v2";
 
 
 // --- misc support ----------------------------------------------------------------------------------------------
+
+/*
+	Ensure various directories specified in the config file exist. Returns
+	false if one or more is missing. This will create the directories if 
+	they aren't found, though that might fail is parms in upper level
+	directories don't allow that.
+*/
+static int check_dirs( parms_t* parms ) {
+	char wbuf[2048];
+
+	if( ! parms->config_dir ) {
+		bleat_printf( 0, "CRI: no config directory supplied in main parm file" );
+		return 0;
+	}
+
+	if( ! ensure_dir( parms->config_dir ) ) {
+		bleat_printf( 0, "CRI: cannot find or access config directory: %s", parms->config_dir );
+		return 0;
+	}
+
+	if( snprintf( wbuf, sizeof( wbuf ), "%s_live", parms->config_dir ) >= (int) sizeof( wbuf ) ) {
+		bleat_printf( 0, "CRI: pathname to config directory is too long: %s", parms->config_dir );
+		return 0;
+	}
+	if( ! ensure_dir( wbuf ) ) {
+		bleat_printf( 0, "CRI: cannot find or create live config directory: %s", wbuf );
+		return 0;
+	}
+
+	return 1;
+}
 
 /*
 	stricmp will compair two strins in strcmp() fashion, but will
@@ -692,7 +724,12 @@ char*  gen_stats( sriov_conf_t* conf, int pf_only, int pf ) {
 			continue;
 		}
 
+		memset( &dev_info, 0, sizeof( dev_info ) );										// no status from rte function, but if it fails to populate we need to know, so 0s required
 		rte_eth_dev_info_get( conf->ports[i].rte_port_number, &dev_info );				// must use port number that we mapped during initialisation
+
+		if( dev_info.pci_dev == NULL ) {
+			continue;
+		}
 
 		l = snprintf( buf, sizeof( buf ), "%s   %4d    %04X:%02X:%02X.%01X",
 					"pf",
@@ -1260,6 +1297,7 @@ static void set_signals( void ) {
 	int i;
 	int nele;		// number of elements in the list
 	
+	memset( &sa, 0, sizeof( sa ) );
 	sa.sa_handler = sig_ign;						// we ignore hup, so special function for this
 	if( sigaction( SIGHUP, &sa, NULL ) < 0 ) {
 		bleat_printf( 0, "WRN: unable to set signal trap for %d: %s", SIGHUP, strerror( errno ) );
@@ -1545,6 +1583,10 @@ main(int argc, char **argv)
 
 	g_parms->forreal = forreal;
 
+	if( ! check_dirs( g_parms ) ) { // ensure config directories are good	
+		exit( 1 );
+	}
+
 	if( (running_config = (sriov_conf_t *) malloc( sizeof( *running_config ) )) == NULL ) {
 		bleat_printf( 0, "abort: unable to allocate memory for running config" );
 		exit( 1 );
@@ -1591,13 +1633,7 @@ main(int argc, char **argv)
 
 		bleat_printf( 1, "starting rte initialisation" );
 		
-		rte_openlog_stream(stderr);
-		//rte_log_set_level(~RTE_LOGTYPE_PMD && ~RTE_LOGTYPE_PORT, g_parms->dpdk_init_log_level);
-		//ret = rte_log_set_level(RTE_LOGTYPE_PMD, g_parms->dpdk_init_log_level);
-
-
-		//bleat_printf( 2, "log level = %d, log type = %d, ret = %d", rte_log_cur_msg_loglevel(), rte_log_cur_msg_logtype(), ret);
-		
+		rte_openlog_stream(stderr);						// log level for initialisation will be set with eal_init call
 
 		n_ports = rte_eth_dev_count();
 		if( n_ports > MAX_PORTS ) {
@@ -1777,11 +1813,14 @@ main(int argc, char **argv)
 	
 	run_start_cbs( running_config );				// run any user startup callback commands defined in VF configs
 
-	bleat_printf( 1, "version: %s", version );
-	bleat_printf( 1, "initialisation complete, setting bleat level to %d; starting to loop", g_parms->log_level );
-	bleat_set_lvl( g_parms->log_level );					// initialisation finished, set log level to running level
+	bleat_printf( 0, "version: %s", version );
+	bleat_printf( 0, "initialisation complete, setting bleat level to %d; starting to loop", g_parms->log_level );
+	bleat_printf( 0, "based on: %s %d.%d%s.%d", RTE_VER_PREFIX, RTE_VER_YEAR,  RTE_VER_MONTH, RTE_VER_SUFFIX,  RTE_VER_RELEASE );
+	bleat_set_lvl( g_parms->log_level );											// initialisation finished, set log level to running level
 	if( forreal ) {
-		//rte_log_set_level(g_parms->dpdk_init_log_level, RTE_LOGTYPE_PMD && RTE_LOGTYPE_PORT);
+		rte_log_set_level( RTE_LOGTYPE_EAL, g_parms->dpdk_log_level );				// set logging to config requested 'run' values
+		rte_log_set_level( RTE_LOGTYPE_PMD, g_parms->dpdk_log_level );
+		rte_log_set_level( RTE_LOGTYPE_PORT, g_parms->dpdk_log_level );
 	}
 
 	free( parm_file );			// now it's safe to free the parm file

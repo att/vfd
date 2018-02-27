@@ -22,6 +22,7 @@
 #include <linux/netdevice.h>   
 #include <linux/etherdevice.h> 
 #include <linux/connector.h>
+#include <linux/version.h>
 
 #include "vfd-net.h"
 
@@ -209,7 +210,11 @@ static void send_nl_request(int port, int vf, uint32_t req)
 		pr_debug("%s: %d: %d: %d: %d\n", __func__,  msg.port, msg.vf, msg.req, m->len);
 
 		memcpy(m + 1, (const void *) &msg, m->len);
-		cn_netlink_send(m, 0, GFP_ATOMIC);	
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,17,0)
+		cn_netlink_send(m, 0, GFP_ATOMIC);
+#else
+		cn_netlink_send(m, 0, 0, GFP_ATOMIC);
+#endif
 		kfree(m);
 	}
 	
@@ -329,8 +334,13 @@ static int add_vfd_net(int pf, int vf, char * bdf, int len)
 	}
 		
 	/* Allocate the devices */	
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,17,0)
 	netdev = alloc_netdev(sizeof(struct vfd_priv), devname,
 			vfd_init);
+#else
+	netdev = alloc_netdev(sizeof(struct vfd_priv), devname,
+			NET_NAME_UNKNOWN, vfd_init);
+#endif
 
 
 	if (netdev == NULL) {
@@ -533,6 +543,7 @@ struct net_device_stats *vfd_stats(struct net_device *dev)
  * This function is called to fill up an eth header, since arp is not
  * available on the interface
  */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 1, 0))
 int vfd_rebuild_header(struct sk_buff *skb)
 {
 	struct ethhdr *eth = (struct ethhdr *) skb->data;
@@ -543,6 +554,7 @@ int vfd_rebuild_header(struct sk_buff *skb)
 	eth->h_dest[ETH_ALEN-1]   ^= 0x01;   
 	return 0;
 }
+#endif /* < 4.1.0  */
 
 
 int vfd_header(struct sk_buff *skb, struct net_device *dev,
@@ -590,7 +602,9 @@ int vfd_change_mtu(struct net_device *dev, int new_mtu)
 
 static const struct header_ops vfd_header_ops = {
     .create  = vfd_header,
-	.rebuild = vfd_rebuild_header
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 1, 0))
+    .rebuild = vfd_rebuild_header
+#endif /* < 4.1.0  */
 };
 
 

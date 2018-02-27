@@ -17,6 +17,10 @@
 				25 Sep 2017 : Fix validation of mirror target bug.
 				10 Oct 2017 : Add support for mirror update and show mirror commands.
 				30 Jan 2017 : correct bug in mirror target range check (issue #242)
+				09 Feb 2018 : Fix potential memory leak if no json files exist in directory.
+								Correct loop initialisation bug; $259
+				14 Feb 2018 : Add support to keep config file name field and compare at delete. (#262)
+				19 Feb 2018 : Add support for 'live' config directory (#263)
 */
 
 
@@ -46,6 +50,84 @@ extern int vfd_init_fifo( parms_t* parms ) {
 
 	return 0;
 }
+
+/*
+	Move a 'used' configuration file. If suffix is nil, then we move the file to the 'live'
+	directory and do not change the filename.  If a suffix is provided, we just rename the 
+	file adding the suffix (assuming foo.json will be renamed foo.json.error in the spot
+	where the virtualisation manager left the bad meat.
+*/
+static void relocate_vf_config( parms_t* parms, char* filename, const_str suffix ) {
+	char	wbuf[2048];
+	unsigned int len;
+	const_str base;								// basename portion of filename
+
+	if( suffix == NULL ) {						// move to the live directory
+		len = snprintf( wbuf, sizeof( wbuf ), "%s_live/", parms->config_dir );
+	} else {
+		if( (base = strrchr( filename, '/' )) != NULL ) {		// point 1 past the last slant
+			if( ++base == 0 ) {
+				bleat_printf( 0, "internal mishap: relocate vf config with suffix cannot be directory: %s", filename );
+				return;
+			}
+		} else {
+			base = filename;
+		}
+		len = snprintf( wbuf, sizeof( wbuf ), "%s/%s%s", parms->config_dir, base, suffix );
+	}
+
+	if( len >= sizeof( wbuf ) ) {			// truncated, config directory path just too bloody long
+		bleat_printf( 0, "cannot construct a target file or path to relocate %%s", filename );
+		return;
+	}
+
+	if( ! mv_file( filename, wbuf ) ) {
+		bleat_printf( 0, "config file relocation from %s to %s failed: %s", filename, wbuf, strerror( errno ) );
+	} else {
+		bleat_printf( 2, "config file relocated from %s to %s", filename, wbuf );
+	}
+}
+
+/*
+	Removes a vf configuration file from the live directory. If the directory name
+	passed is not nil, then the file is moved there and given a trailing dash (-), 
+	otherwise it is just unlinked.
+*/
+static void delete_vf_config( const_str fname, const_str target_dir ) {
+	char wbuf[2048];
+	const_str	tok;
+
+	if( ! target_dir ) {
+		if( unlink( fname ) < 0 ) {
+			bleat_printf( 0, "del_vf_conf: unable to unlink config file: %s: %s", fname, strerror( errno ) );
+			return;
+		}
+
+		bleat_printf( 2, "vdel_vf_conf: f config file deleted: %s", fname );
+		return;
+	}
+
+	if( (tok = strrchr( fname, '/' )) == NULL ) {		// point at basename if a full path (which it should be)
+		tok = fname;
+	} else {
+		tok++;
+	}
+
+	if( snprintf( wbuf, sizeof( wbuf ), "%s/%s-", target_dir, tok ) >= (int) sizeof( wbuf ) ) {
+		bleat_printf( 0, "del_vf_conf: unable to create target pathname, just unlinked: %s", fname );
+		unlink( fname );
+		return;	
+	}
+	
+	if( ! mv_file( fname, wbuf ) ) {
+		bleat_printf( 0, "del_vf_conf: unable to move %s to %s; just unlinked", fname, wbuf );
+		return;
+	}
+
+	bleat_printf( 2, "del_vf_conf: moved %s to %s", fname, wbuf );
+	
+}
+
 
 // ---------------------- validation --------------------------------------------------------------------------
 
@@ -570,6 +652,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		if( reason ) {
 			*reason = strdup( mbuf );
 		}
+		free_config( vfc );
 		return 0;
 	}
 
@@ -706,6 +789,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		if( reason ) {
 			*reason = strdup( mbuf );
 		}
+		free_config( vfc );
 		return 0;
 	}
 
@@ -716,8 +800,10 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 			if( reason ) {
 				*reason = strdup( mbuf );
 			}
+			free_config( vfc );
 			return 0;
 		}
+		bleat_printf( 2, "mac address added to config: %s",  vfc->macs[i] );
 	}
 
 	if( ! (port->flags & PF_OVERSUB) ) {						// if in strict mode, ensure TC amounts can be added to current settings without busting 100% cap
@@ -727,6 +813,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 			if( reason ) {
 				*reason = strdup( mbuf );
 			}
+			free_config( vfc );
 			return 0;
 		}
 	}
@@ -737,6 +824,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		if( reason ) {
 			*reason = strdup( mbuf );
 		}
+		free_config( vfc );
 		return 0;
 	}
 
@@ -772,6 +860,10 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 
 	}
 
+	if( vfc->name == NULL ) {
+		vfc->name = strdup( "missing" );
+	}
+
 	// -------------------------------------------------------------------------------------------------------------
 	// CAUTION: if we fail because of a parm error it MUST happen before here!
 
@@ -784,6 +876,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 
 	vf = &port->vfs[vidx];						// copy from config data doing any translation needed
 	memset( vf, 0, sizeof( *vf ) );				// assume zeroing everything is good
+	vf->config_name = strdup( vfc->name );		// hold name for delete
 	vf->owner = vfc->owner;
 	vf->num = vfc->vfid;
 	port->vfs[vidx].last_updated = ADDED;		// signal main code to configure the buggger
@@ -860,26 +953,36 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 
 /*
 	Get a list of all config files and add each one to the current config.
-	If one fails, we will generate an error and ignore it.
+	If one fails, we will generate an error and ignore it. We take the config dir name
+	supplied in the main VFd configuration and add "_live" to build the directory 
+	of live vf configuration files.  This prevents the virtualisation manager from 
+	dropping a few files while we're down which have conflicts/duplications that
+	would cause a non-deterministic start state.
 */
 extern void vfd_add_all_vfs(  parms_t* parms, sriov_conf_t* conf ) {
 	char** flist; 					// list of files to pull in
 	int		llen;					// list length
 	int		i;
+	char	wbuf[2048];				// we'll bang on our 'live' designation to the config dir string in this
 
 	if( parms == NULL || conf == NULL ) {
 		bleat_printf( 0, "internal mishap: NULL conf or parms pointer passed to add_all_vfs" );
 		return;
 	}
 
-	flist = list_files( parms->config_dir, "json", 1, &llen );
+	if( snprintf( wbuf, sizeof( wbuf ), "%s_live", parms->config_dir ) >= (int) sizeof( wbuf ) ) {		// create something like /var/lib/vfd/config_live
+		bleat_printf( 0, "WRN: cannot construct live directory; work buffer not large enough (%d)", (int) sizeof( wbuf ) );
+		return;
+	}
+
+	flist = list_files( wbuf, "json", 1, &llen );
 	if( flist == NULL || llen <= 0 ) {
-		bleat_printf( 1, "zero vf configuration files (*.json) found in %s; nothing restored", parms->config_dir );
+		bleat_printf( 1, "zero vf configuration files (*.json) found in %s_live; nothing restored", parms->config_dir );
+		free_list( flist, 0 );											// still must free core structure
 		return;
 	}
 
 	bleat_printf( 1, "adding %d existing vf configuration files to the mix", llen );
-
 	
 	for( i = 0; i < llen; i++ ) {
 		bleat_printf( 2, "parsing %s", flist[i] );
@@ -894,11 +997,16 @@ extern void vfd_add_all_vfs(  parms_t* parms, sriov_conf_t* conf ) {
 /*
 	Delete a VF from a port.  We expect the name of a file which we can read the
 	parms from and suss out the pciid and the vfid.  Those are used to find the
-	info in the global config and render it useless. The first thing we attempt
-	to do is to remove or rename the config file.  If we can't do that we
-	don't do anything else because we'd give the false sense that it was deleted
-	but on restart we'd recreate it, or worse have a conflict with something that
-	was added.
+	info in the global config and render it useless. The delete will be rejected
+	if the name in the parm file doesn't match the name we saved when adding the
+	configuration.  This is a false sense of security, but was a user request
+	so it was added.  The first thing we attempt to do is to remove or rename the 
+	config file.  If we can't do that we don't do anything else because we'd give 
+	the false sense that it was deleted but on restart we'd recreate it, or worse 
+	have a conflict with something that was added. 
+
+	Regardless of the outcome after reading the configuration file, if we can open 
+	the file we will delete it.
 */
 extern int vfd_del_vf( parms_t* parms, sriov_conf_t* conf, char* fname, char** reason ) {
 	vf_config_t* vfc;					// raw vf config file contents	
@@ -906,18 +1014,27 @@ extern int vfd_del_vf( parms_t* parms, sriov_conf_t* conf, char* fname, char** r
 	int vidx;							// index into the vf array
 	struct sriov_port_s* port = NULL;	// reference to a single port in the config
 	char mbuf[BUF_1K];					// message buffer if we fail
+	unsigned int mblen = BUF_1K - 1;	// length of usable spaece in work buffer
+	char*	target_dir = NULL;			// target directory if keep is set
+
+	mbuf[mblen-1] = 0;					// avoid needing a check for each snprintf	
+
+	
+	if( parms->delete_keep ) {											// need to keep the old by renaming it with a trailing -
+		target_dir = parms->config_dir;									// we'll move files back to this dir
+	}
 	
 	if( conf == NULL || fname == NULL ) {
 		bleat_printf( 0, "vfd_del_vf called with nil config or filename pointer" );
 		if( reason ) {
-			snprintf( mbuf, sizeof( mbuf), "internal mishap: config ptr was nil" );
+			snprintf( mbuf, mblen, "internal mishap: config ptr was nil" );
 			*reason = strdup( mbuf );
 		}
 		return 0;
 	}
 
 	if( (vfc = read_config( fname )) == NULL ) {
-		snprintf( mbuf, sizeof( mbuf ), "unable to read config file: %s: %s", fname, errno > 0 ? strerror( errno ) : "unknown sub-reason" );
+		snprintf( mbuf, mblen, "unable to read config file: %s: %s", fname, errno > 0 ? strerror( errno ) : "unknown sub-reason" );
 		bleat_printf( 1, "vfd_del_vf failed: %s", mbuf );
 		if( reason ) {
 			*reason = strdup( mbuf );
@@ -925,40 +1042,14 @@ extern int vfd_del_vf( parms_t* parms, sriov_conf_t* conf, char* fname, char** r
 		return 0;
 	}
 
-	if( parms->delete_keep ) {											// need to keep the old by renaming it with a trailing -
-		snprintf( mbuf, sizeof( mbuf ), "%s-", fname );
-		if( rename( fname, mbuf ) < 0 ) {
-			snprintf( mbuf, sizeof( mbuf ), "unable to rename config file: %s: %s", fname, strerror( errno ) );
-			bleat_printf( 1, "vfd_del_vf failed: %s", mbuf );
-			if( reason ) {
-				*reason = strdup( mbuf );
-			}
-			free_config( vfc );
-			return 0;
-		}
-	} else {
-		if( unlink( fname ) < 0 ) {
-			snprintf( mbuf, sizeof( mbuf ), "unable to delete config file: %s: %s", fname, strerror( errno ) );
-			bleat_printf( 1, "vfd_del_vf failed: %s", mbuf );
-			if( reason ) {
-				*reason = strdup( mbuf );
-			}
-			free_config( vfc );
-			return 0;
-		}
-	}
-
-	bleat_printf( 2, "del: config data: name: %s", vfc->name );
-	bleat_printf( 2, "del: config data: pciid: %s", vfc->pciid );
-	bleat_printf( 2, "del: config data: vfid: %d", vfc->vfid );
-
-	if( vfc->pciid == NULL || vfc->vfid < 0 ) {
-		snprintf( mbuf, sizeof( mbuf ), "unable to read config file: %s", fname );
-		bleat_printf( 1, "vfd_del_vf failed: %s", mbuf );
+	if( vfc->pciid == NULL || vfc->vfid < 0 ) {						// file opened and parsed, but information we need was missing
+		snprintf( mbuf, mblen, "invalid configuration contents in file: %s", fname );
+		bleat_printf( 1, "no config change related to del request: %s", mbuf );
 		if( reason ) {
 			*reason = strdup( mbuf );
 		}
 		free_config( vfc );
+		delete_vf_config( fname, target_dir );
 		return 0;
 	}
 
@@ -970,12 +1061,13 @@ extern int vfd_del_vf( parms_t* parms, sriov_conf_t* conf, char* fname, char** r
 	}
 
 	if( port == NULL ) {
-		snprintf( mbuf, sizeof( mbuf ), "%s: could not find port %s in the config", vfc->name, vfc->pciid );
-		bleat_printf( 1, "vf not added: %s", mbuf );
-		free_config( vfc );
+		snprintf( mbuf, mblen, "%s: could not find port %s in the config", vfc->name, vfc->pciid );
+		bleat_printf( 1, "no config change related to del request: %s", mbuf );
 		if( reason ) {
 			*reason = strdup( mbuf );
 		}
+		free_config( vfc );
+		delete_vf_config( fname, target_dir );
 		return 0;
 	}
 
@@ -987,16 +1079,65 @@ extern int vfd_del_vf( parms_t* parms, sriov_conf_t* conf, char* fname, char** r
 		}
 	}
 
-	if( vidx >= 0 ) {									//  it's there -- take down in the config
-		port->vfs[vidx].last_updated = DELETED;			// signal main code to nuke the puppy (vfid stays set so we don't see it as a hole until it's gone)
-	} else {
-		bleat_printf( 1, "warning: del didn't find the pciid/vf combination in the active config: %s/%d", vfc->pciid, vfc->vfid );
+	if( vidx < 0 ) {									//  vf not configured on this port
+		snprintf( mbuf, mblen, "%s: vf %d not configured on port %s", vfc->name, vfc->vfid, vfc->pciid );
+		bleat_printf( 1, "no config change related to del request: %s", mbuf );
+		if( reason ) {
+			*reason = strdup( mbuf );
+		}
+		free_config( vfc );
+		delete_vf_config( fname, target_dir );
+		return 0;
 	}
+
+	if( strcmp( vfc->name, port->vfs[vidx].config_name ) != 0 ) { 				// confirm name in current config matches what we had when we added it
+		snprintf( mbuf, mblen, "%s: name in config did not match name given when VF was added: expected %s, found %s", vfc->name,  port->vfs[vidx].config_name, vfc->name );
+		bleat_printf( 1, "no config change related to del request: %s", mbuf );
+		if( reason ) {
+			*reason = strdup( mbuf );
+		}
+		free_config( vfc );
+		delete_vf_config( fname, target_dir );
+		return 0;
+	}
+
+	delete_vf_config( fname, target_dir );
+/*
+	if( parms->delete_keep ) {											// need to keep the old by renaming it with a trailing -
+		snprintf( mbuf, mblen, "%s-", fname );
+		if( rename( fname, mbuf ) < 0 ) {
+			snprintf( mbuf, mblen, "unable to rename config file: %s: %s", fname, strerror( errno ) );
+			bleat_printf( 1, "vfd_del_vf failed: %s", mbuf );
+			if( reason ) {
+				*reason = strdup( mbuf );
+			}
+			free_config( vfc );
+			return 0;
+		}
+	} else {
+		if( unlink( fname ) < 0 ) {
+			snprintf( mbuf, mblen, "unable to delete config file: %s: %s", fname, strerror( errno ) );
+			bleat_printf( 1, "vfd_del_vf failed: %s", mbuf );
+			if( reason ) {
+				*reason = strdup( mbuf );
+			}
+			free_config( vfc );
+			return 0;
+		}
+	}
+*/
+
+	bleat_printf( 2, "del: config data: name: %s", vfc->name );
+	bleat_printf( 2, "del: config data: pciid: %s", vfc->pciid );
+	bleat_printf( 2, "del: config data: vfid: %d", vfc->vfid );
+
+	port->vfs[vidx].last_updated = DELETED;			// signal main code to nuke the puppy (vfid stays set so we don't see it as a hole until it's gone)
 	
 	if( reason ) {
 		*reason = NULL;
 	}
 	bleat_printf( 2, "VF was deleted: %s %s id=%d", vfc->name, vfc->pciid, vfc->vfid );
+	free_config( vfc );
 	return 1;
 }
 
@@ -1282,7 +1423,8 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 					}
 
 					bleat_printf( 2, "adding vf from file: %s", mbuf );
-					if( vfd_add_vf( conf, req->resource, &reason ) ) {		// read the config file and add to in mem config if ok
+					if( vfd_add_vf( conf, mbuf, &reason ) ) {				// read the config file and add to in mem config if ok
+						relocate_vf_config( parms, mbuf, NULL );			// move the config to the live directory on success (nil suffix indicates live dir)
 						if( vfd_update_nic( parms, conf ) == 0 ) {			// added to config was good, drive the nic update
 							snprintf( mbuf, sizeof( mbuf ), "vf added successfully: %s", req->resource );
 							vfd_response( req->resp_fifo, RESP_OK, mbuf );
@@ -1295,6 +1437,7 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 							bleat_printf( 1, "vf add failed nic update error" );
 						}
 					} else {
+						relocate_vf_config( parms, mbuf, ".error" );		// move the config file to *.error for debugging, but keep in same directory
 						snprintf( mbuf, sizeof( mbuf ), "unable to add vf: %s: %s", req->resource, reason );
 						vfd_response( req->resp_fifo, RESP_ERROR, mbuf );
 						free( reason );
