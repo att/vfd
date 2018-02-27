@@ -75,6 +75,8 @@
 				16 Oct 2017 - mlx5: Add unknown unicast (promisc mode) for vf support.
 				30 Nov 2017 - Switch to using mac module functions to properly handle MACs during reset/delete
 								Restructure update_nic() from a forreal perspective.
+				10 Jan 2018 - mlx5: Add VF mirroring support.
+				10 Jan 2018 - mlx5: Add VF queue sharing per TC.
 				19 Feb 2018 - Add support to ensure config directories exist. (#263)
 */
 
@@ -515,7 +517,7 @@ static void close_ports( void ) {
 		for( j = 0; j < MAX_VFS; j++ ) {					// run regardless of what we think the count is!
 			if( port->mirrors[j].dir != MIRROR_OFF ) {
 				bleat_printf( 0, "terminating active mirror on shutdown: pf=%d vf=%d", port->rte_port_number,  port->vfs[i].num );
-				set_mirror( port->rte_port_number, port->vfs[i].num,  port->mirrors[j].id, port->mirrors[j].target, MIRROR_OFF );
+				set_mirror_wrp( port->rte_port_number, port->vfs[j].num,  port->mirrors[j].id, port->mirrors[j].target, MIRROR_OFF );
 			}
 		}
 	}
@@ -924,8 +926,11 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 	for (i = 0; i < conf->num_ports; ++i){												// run each port we know about to apply port only changes
 		int ret;
 		struct sriov_port_s* port;
+		struct rte_eth_link link;
 
 		port = &conf->ports[i];
+
+		rte_eth_link_get_nowait(port->rte_port_number, &link);
 
 		//  WHY is this and disable pool done every time?  why is it not just done at the time of add?
 		tx_set_loopback( port->rte_port_number, !!(port->flags & PF_LOOPBACK) );		// enable loopback if set (disabled: all vm-vm traffic must go to TOR and back
@@ -1009,7 +1014,7 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 					}
 
 					if( port->mirrors[y].dir != MIRROR_OFF ) {													// stop the mirror on delete
-						set_mirror( port->rte_port_number, vf->num, port->mirrors[y].id, port->mirrors[y].target, MIRROR_OFF );		// turn off
+						set_mirror_wrp( port->rte_port_number, vf->num, port->mirrors[y].id, port->mirrors[y].target, MIRROR_OFF );		// turn off
 						port->mirrors[y].dir = MIRROR_OFF;
 						port->mirrors[y].target = MAX_VFS + 1;													// target is unsigned -- set out of range high
 						idm_return( conf->mir_id_mgr, port->mirrors[y].id );									// mark the id as unused in allocator
@@ -1024,23 +1029,24 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 					for(v = 0; v < vf->num_vlans; ++v) {
 						int vlan = vf->vlans[v];
 						int strip_on = (vf->strip_stag || vf->strip_ctag) ? 1 : 0;
-						bleat_printf( 2, "delete vlan: port: %d vf: %d vlan: %d", port->rte_port_number, vf->num, vlan );
-						if ((get_nic_type(port->rte_port_number) != VFD_MLX5) || !strip_on) // strip/insert vlan is set differently in mlx5
+						if ((get_nic_type(port->rte_port_number) != VFD_MLX5) || !strip_on) { // strip/insert vlan is set differently in mlx5
+							bleat_printf( 2, "delete vlan: port: %d vf: %d vlan: %d", port->rte_port_number, vf->num, vlan );
 							set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, SET_OFF );		// remove the vlan id from the list
+						}
 					}
 				} else {
 					int v;
 
 					if( port->mirrors[y].dir != MIRROR_OFF ) {						// setup the mirror
-						set_mirror( port->rte_port_number, vf->num, port->mirrors[y].id, port->mirrors[y].target, port->mirrors[y].dir );		// set target and type (in/out/both)
+						set_mirror_wrp( port->rte_port_number, vf->num, port->mirrors[y].id, port->mirrors[y].target, port->mirrors[y].dir );		// set target and type (in/out/both)
 						port->num_mirrors++;
 					}
 
 					for(v = 0; v < vf->num_vlans; ++v) {
 						int vlan = vf->vlans[v];
 						int strip_on = (vf->strip_stag || vf->strip_ctag) ? 1 : 0;
-						bleat_printf( 2, "add vlan: port: %d vf=%d vlan=%d", port->rte_port_number, vf->num, vlan );
 						if ((get_nic_type(port->rte_port_number) != VFD_MLX5) || !strip_on) // strip/insert vlan is set differently in mlx5
+							bleat_printf( 2, "add vlan: port: %d vf=%d vlan=%d", port->rte_port_number, vf->num, vlan );
 							set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, on );		// add the vlan id to the list
 					}
 				}
@@ -1091,10 +1097,6 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 				}
 
 				if( vf->rate || vf->min_rate ) {
-					struct rte_eth_link link;
-
-					rte_eth_link_get_nowait(port->rte_port_number, &link);
-
 					if( vf->rate ) {
 						bleat_printf( 1, "setting rate: %d", (int)  ( (float)link.link_speed * vf->rate ) );
 						set_vf_rate_limit( port->rte_port_number, vf->num, (uint16_t)( (float)link.link_speed * vf->rate ), 0x01 );
@@ -1166,9 +1168,11 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 			}
 
 			if( change2port && (g_parms->rflags & RF_ENABLE_QOS) ) {		// changes, we must recompute queue shares and push to nic
-				if (get_nic_type(port->rte_port_number) != VFD_MLX5) { // No support in mlx5 yet
+				gen_port_qshares( port );									// compute and save in the port struct
+				if (get_nic_type(port->rte_port_number) == VFD_MLX5) {
+					mlx5_set_vf_tcqos( port, link.link_speed );
+				} else {
 					//uint8_t* pp;
-					gen_port_qshares( port );									// compute and save in the port struct
 					qos_set_credits( port->rte_port_number, port->mtu, port->vftc_qshares, TC_4PERQ_MODE );	// push out to nic
 					//qos_set_credits( port->rte_port_number, port->mtu, pp, TC_4PERQ_MODE );	// push out to nic
 				}
