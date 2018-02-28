@@ -14,7 +14,7 @@ cc = gcc $(cflags)
 
 binaries = jwrapper_test parm_file_test list_test fifo_test bleat_test id_mgr_test 
 
-all: libvfd.a
+all: jsmn libvfd.a
 
 lib = libvfd.a
 lib_src = jwrapper jw_xapi symtab config ng_flowmgr fifo list_files bleat hot_plug id_mgr filesys
