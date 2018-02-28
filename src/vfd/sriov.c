@@ -440,6 +440,9 @@ set_vf_allow_bcast(portid_t port_id, uint16_t vf_id, int on)
 			ret = vfd_bnxt_set_vf_broadcast(port_id, vf_id, on);
 			break;
 			
+		case VFD_MLX5:
+			break;
+
 		default:
 			bleat_printf( 0, "set_vf_allow_bcast: unknown device type: %u, port: %u", port_id, dev_type);
 			break;	
@@ -723,6 +726,9 @@ set_vf_vlan_anti_spoofing(portid_t port_id, uint32_t vf, uint8_t on)
 			diag = vfd_bnxt_set_vf_vlan_anti_spoof(port_id, vf, on);
 			break;
 			
+		case VFD_MLX5:
+			break;
+
 		default:
 			bleat_printf( 0, "set_vf_vlan_anti_spoofing: unknown device type: %u, port: %u", port_id, dev_type);
 			break;	
@@ -818,7 +824,6 @@ int set_mirror( portid_t port_id, uint32_t vf, uint8_t id, uint8_t target, uint8
 	struct rte_eth_mirror_conf mconf;
 	uint8_t on_off = SET_ON;
 	int state = 0;
-	char const* fail_type = "WRN";
 
 	if( target > MAX_VFS ) {
 		bleat_printf( 0, "mirror not set: target vf out of range: %d", (int) target );
@@ -849,22 +854,41 @@ int set_mirror( portid_t port_id, uint32_t vf, uint8_t id, uint8_t target, uint8
 			break;
 
 		default:			// MIRROR_OFF
-			fail_type = "CRI";
 			on_off = SET_OFF;
 			mconf.rule_type = ETH_MIRROR_UPLINK_PORT | ETH_MIRROR_DOWNLINK_PORT;
 			break;
 	}
 	
 	state = rte_eth_mirror_rule_set( port_id, &mconf, id, on_off );
+
+	return state;
+}	
+
+int set_mirror_wrp( portid_t port_id, uint32_t vf, uint8_t id, uint8_t target, uint8_t direction ) {
+	uint dev_type = get_nic_type(port_id);
+	int state = 0;
+	int on_off = (direction != MIRROR_OFF) ? 1 : 0; 
+	char const* fail_type = on_off ? "WRN" : "CRI";
+
+	switch (dev_type) {
+			
+		case VFD_MLX5:
+			state = vfd_mlx5_set_mirror(port_id, vf, target, direction);
+			break;
+
+		default:
+			state = set_mirror(port_id, vf, id, target, direction);
+	}
+
 	if( state < 0 ) {
 		bleat_printf( 0, "%s: set mirror for pf/vf=%d/%d mid=%d target=%d dir=%d on/off=%d failed: %d (%s)", 
 				fail_type, (int) port_id, (int) vf, (int) id, (int) target, (int) direction, (int) on_off, state, strerror( -state ) );
 	} else {
-		bleat_printf( 1, "set mirror for pf/vf=%d/%d target=%d dir=%d on/off=%d  type=%d ok", (int) port_id, (int) vf, (int) target, (int) direction, (int) on_off, (int) mconf.rule_type );
+		bleat_printf( 1, "set mirror for pf/vf=%d/%d target=%d dir=%d on/off=%d ok", (int) port_id, (int) vf, (int) target, (int) direction, 				   on_off );
 	}
 
 	return state;
-}	
+}
 
 /*
 	Returns the value of the split receive control register for the first queue

@@ -98,7 +98,7 @@ extern int vfd_dcb_config( sriov_port_t *pf ) {
 		qos_enable_arb( port );													// finally turn arbitors on
 	} else {
 		vfd_mlx5_set_prio_trust(port);
-		vfd_mlx5_set_qos_pf(port, pf);
+		return vfd_mlx5_set_qos_pf(port, pf->tc_config, pf->ntcs);
 	}
 
 	return 0;			// for now constant; but in future it will report an error if needed
