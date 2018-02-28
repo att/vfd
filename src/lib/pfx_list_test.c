@@ -21,19 +21,16 @@
 int main( int argc, char** argv ) {
 	int i;
 	int j;
-	int seconds;
 	char**	list;
 	int		llen;
 	
 	if( argv[1] == NULL ) {
-		fprintf( stderr, "usage: %s prefix-string dir1 [dir2...]\n", argv[0] );
+		fprintf( stderr, "usage: %s directory prefix-string1 [prefix2...]\n", argv[0] );
 		exit( 1 );
 	}
 
-	seconds = atoi( argv[1] );
-
 	for( i = 2; i < argc; i++ ) {
-		list = list_pfiles( argv[i], argv[1], 10, &llen );				// 10 tests the ability to properly set the flag
+		list = list_pfiles( argv[1], argv[i], 10, &llen );				// 10 tests the ability to properly set the flag
 		if( list != NULL ) {
 			fprintf( stderr, "list contains %d entries\n", llen );
 			for( j = 0; j < llen; j++ ) {

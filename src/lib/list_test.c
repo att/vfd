@@ -3,6 +3,8 @@
 	Mneminic:	list_test.c
 	Abstract: 	Unit test for the list module.
 				Tests obvious things, may miss edge cases.
+
+				Parms:  directory suffix [suffix...]
 	Date:		08 March 2016
 	Author:		E. Scott Daniels
 */
