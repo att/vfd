@@ -222,6 +222,7 @@ struct vf_s
 	int     strip_ctag;          
 	int     strip_stag;          
 	int     insert_stag;         
+	int     insert_ctag;         
 	int     vlan_anti_spoof;      // if use VLAN filter then set VLAN anti spoofing
 	int     mac_anti_spoof;       // set MAC anti spoofing when MAC filter is in use
 	int     allow_bcast;
