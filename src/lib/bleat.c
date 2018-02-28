@@ -8,6 +8,22 @@
 	Mods:		10 May 2016 - fix comment
 				01 Jun 2016 - Add auto cleanup of log files.
 							Corrected memory leak.
+
+	Valgrind:	These are notes about valgrind complaints that cannot be
+				resolved, and are not considered harmful:
+
+				(a) valgrind will complain that a variable isn't initialised in the
+					case where a buffer or structure is allocated, but not set to 
+					some value.  For a buffer that is allocated with space for a
+					string of n bytes, less than n bytes are needed, and thus used
+					valgind will notice the unused part and bitch. This is harmless
+					provided that the end of string, or other buffer length mechanism
+					is correct.  For a structure, care must be taken to ensure that 
+					the uninitialised portion is not a baes type field (int/ptr), if
+					it is the struct should be initialised.  The trace from this/these
+					call(s) indicates that the problem is a strcpy/memcpy that is
+					only using a portion of the target buffer and is initiated in 
+					one of the C lib functions that we cannot control.
 */
 
 #include <fcntl.h>
@@ -56,7 +72,8 @@ static char* pretty_time( time_t ts ) {
 	char	buf[128];	
 	struct tm	t;
 
-	gmtime_r( (const time_t *) &ts, &t );
+	memset( &t, 0, sizeof( t ) );
+	gmtime_r( (const time_t *) &ts, &t );		// see valgind notes (a) at top
 	
 	snprintf( buf, sizeof( buf ), "%d/%02d/%02d %02d:%02d:%02dZ", t.tm_year+1900, t.tm_mon+1, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec );
 

@@ -83,6 +83,8 @@ static char** mk_list( char* dname, const char* match, int flags, int* len ) {
 	int		cmp_len;			// length for prefix compare
 
 
+	memset( &fentry, 0, sizeof( fentry ) );					// probably unecessary, but keeps valgrind from complaining as readdir_r may not completely populate the struct
+
 	if( dname == NULL || match == NULL || len == NULL ) {
 		errno = ENOENT;										// simulate system level error
 		return NULL;
