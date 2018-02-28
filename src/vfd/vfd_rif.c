@@ -62,6 +62,8 @@ static void relocate_vf_config( parms_t* parms, char* filename, const_str suffix
 	unsigned int len;
 	const_str base;								// basename portion of filename
 
+	memset( wbuf, 0, sizeof( wbuf ) );			// keeps valgrind happy
+
 	if( suffix == NULL ) {						// move to the live directory
 		len = snprintf( wbuf, sizeof( wbuf ), "%s_live/", parms->config_dir );
 	} else {
@@ -1403,6 +1405,7 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 		bleat_printf( 1, "req_if: forever loop entered" );
 	}
 
+	memset( mbuf, 0, sizeof( mbuf ) );								// avoid valgrind's kinckers twisting because it's not intiialised
 	*mbuf = 0;
 	do {
 		if( (req = vfd_read_request( parms )) != NULL ) {
@@ -1481,6 +1484,8 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 						if( port_xstats_display( 0, stats_buf, sizeof( char ) * 1024 * 10 ) > 0 ) {
 							bleat_printf( 0, "%s", stats_buf );
 						}
+
+						free( stats_buf );
 					}
 					break;
 
