@@ -69,7 +69,7 @@
 .dv _iim_icount 0
 
 .if pfm
-	.dv image .dv _iim_image_needs $2 ^: .dv _iim_fig_text $3 ^: .dv _iim_eps_cmds $1 ^: .im _iim_image.ca
+	.dv image  .dv _iim_image_needs $2 ^: .dv _iim_fig_text $3 ^: .dv _iim_eps_cmds $1 ^: .im _iim_image.ca
 	.dv cimage .dv _iim_image_needs $2 ^: .dv _iim_fig_text $3 ^: .dv _iim_eps_cmds $1 ^: .im _iim_image.ca
 .ei 
 	.if hfm
@@ -77,7 +77,6 @@
 		.dv cimage .bc start .br ^<img src="$4"^> .br .bc end .fg $3 ^: .sp 1
 	.ei
 		.if tfm
-.xx 2
 			.if markdown
 				.dv image ![cannot display: $4]($4) ^&break .fg $3 ^: .sp 1
 				.dv cimage ![cannot display: $4]($4) ^&break .fg $3 ^: .sp 1 
@@ -85,7 +84,6 @@
 				.dv image .br ^[image]  .br .fg $3 ^: .br
 				.dv cimage .br ^[image] .br .fg $3 ^:  .br
 			.fi
-.xx 0
 		.fi
 	.fi
 .fi
@@ -100,9 +98,8 @@
 		.sp 1
 	.ca end
 
-	.dv _iim_image_needs 1i
 	.gv remain
-	.if  &_iim_image_needs &_iremain >
+	.if  [ .4 &_iim_image_needs + ] &_iremain >
 		.oe page .im _iim_image_&{_iim_icount}.ca
 	.ei
 		.sp .5
