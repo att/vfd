@@ -36,6 +36,8 @@
 .im ../setup.im
 .im ../setup_image.im
 
+.dv image_url_base https://raw.githubusercontent.com/wiki/att/vfd/images/overview
+
 .** while it makes sense to leave spaces after opening and before closing of macro parens (e.g. &ital( word )
 .** this actually causes issues for the space sensitive markdown world. Since we must support this beast
 .** of an output format, be warned that spaces will likely cause issues, as well as make it more difficult
@@ -92,7 +94,7 @@ requests.
 .gv figure
 .dv overview_fig &_fig
 &center_start
-&image( figures/overview.eps x=1.5i close proportional : 3 : General relationship of NIC, VFs, "guests" and VFd : wiki_images/overview/overview.png )
+&image( figures/overview.eps x=1.5i close proportional : 3 : General relationship of NIC, VFs, "guests" and VFd : &{image_url_base}/overview.png )
 &center_end
 
 Figure &overview_fig illustrates the relationship between the NIC (PF), the configured VFs,
@@ -224,7 +226,7 @@ untagged packets from being written onto a VF's queue.
 .gv figure
 .dv strip_fig &_fig
 .sp 1
-&cimage( figures/vlan_strip.eps x=.85i close proportional : 2 : On transmit, insert VLAN tag into untagged packet (top to middle), and into a single tagged packet (middle to bottom). On receipt, the reverse. : wiki_images/overview/vlan_strip.png )
+&cimage( figures/vlan_strip.eps x=.85i close proportional : 2 : On transmit, insert VLAN tag into untagged packet (top to middle), and into a single tagged packet (middle to bottom). On receipt, the reverse. : &{image_url_base}/vlan_strip.png )
 
 &h3( Stripping and Inserting VLAN Tags )
 The VLAN ID, or tag, may be automatically removed, stripped, as a packet is received, 
@@ -335,9 +337,9 @@ same PF.
 .ei
 	&table( 2.8i 2.8i )
 .fi
-	&image( figures/mirror_in.eps x=.1i close proportional  : 1.5 : Inbound mirroring showting traffic also being delivered to Guest B. : wiki_images/overview/mirror_in.png )
+	&image( figures/mirror_in.eps x=.1i close proportional  : 1.5 : Inbound mirroring showting traffic also being delivered to Guest B. : &{image_url_base}/mirror_in.png )
 &table_cell()
-	&image( figures/mirror_out.eps x=.1i close proportional : 1.5 : Outbound mirroring showing all Tx traffic from Guest A delivered to Guest B. : wiki_images/overview/mirror_out.png )
+	&image( figures/mirror_out.eps x=.1i close proportional : 1.5 : Outbound mirroring showing all Tx traffic from Guest A delivered to Guest B. : &{image_url_base}/mirror_out.png )
 .if hfm
 	.bc end
 .ei
@@ -394,5 +396,4 @@ to block all traffic to the source VF.
 &di(Formatter) &_ver
 &end_dlist
 
-.cs end
-.cs end
+&quit
