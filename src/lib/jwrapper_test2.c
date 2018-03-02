@@ -49,13 +49,13 @@ static int check_str( void* jblob, char* field, char* expect ) {
 	char* stuff;
 	
 	if(  (stuff = jw_string( jblob, field )) ) {
-		fprintf( stderr, "found %s: (%s)\n", field, stuff );
+		fprintf( stderr, "[OK]   found %s: (%s)\n", field, stuff );
 		if( strcmp( stuff, expect ) != 0 ) {
-			fprintf( stderr, "error: %s string didn't match expected value (%s != %s)\n", field, stuff, expect );
+			fprintf( stderr, "[FAIL]  %s string didn't match expected value (%s != %s)\n", field, stuff, expect );
 			return 1;
 		}
 	} else {
-		fprintf( stderr, "error: did not find %s string\n", field );
+		fprintf( stderr, "[FAIL]  did not find %s string\n", field );
 		return 1;
 	}
 
@@ -69,32 +69,32 @@ static int check_ele_types( void* jblob ) {
 	int ec = 0;
 
 	if( !jw_is_value_ele( jblob, "last_blood", 1 )  ) {
-		fprintf( stderr, "error: 'last_blood' array element 1 is not reporting type value\n" );
+		fprintf( stderr, "[FAIL] 'last_blood' array element 1 is not reporting type value\n" );
 		ec++;
 	}
 	if( jw_is_value_ele( jblob, "last_blood", 0 )  ) {
-		fprintf( stderr, "error: 'last_blood' array element 0 is reporting type value and should not be\n" );
+		fprintf( stderr, "[FAIL] 'last_blood' array element 0 is reporting type value and should not be\n" );
 		ec++;
 	}
 	if( !jw_is_bool_ele( jblob, "last_blood", 3 )  ) {
-		fprintf( stderr, "error: 'last_blood' array element 1 is not reporting type boolean\n" );
+		fprintf( stderr, "[FAIL] 'last_blood' array element 1 is not reporting type boolean\n" );
 		ec++;
 	}
 	if( !jw_is_bool_ele( jblob, "last_blood", 4 )  ) {
-		fprintf( stderr, "error: 'last_blood' array element 3 is not reporting type boolean\n" );
+		fprintf( stderr, "[FAIL] 'last_blood' array element 3 is not reporting type boolean\n" );
 		ec++;
 	}
 	if( jw_is_bool_ele( jblob, "last_blood", 2 )  ) {
-		fprintf( stderr, "error: 'last_blood' array element 2 is reporting type boolean and should not be\n" );
+		fprintf( stderr, "[FAIL] 'last_blood' array element 2 is reporting type boolean and should not be\n" );
 		ec++;
 	}
 	if( jw_is_bool_ele( jblob, "last_blood", 0 )  ) {
-		fprintf( stderr, "error: 'last_blood' array element 0 is reporting type boolean and should not be\n" );
+		fprintf( stderr, "[FAIL] 'last_blood' array element 0 is reporting type boolean and should not be\n" );
 		ec++;
 	}
 
 	if( ! ec ) {
-		fprintf( stderr, "ok: all element primative type checks pass\n" );
+		fprintf( stderr, "[OK]   all element primative type checks pass\n" );
 	}
 
 	return ec;
@@ -111,21 +111,21 @@ static int check_type_bool( void* jblob, char* field, float expect ) {
 
 	is_bool = jw_is_bool( jblob, field );
 	if( is_bool && expect == 1 ) {
-		fprintf( stderr, "ok: %s reports boolean as expected\n", field );
+		fprintf( stderr, "[OK]   %s reports boolean as expected\n", field );
 		return 0;
 	}
 
 	if( is_bool ) {
-		fprintf( stderr, "error: %s reports boolean but isn't expected to be\n", field );
+		fprintf( stderr, "[FAIL]  %s reports boolean but isn't expected to be\n", field );
 		return 1;
 	}
 
 	if( expect == 1 ) {
-		fprintf( stderr, "error: %s reports NOT boolean but is expected to be\n", field );
+		fprintf( stderr, "[FAIL]  %s reports NOT boolean but is expected to be\n", field );
 		return 1;
 	}
 
-	fprintf( stderr, "ok: %s reports NOT boolean as expected\n", field );
+	fprintf( stderr, "[OK]   %s reports NOT boolean as expected\n", field );
 	return 0;			// not expected to be and didn't report boolean
 }
 
@@ -140,21 +140,21 @@ static int check_type_value( void* jblob, char* field, float expect ) {
 
 	is_value = jw_is_value( jblob, field );
 	if( is_value && expect == 1 ) {
-		fprintf( stderr, "ok: %s reports it is a value as expected\n", field );
+		fprintf( stderr, "[OK]   %s reports it is a value as expected\n", field );
 		return 0;
 	}
 
 	if( is_value ) {
-		fprintf( stderr, "error: %s reports it is a value but isn't expected to be\n", field );
+		fprintf( stderr, "[FAIL]  %s reports it is a value but isn't expected to be\n", field );
 		return 1;
 	}
 
 	if( expect == 1 ) {
-		fprintf( stderr, "error: %s reports it is NOT a value but is expected to be\n", field );
+		fprintf( stderr, "[FAIL]  %s reports it is NOT a value but is expected to be\n", field );
 		return 1;
 	}
 
-	fprintf( stderr, "ok: %s reports it is NOT a value as expected\n", field );
+	fprintf( stderr, "[OK]   %s reports it is NOT a value as expected\n", field );
 	return 0;			// not expected to be and didn't report as a value
 }
 
@@ -162,13 +162,13 @@ static int check_value( void* jblob, char* field, float expect ) {
 	float	value;
 
 	if(  (value = jw_value( jblob, field )) ) {
-		fprintf( stderr, "found %s:  %0.2f\n", field, value );
+		fprintf( stderr, "[OK]   found %s:  %0.2f\n", field, value );
 		if( value != expect ) {
-			fprintf( stderr, "error: %s value did not match the expected value: %.2f != %.2f\n", field, expect, value );
+			fprintf( stderr, "[FAIL]  %s value did not match the expected value: %.2f != %.2f\n", field, expect, value );
 			return 1;
 		}
 	} else {
-		fprintf( stderr, "error: did not find %s value\n", field );
+		fprintf( stderr, "[FAIL]  did not find %s value\n", field );
 		return 1;
 	}
 
@@ -188,41 +188,41 @@ int main( int argc, char **argv ) {
 		exit( 1 );
 	}
 	
-	fprintf( stderr, "\ntesting outer layer things\n" );
+	fprintf( stderr, "\n[INFO] testing outer layer things\n" );
 	errors += check_str( jblob, "last_visit", "2015/02/03" );
 	errors += check_value( jblob, "patient_id", 1027844.0 );
 	errors += check_value( jblob, "active_patient", 1.0 );
 
-	fprintf( stderr, "\ntesting array and embedded object in an array\n" );
+	fprintf( stderr, "\n[INFO] testing array and embedded object in an array\n" );
 	if( (value = jw_array_len( jblob, "family" )) == 3 ) {				// dig into the array and get the blob
-		fprintf( stderr, "family array found and has 3 elementes as expected\n" );
+		fprintf( stderr, "[OK]   family array found and has 3 elementes as expected\n" );
 		if( (sub_blob = jw_obj_ele( jblob, "family", 1 )) != NULL ) {
 			errors += check_str( sub_blob, "name", "Pebbles" );
 			errors += check_value( sub_blob, "blood", 1.0 );
 			errors += check_value( sub_blob, "age", 10 );
 		} else {
-			fprintf( stderr, "error: family array has expected number of elements, but did not return element 1\n" );
+			fprintf( stderr, "[FAIL]  family array has expected number of elements, but did not return element 1\n" );
 			errors++;
 		}
 	} else {
-		fprintf( stderr, "error: wrong number of elements for family arry: expected 3 got %.2f\n", value );
+		fprintf( stderr, "[FAIL]  wrong number of elements for family arry: expected 3 got %.2f\n", value );
 		errors++;
 	}
 
-	fprintf( stderr, "\ntesting embedded object at the outer level\n" );
+	fprintf( stderr, "\n[INFO] testing embedded object at the outer level\n" );
 	if( (sub_blob = jw_blob( jblob, "Contact_info" )) != NULL ) {			// should be able to reach it by loading the blob and then referencing into it
-		fprintf( stderr, "found embedded object Contact_info\n" );
+		fprintf( stderr, "[OK]   found embedded object Contact_info\n" );
 		errors += check_str( sub_blob, "relation", "wife" );
 		errors += check_str( sub_blob, "phone", "972.612.8918" );
 	} else {
-		fprintf( stderr, "error: didn't get a direct reference to contact_info blob\n" );
+		fprintf( stderr, "[FAIL]  didn't get a direct reference to contact_info blob\n" );
 		errors++;
 	}
 
 	errors += check_str( jblob, "Contact_info.relation", "wife" );		// should be able to reach it through dotted notation too
 
 	// check to see if the primative types are reporting correctly
-	fprintf( stderr, "\nchecking that primative types report correctly\n" );
+	fprintf( stderr, "\n[INFO] checking that primative types report correctly\n" );
 	errors += check_type_bool( jblob, "last_visit", 0 );				// shouldn't report boolean
 	errors += check_type_bool( jblob, "patient_id", 0 );				// shouldn't report boolean
 	errors += check_type_bool( jblob, "active_patient", 1 );			// should report boolean
@@ -230,6 +230,7 @@ int main( int argc, char **argv ) {
 	errors += check_type_value( jblob, "last_visit", 0 );				// shouldn't report value
 	errors += check_type_value( jblob, "active_patient", 0 );			// shouldn't report value
 	errors += check_type_value( jblob, "patient_id", 1 );				// should report value
+	errors += check_type_value( jblob, "patient_info.weight_kilo", 1 );	// should report value
 
 	errors += check_ele_types( jblob );
 
@@ -239,7 +240,7 @@ int main( int argc, char **argv ) {
 
 	// ----------------------------------------------------------------------------------------
 	if( errors ) {
-		fprintf( stderr, "%d errors found  [FAIL]\n", errors );
+		fprintf( stderr, "[FAIL] %d errors found\n", errors );
 	} else {
 		fprintf( stderr, "[PASS]\n" );
 	}

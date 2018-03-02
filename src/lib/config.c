@@ -17,6 +17,8 @@
 				26 May 2017 : Allow promisc to be set (default is true to match original behavour)
 				08 Jun 2017 : Allow huge_pages to be set (defult is on)
 				10 Jul 2017 : We now support "mac": "addr" rather than an array.
+				07 Feb 2018 : Add memory support back.
+				14 Feb 2018 : Add default for vf config name.
 
 	TODO:		convert things to the new jw_xapi functions to make for easier to read code.
 */
@@ -29,6 +31,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
+#include <ctype.h>
 
 #include "vfdlib.h"
 
@@ -243,6 +246,8 @@ extern parms_t* read_parms( char* fname ) {
 		if( (stuff = jw_string( jblob, "cpu_mask" )) ) {
 			parms->cpu_mask = ltrim( stuff );
 		}
+		
+		parms->numa_mem = jwx_get_value_as_str( jblob, "numa_mem", "64,64", JWFMT_INT );
 
 		if( (parms->npciids = jw_array_len( jblob, "pciids" )) > 0 ) {			// pick up the list of pciids
 			if( (parms->pciids = (pfdef_t *) malloc( sizeof( *parms->pciids ) * parms->npciids )) == NULL ) {
@@ -400,6 +405,7 @@ extern void free_parms( parms_t* parms ) {
 	SFREE( parms->pciids );
 	SFREE( parms->pid_fname );
 	SFREE( parms->stats_path );
+	SFREE( parms->numa_mem );
 
 	free( parms );
 }
@@ -453,7 +459,7 @@ extern vf_config_t*	read_config( char* fname ) {
 		vfc->strip_ctag = !jw_is_bool( jblob, "strip_ctag" ) ? 0 : (int) jw_value( jblob, "strip_ctag" );
 		vfc->allow_bcast = !jw_is_bool( jblob, "allow_bcast" ) ? 1 : (int) jw_value( jblob, "allow_bcast" );
 		vfc->allow_mcast = !jw_is_bool( jblob, "allow_mcast" ) ? 1 : (int) jw_value( jblob, "allow_mcast" );
-		vfc->allow_un_ucast = !jw_is_bool( jblob, "allow_un_ucast" ) ? 1 : (int) jw_value( jblob, "allow_un_ucast" );
+		vfc->allow_un_ucast = !jw_is_bool( jblob, "allow_un_ucast" ) ? 0 : (int) jw_value( jblob, "allow_un_ucast" );
 		vfc->vfid = !jw_is_value( jblob, "vfid" ) ? -1 : (int) jw_value( jblob, "vfid" );			// there is no real default value, so set to invalid
 
 		vfc->rate = jw_missing( jblob, "rate" ) ? 0 : (float) jw_value( jblob, "rate" );
@@ -461,6 +467,8 @@ extern vf_config_t*	read_config( char* fname ) {
 
 		if(  (stuff = jw_string( jblob, "name" )) ) {
 			vfc->name = strdup( stuff );
+		} else {
+			vfc->name = strdup( "unnamed" );
 		}
 
 		if(  (stuff = jw_string( jblob, "pciid" )) ) {
@@ -607,9 +615,10 @@ extern void free_config( vf_config_t *vfc ) {
 	SFREE( vfc->start_cb );
 	SFREE( vfc->stop_cb );
 
-	for( i = 0; i < vfc->nmacs; i++ ) {
+	for( i = 0; i < vfc->nmacs; i++ ) {		// drop each referenced string
 		SFREE( vfc->macs[i] );
 	}
+	SFREE( vfc->macs );						// finally drop the buffer itself
 
 	free( vfc );
 }

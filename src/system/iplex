@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# vi: sw=4 ts=4:
+# vi: sw=4 ts=4 expandtab :
 """
     Mnemonic:   iplex.py
     Abstract:   iplex is a cli to VF Daemon, used by nova (compute) and operators
@@ -13,9 +13,10 @@
                 2016 03 May - Add dump action
                 2016 11 July- Add update action
                 2016 20 July - Add list pf's, per vf status functionality
-				2017 13 Jan - Allow any argument to follow show to enable show pfn[:vfn]
-                      where n:m supplies a pf and vf number rather than all or pfs.
-				2017 09 Oct - Add mirror update command and support for config option.
+                2017 13 Jan - Allow any argument to follow show to enable show pfn[:vfn]
+                              where n:m supplies a pf and vf number rather than all or pfs.
+                2017 09 Oct - Add mirror update command and support for config option.
+                2018 21 Feb - Add support for live config directory
 """
 
 __doc__ = """ iplex
@@ -44,6 +45,8 @@ import sys
 import ast
 import time
 from logging.handlers import RotatingFileHandler
+import fcntl
+import platform
 
 VFD_CONFIG = '/etc/vfd/vfd.cfg'		# default; --conf= overrides from command line
 
@@ -97,7 +100,7 @@ class Iplex(object):
         return
 
     def delete(self, port_id):
-        self.filename = self.__validate_file(port_id)
+        self.filename = self.__assert_live_vfconfig(port_id)
         self.resp_fifo = self.__create_fifo()
         msg = self.__request_message('delete')
         self.__write_read_fifo(msg)
@@ -166,6 +169,19 @@ class Iplex(object):
             self.log.error("VF config for %s doesn't exist", port_id)
             sys.exit(1)
 
+    # Verify that a VF config file in the live (active) directory exists.
+    # returns the filename if valid, and aborts the whole process if it is not.
+    #
+    def __assert_live_vfconfig( self, port_id ) :
+        filename = os.path.join(self.config_data['config_dir'] + "_live", port_id)+'.json'
+        if os.path.isfile( filename ) :
+            self.log.info("valid vf config file: %s", filename)
+            return filename
+        else:
+            self.__errMsg( "VF live config for {} doesn't exist".format(port_id) )
+            self.log.error( "VF live config for %s doesn't exist", port_id )
+            sys.exit( 1 )
+
     # Create private fifo
     def __create_fifo(self):
         resp_fifo = Iplex.PRIVATE_FIFO_PATH+str(os.getpid())
@@ -217,6 +233,10 @@ class Iplex(object):
             os.write(writeFd, str(msg)+'\n\n')
             os.close(writeFd)
             readFd = os.open(self.resp_fifo, os.O_RDONLY)
+            if not hasattr(fcntl, 'F_SETPIPE_SZ'):
+                if platform.system() == 'Linux':
+                    fcntl.F_SETPIPE_SZ = 1031
+                    fcntl.fcntl(readFd, fcntl.F_SETPIPE_SZ, 1024 * 60)
             buf = self.__read_fd(readFd)
             resp_data = json.dumps(buf.strip(' \n\t'))
             print(ast.literal_eval(resp_data))
@@ -235,7 +255,7 @@ class Iplex(object):
 
 
 if __name__ == '__main__':
-    options = docopt(__doc__, version='1.1')
+    options = docopt(__doc__, version='1.2')
 
     if options["--conf"] != None:
         VFD_CONFIG = options["--conf"]

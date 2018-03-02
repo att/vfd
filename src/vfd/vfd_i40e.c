@@ -357,7 +357,13 @@ vfd_i40e_vf_msb_event_callback(uint16_t port_id, enum rte_eth_event_type type, v
 	RTE_SET_USED(data);
 
 	//fprintf( stderr, "------------------- MBOX port: %d, vf: %d, configured: %d box_type: %d-------------------\n", port_id, vf, vfp->num_vlans, mbox_type );
+	bleat_printf( 3, "i40e: processing callback starts: pf/vf=%d/%d, evtype=%d mbtype=%d", port_id, vf, type, mbox_type);
 			
+	if( vfp == NULL ) {					// for a pf/vf that isn't known to jus; just bail
+		bleat_printf( 3, "i40e: processing callback ends, pf/vf not configured: pf/vf=%d/%d, evtype=%d mbtype=%d", port_id, vf, type, mbox_type);
+		p->retval = RTE_PMD_I40E_MB_EVENT_PROCEED;
+		return 0;
+	}
 
 	/* check & process VF to PF mailbox message */
 	switch (mbox_type) {
@@ -596,9 +602,10 @@ vfd_i40e_vf_msb_event_callback(uint16_t port_id, enum rte_eth_event_type type, v
 		default:
 			bleat_printf( 1, "unknown  event request received: port=%d (responding nop+nak)", port_id );
 			p->retval = RTE_PMD_I40E_MB_EVENT_NOOP_NACK;     /* noop & nack */
-			bleat_printf( 3, "Type: %d, Port: %d, VF: %d, OUT: %d, MBOX_TYPE: %d", type, port_id, vf, p->retval, mbox_type);
 			break;
 	}
+
+	bleat_printf( 3, "i40e: processing callback finished: pf/vf=%d/%d, evtype=%d mbtype=%d", port_id, vf, type, mbox_type);
 
 	return 0;   // CAUTION:  as of 2017/07/05 it seems this value is ignored by dpdk, but it might not alwyas be
 }

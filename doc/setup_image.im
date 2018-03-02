@@ -1,0 +1,115 @@
+
+
+.if false
+	Mnemonic:	setup_image.im
+	Abstract:	A 'super macro' of sorts which allows for floating images to 
+				be placed into a postscript document with minimal coding effort.
+				Corresponding image macros for other formatters are also generated
+				so that the doc source does not need to generate them.
+
+				Macros available after imbedding this file:
+					&image( ... )  - Generate an image with figure text
+					&cimage(...)   - Generate image centered (html) with figure text
+									 (For other formatters the result is the same as 
+									 &image().)
+
+				The parms for both are:
+					pfm-ep-parms : space : figure-text : URL
+
+				where:
+					space is the number of inches required on the page
+					pfm-ep-parms are like  x=.25i close proportional
+					URL is the reference to the image (hfm and markdown only)
+
+				For the pfm case, where floating an image to the next page/col is 
+				important, the image macro is used to imbed an image. The macro defines:
+					- the needed .ep parameters ($1)
+					- the required vertical space (inches) to trigger page eject ($2)
+					- the figure text placed immediately after the image
+
+				To make use of this, imbed this file at any time before using
+				&image(....). 
+
+				The inner workings of this code:
+				When this file is embedded, it does two things:
+					Creates the image macro and creates a the 'super macro' which is written
+					to the _image.ca file.
+
+				When the &image() macro is used in the document, it first saves parms
+				passed on the macro into variables, then 'invokes' the super macro by
+				imbedding the _image.ca file.
+
+				When the _image.ca file is imbedded, an image specific capture file is
+				created as image_N.ca (where N is an integer). Then the current space 
+				remaining on the page is queried and compared against the required space
+				provided as a parameter to the macro.  If there is enough room on the page
+				then the image specific capture file is imbedded which causes the image
+				to be placed into the document at the current location.  If there is not
+				enough space on the current page, then the command to imbed the image specific
+				capture file is placed onto the 'on eject' stack for inclusion at the next
+				eject event.
+
+				Example:
+					Assuming the eps file foo_bar.eps is to be incuded, and needs 3 inches of
+					space on the page, the following &image() statement in the document would
+					cause that to happen:
+
+						&image( foo_bar.eps x=.25i close : 3 : A foo-bar in its cage )
+
+					The third parameter is used as the figure text which is inserted immediately
+					following the image. 
+
+				To avoid variable collisions with the user's document, all variables created
+				by this are prefixed with _iim_. 
+
+	Date:		20 February 2018
+	Author:		E. Scott Daniels
+.fi
+
+.dv _iim_icount 0
+
+.if pfm
+	.dv image  .dv _iim_image_needs $2 ^: .dv _iim_fig_text $3 ^: .dv _iim_eps_cmds $1 ^: .im _iim_image.ca
+	.dv cimage .dv _iim_image_needs $2 ^: .dv _iim_fig_text $3 ^: .dv _iim_eps_cmds $1 ^: .im _iim_image.ca
+.ei 
+	.if hfm
+		.dv image .br ^<img src="$4"^> .br .fg $3 ^: .sp 1
+		.dv cimage .bc start .br ^<img src="$4"^> .br .bc end .fg $3 ^: .sp 1
+	.ei
+		.if tfm
+			.if markdown
+				.dv image ![cannot display: $4]($4) ^&break .fg $3 ^: .sp 1
+				.dv cimage ![cannot display: $4]($4) ^&break .fg $3 ^: .sp 1 
+			.ei
+				.dv image .br ^[image]  .br .fg $3 ^: .br
+				.dv cimage .br ^[image] .br .fg $3 ^:  .br
+			.fi
+		.fi
+	.fi
+.fi
+
+.** shift allows us to indent the nested capture end command by 1 tab making our code look pretty.
+.** Vars are expanded only by the inner capture (into the image specific file)
+.** 
+.ca shift start _iim_image.ca
+	.ca expand start _iim_image_&{_iim_icount}.ca
+		.ep &_iim_eps_cmds l=&{_iim_image_needs}i
+		.fg &_iim_fig_text
+		.sp 1
+	.ca end
+
+	.gv remain
+	.if  [ .4 &_iim_image_needs + ] &_iremain >
+		.oe page .im _iim_image_&{_iim_icount}.ca
+	.ei
+		.sp .5
+		.im _iim_image_&{_iim_icount}.ca
+	.fi
+	.dv _iim_icount [ &_iim_icount 1 + ]
+.ca end
+
+
+
+
+
+

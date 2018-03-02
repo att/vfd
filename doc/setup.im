@@ -1,127 +1,238 @@
-.** generic setup that most docs will use to generate posscript, txt or md output.
+.** 
+.** Mnemonic:	markdown.im
+.** Abstract:	Setup template which allows for single column format that can be 
+.** 			rendered in postscript, text, and as markdown.
+.**				Macros for the folowing must be used  inplace of the native {X}fm
+.**				commands in order to generate markdown:
+.**					&def_list(space font) instead of .bd
+.**					&di(text) insted of .di
+.**					&hn(text) instad of .h1-4
+.**					&start_note instead of .cn start
+.**					.bl can be used, but with &li1 and &li2 symbols (.e.g .bl &li1)
+.**
+.**				Enumerated lists (1, 2, 3) can be generated normally as markdown
+.**				should key off of the number, however generating an alpha enumerated
+.**				list probably won't work from a markdown point of view. 
+.**
+.**				It is also important to note that because of the way markdown works
+.**				dding spaces before and after text in the macro invocations may 
+.**				not produce the desired output.
+.**
+.**				Macros provided by this file (not mentioned above):
+.**					textsize, textfont, extextsize, ditext, cwfont
+.**					bold(), ital(), cw()
+.**					note(), super()
+.**					start_note, end_note  -- Column notes with qutomatic superscript
+.**					line
+.**
+.**				We use the super image macro which is direct pfm support, and define an
+.**				image macro that is compatable for txt and markdown output. The format
+.**				which supports generating all docs:
+.**					&image( .ep-command-parms : space : figure-text : url )
+.**				where space is assumed to be inches that are required for the image.
+.**					
+.**	
+.**				Postscript is gnerated normally.  Markdown is generatd using the 
+.**				tfm formatter defining MARKDOWN in the evironment:
+.**					MARKDOWN=1 tfm file.xfm file.md
+.**
+.** Author:		E. Scott Danils
+.** Date:		26 October 2016
+.** -------------------------------------------------------------------------------
 
-.dh 1 p=14 f=Helvetica-Bold s=1.5,1 r=.75i e=no u=yes m=0i
-.dh 2 p=12 f=Helvetica-Bold s=1,.5 r=.75i m=0i
-.dh 3 p=10 f=Helvetica-Bold s=1,0 r=.75i m=0i
-.dh 4 p=10 f=Helvetica-Bold s=0,0  m=0i
+.if pfm
+	.** .cd 1 6.5i i=.75i m=0i
 
-.** ------ macros which hold across most desired output formats ---------------------
-.dv fontsize 10p
+	.** using 6.5 with indent of 1i at the column level centers pg numbers on pg nicely
+	.** use indent to center the text column.
+	.cd 1 6.5i i=1.i m=0i
+.ei
+	.cd 1 6.8i i=0i m=0i
+.fi
+
+.** best defaults for pfm; overridden for other formatters below
+.ll 6i
+.in .25i
+.sf Helvetica
+.st 10
+
+.dh 1  m=.25i e=no s=3,.5 i=0 p=14 f=Helvetica-bold r=.75i
+.dh 2  m=.25i s=1.5,.5 i=0      p=12 f=Helvetica-bold  r=.25i
+.dh 3  m=.25i s=1,0 i=0      p=10 f=Helvetica-bold	r=.25i
+
+.ju on
+.hn off
+
+.dv fontsize 30p
 .dv textfont Helvetica
 .dv textsize 10p
 .dv extextsize 8p
 .dv ditext Helvetica-bold
-.dv difont Helvetica-bold
 .dv cwfont Courier
 
-.dv indent .ll -.75i .in +.5i
-.dv uindent .in -.5i .ll +.75i
+.** supersccript number for start_note macro
+.dv ss_num 1
+
+.**  these macros are common for prfm/tfm, markdown will override some
+.dv indent .ll -.5i .in +.25i
+.dv uindent .in -.25i .ll +.5i
 .dv smindent .ll -1i .in +.25i
 .dv smuindent .in -.25i .ll +1i
 
-.dv ex_start .sp .5 .cc 4 .ll -.25i .in +.25i .sf Courier .st &extextsize .fo off
-.** ex_end macro _must_ be placed in col 0 to cause an exit from no-format mode.
-.dv ex_end .fo on .sf Helvetica .st ^&textsize .in -.25i .ll +.25i .sp .1
+.dv def_list .sp .5 ^&indent .bd $1 
+.dv di .sp .5 .di $1 ^: 
+.dv end_dlist .ed ^&uindent .sp 1
 
-.** insert $2 if there is more than $1 inches remaining on the page; else insert at top of new page
-.** a .gv remain command must be executed before each use of this macro
-.dv ifroom .if ^&_iremain $1 > ^:  .im $2  .ei .oe page .im $2 .fi
+.dv beg_list .sp .5 &indent .bl ^&lic1
+.dv end_list .el &uindent .sp 1
+.dv item  .sp .3 .li
 
-.dv note_num 1
-.dv ss_num 1
-.** .dv super .sm .tf superscript 2/3 ^&note_num ^: .dv note_num ^[ ^&note_num 1 + ] ^:
-.dv super .dv ss_num ^[ ^&ss_num 1 + ] ^: .sm .tf superscript 2/3 ^&ss_num  ^:
-.dv start_note .cn start atbot Times-roman 8p .5i
-.dv start_sized_note .cn start atbot Times-roman 8p $1
-.dv end_note .cn end
-.** ------------------------------------------------------------------
 
-.** deprecated
-.dv def_list .bd $1 
-.dv end_dlist .ed
+.dv auto_num .sp .5 .di ^:
 
-.** allow markdown, must redefine header directive and definition item
-.dv h1 .h1 $1 ^:
-.dv h2 .h2 $1 ^:
-.dv h3 .h3 $1 ^:
-.dv di .sp .4 .di $1 ^:  
-.dv adi .sp .4 .di ^: 
-.** bd parms:  width, font, options; need to split out so markdown code can ignore width
-.dv bd .bd $1 $2 $3 ^: 
-.dv ed .ed
-.dv adi_fmt %d)
+.dv ex_start .sp .5 .ll -.25i .in +.15i .sf Courier .st ^&extextsize .fo off
+.** ex_end macro calls _must_ be placed in col 0 to cause an exit from no-format mode.
+.dv ex_end      .fo on .sf ^&textfont .st ^&textsize .in -.15i .ll +.25i .sp 1
+.dv ex_end_nosp .fo on .sf ^&textfont .st ^&textsize .in -.15i .ll +.25i .sp .1
+	
+.dv h1 .h1 $1	
+.dv h2 .h2 $1
+.dv h3 .h3 $1
 
-.** we omit this from markdown output as pasting links in wiki on github  seems
-.** to flag the account of the user who pastes the markdown text into the page.
-.dv http http://
+.dv line .ln
+.dv break .br
 
-.**  ---- specialised macros based on output format; might override above ------------------------------------
+.dv center_start .bc start
+.dv center_end .bc end
+
+.** required only for html
+.dv quit .qu
+
 .if pfm
-	.cd 1 6i i=1.25i m=0i
-	.dv cw .tf Courier 8p  $1 ^:
-	.dv bold .tf Helvetica-bold  ^&fontsize $1  ^:
-	.dv ital .tf Helvetica-Oblique  ^&fontsize $1  ^:
+	.** get the super image macro that allows us to support images with one macro call
+
+	.dv table .ta $1
+	.dv table_end .et
+	.dv table_row .tr $1
+	.dv table_cell .cl $1
+
+	.pn on 0 center f=-%d- noline
+
+	.** insert $2 if there is more than $1 inches remaining on the page; else insert at top of new page
+	.** a .gv remain command must be executed before each use of this macro
+	.dv ifroom .if ^&_iremain $1 > ^:  .im $2  .ei .oe page .im $2 .fi
+
+	.dv super .sm .tf superscript 2/3 $1  ^:
+	.dv note .dv ss_num ^[ ^&ss_num 1 + ] ^: .sm .tf superscript 2/3 ^&ss_num  ^:
+	.dv start_note .dv old_size ^&textsize ^: .dv textsize 8 ^: .cn start atbot Times-roman 8p $1 ^:
+	.dv end_note .cn end ^: .dv textsize ^&old_size
+
 	.dv lic1 l
 	.dv lic2 m
-	.ll 5.75i
-	.pn on 0 center f=-%d- noline
-	.in 1i
+
+	.dv bold .tf Helvetica-bold  ^&textsize $1  ^:
+	.dv ital .tf Helvetica-Oblique  ^&textsize $1  ^:
+	.dv cw .tf Courier 8p  $1 ^:
+
+	.** image has the form:  &image(postscript cmd:link:url)
+	.dv http http://
 .ei
-	.cd 1 6i i=0 m=0i
+	.dv http ` `
+	.if hfm
+		.if ! textcolour
+			.dv textcolour black
+		.fi
+		.if ! bgcolour
+			.dv bgcolour white
+		.fi
+		.dv table .ta $1
+		.dv table_end .et
+		.dv table_row .tr $1
+		.dv table_cell .cl $1
 
-	.** .dv super ^[^&note_num] .dv note_num ^[ ^&note_num 1 + ] ^:
-	.dv super .dv ss_num ^[ ^&ss_num 1 + ] ^: .sm ^[ .sm ^&{ss_num}]
-	.** .sv super
+		.** corresponding .fo must be at the left mar!
+		.ai
+			<!-- CAUTION: this file is generated using pfm, do NOT edit as your changes will be lost -->
+.fo
+		.if ! html_width
+			.dv html_width 640
+		.fi
+		.dv outer_width [ &html_width 45 + ]
+		.** limit the width to something reasonable; wide browsers screens these days make it tough to gen readable text
+		.** without overloading javascript to format on the fly.
+		.** 
+		.cs start doc width=&{outer_width}px color=&textcolour background-color=&bgcolour margin-left=10px border-left=1px,solid,grey border-right=1px,solid,grey
+		.cs start innerdoc width=&{html_width}px margin-left=20px margin-right=10px color=&textcolour background-color=&bgcolour 
+		.dv quit .cs end .cs end .qu
 
-	.** at the moment tfm ignores atbot as there is no concept of a page, so we must set to atend
+		.** .dv image .br ^<img src="$4"^> .br .fg $3 ^: .sp 1
+		.** .dv cimage .bc start .br ^<img src="$4"^> .br .bc end .fg $3 ^: .sp 1
+	.ei	
+		.** ------------ tfm ---------------------------------------------------------------------------------
+		.dv table .sp 1
+		.dv table_end .sp 1
+		.dv table_row ^&break
+		.dv table_cell &break
+		.** .dv image .br ^[image] $3 .br
+		.** .dv cimage .br ^[image] $3 .br
+	.fi
+
+	.** these apply to both tfm or hfm as neither are page oriented
+	.dv super .sm ^[ .sm ^&{ss_num}]
+	.dv note .dv ss_num ^[ ^&ss_num 1 + ] ^: .sm ^[ .sm ^&{ss_num}]
+
 	.dv start_note .cn start atend Times-roman 8p .5i
-	.dv start_sized_note .cn start atend Times-roman 8p $1
-
+	.dv end_note .cn end
+	.dv bold $1
+	.dv cw $1
+	.dv ital $1
 	.dv lic1 *
 	.dv lic2 +
+
+	.dv ifroom .im $2
 
 	.** if the env var is set, redefine macros to generate the limited markdown things
 	.gv e MARKDOWN markdown
 	.if &markdown 0 >
+		.dv center_start ` `
+		.dv center_end ` `
+
+		.** tfm is adding a blank at the end of each line, so for a break we just pop on a second one
+		.dv break `^` ^`` .br
+
+		.** justify must be off for markdown as tfm occasionally leaves an extra trailing blank which 
+		.** twists the knickes of the space oriented parsers; shesh.
 		.ju off
 
-		.dv http xxxx://
-		.** no concept of a definition list in markdown; no start/end and just make the text bold to emulate
-		.dv def_list  .sp 1
-		.dv end_dlist .sp 1
+		.** .dv image ![cannot display: $4]($4) ^&break .fg $3 ^: .sp 1
 
-		.dv bd .sp 1 .bd 1 $2 $3 ^:
-		.dv di .sp 1 **$1:**
-		.**  CAUTION: old versions of tfm ignore the format for auto numbering
-		.dv adi_fmt **%d**
-		.dv adi .sp 1 .di ^:
-		.dv ed .ed
+		.** no concept of a definition list in markdown; no start/end and just make the text bold to emulate
+		.dv def_list  .dv an 1 ^: .sp 1
+		.dv end_dlist .sp 1
+		.dv di ^&break **$1:** 
+		.dv auto_num ^&break  **&{an} .sm . .sm ** .dv an ^[ &an 1 + ] ^:
+
+		.dv beg_list  .sp 1
+		.dv item  .br ^&lic1
+		.dv end_list .sp 1
 
 		.dv line ***
-		.** markdown doesn't have any indention as indention is significant
-		.in 0i
+		.** leading indention is significant to markdown, so turn it off
+		.in 0
 		.dv indent 
 		.dv uindent .sp 2
 		.dv smindent
 		.dv smuindent .sp 2
 		.dv bold **$1**
-		.dv cw <code>$1</code>
 		.dv ital _ .sm $1 .sm _
+		.dv cw <code>$1</code>
 		.dv h1 .sp 2 # $1 .br
 		.dv h2 .sp 2 ## $1 .br
 		.dv h3 .sp 2 ### $1 .br
 
-		.dv ex_start .ll -4 .in .5i .sp 2 .fo off 
+		.dv ex_start .ll -4 .in .35i .sp 2 .fo off 
 		.dv ex_end .fo on .in 0i .ll +4 .sp 2
-		.dv ifroom .im $2
-
-	.ei
-		.** plain text output has a few overrides to pfm output
-		.dv bold $1
-		.dv cw $1
-		.dv ital $1
-
-		.dv line .ln
+		.dv ex_end_nosp .fo on .sf ^&textfont .st ^&textsize .in 0i .ll +.25i 
 	.fi
 .fi
 

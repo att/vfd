@@ -68,12 +68,12 @@ static jthing_t *mk_thing( void *st, char *name, int jsmn_type ) {
 	jthing_t 	*jtp;
 
 	if( st == NULL ) {
-		return;
+		return NULL;
 	}
 
 	jtp = (jthing_t *) malloc( sizeof( *jtp ) );
 	if( jtp == NULL ) {
-		return;
+		return NULL;
 	}
 
 	jtp->jsmn_type = jsmn_type;

@@ -172,8 +172,16 @@ vfd_mlx5_set_vf_vlan_insert(uint16_t port_id, uint16_t vf_id, uint16_t vlan_id)
 	if (vfd_mlx5_get_ifname(port_id, ifname))
 		return -1;
 
-	sprintf(cmd, "echo '%d:0:802.1ad' > /sys/class/net/%s/device/sriov/%d/vlan", vlan_id, ifname, vf_id);
+	if (vlan_id) {
+		sprintf(cmd, "echo rem 0 4095 > /sys/class/net/%s/device/sriov/%d/trunk", ifname, vf_id);
+		ret = system(cmd);
 
+		if (ret < 0) {
+			//	printf("cmd exec returned %d\n", ret);
+		}
+	}
+
+	sprintf(cmd, "echo '%d:0:802.1ad' > /sys/class/net/%s/device/sriov/%d/vlan", vlan_id, ifname, vf_id);
 	ret = system(cmd);
 
 	if (ret < 0) {
@@ -193,8 +201,16 @@ vfd_mlx5_set_vf_cvlan_insert(uint16_t port_id, uint16_t vf_id, uint16_t vlan_id)
 	if (vfd_mlx5_get_ifname(port_id, ifname))
 		return -1;
 
-	sprintf(cmd, "ip link set %s vf %d vlan %d", ifname, vf_id, vlan_id);
+	if (vlan_id) {
+		sprintf(cmd, "echo rem 0 4095 > /sys/class/net/%s/device/sriov/%d/trunk", ifname, vf_id);
+		ret = system(cmd);
 
+		if (ret < 0) {
+			//	printf("cmd exec returned %d\n", ret);
+		}
+	}
+
+	sprintf(cmd, "ip link set %s vf %d vlan %d", ifname, vf_id, vlan_id);
 	ret = system(cmd);
 
 	if (ret < 0) {
@@ -398,7 +414,7 @@ vfd_mlx5_set_prio_trust(uint16_t port_id)
 }
 
 int
-vfd_mlx5_set_qos_pf(uint16_t port_id, sriov_port_t *pf)
+vfd_mlx5_set_qos_pf(uint16_t port_id, tc_class_t **tc_config, uint8_t ntcs)
 {
 	char ifname[IF_NAMESIZE];
 	char cmd[256] = "";
@@ -409,7 +425,7 @@ vfd_mlx5_set_qos_pf(uint16_t port_id, sriov_port_t *pf)
 	if (vfd_mlx5_get_ifname(port_id, ifname))
 		return -1;
 
-	if (pf->ntcs != 8) {
+	if (ntcs != 8) {
 		printf("mlx5 devices don't support 4 TC configuration\n");
 		return -2;
 	}
@@ -418,11 +434,11 @@ vfd_mlx5_set_qos_pf(uint16_t port_id, sriov_port_t *pf)
 
 	rte_eth_link_get_nowait(port_id, &link);
 
-	for(i=0; i< pf->ntcs; i++) {
-		strcpy(tc_cfg[i].policy, (pf->tc_config[i]->flags & TCF_LNK_STRICTP) ? "strict" : "ets");
-		tc_cfg[i].min_bw = (pf->tc_config[i]->flags & TCF_LNK_STRICTP) ? 0 : pf->tc_config[i]->min_bw;
-		if (pf->tc_config[i]->max_bw < 100) {
-			tc_cfg[i].max_bw = (pf->tc_config[i]->max_bw * link.link_speed) / 100;
+	for(i=0; i< ntcs; i++) {
+		strcpy(tc_cfg[i].policy, (tc_config[i]->flags & TCF_LNK_STRICTP) ? "strict" : "ets");
+		tc_cfg[i].min_bw = (tc_config[i]->flags & TCF_LNK_STRICTP) ? 0 : tc_config[i]->min_bw;
+		if (tc_config[i]->max_bw < 100) {
+			tc_cfg[i].max_bw = (tc_config[i]->max_bw * link.link_speed) / 100;
 			if (tc_cfg[i].max_bw < 1000)
 				tc_cfg[i].max_bw = 1000;
 
@@ -487,7 +503,89 @@ vfd_mlx5_set_vf_promisc(uint16_t port_id, uint16_t vf_id, uint8_t on)
 	if (vfd_mlx5_get_ifname(port_id, ifname))
 		return -1;
 
-	sprintf(cmd, "ip link set %s vf %d trust %s", ifname, vf_id, on ? "on" : "off");
+	sprintf(cmd, "echo \"%s\" > /sys/class/net/%s/device/sriov/%d/trust", on ? "ON" : "OFF", ifname, vf_id);
+	bleat_printf( 0, "allow_mcast cmd: %s", cmd );
+
+	ret = system(cmd);
+
+	if (ret < 0) {
+	//	printf("cmd exec returned %d\n", ret);
+	}
+
+	return 0;
+}
+
+int
+vfd_mlx5_set_mirror( portid_t port_id, uint32_t vf, uint8_t target, uint8_t direction )
+{
+	char ifname[IF_NAMESIZE];
+	char cmd_in[256] = "";
+	char cmd_eg[256] = "";
+	int ret;
+
+	if( target > MAX_VFS ) {
+		bleat_printf( 0, "mirror not set: target vf out of range: %d", (int) target );
+		return -1;
+	}
+
+	if (vfd_mlx5_get_ifname(port_id, ifname))
+		return -1;
+
+	switch( direction ) {
+		case MIRROR_OFF:
+			sprintf(cmd_in, "echo %s %d > /sys/class/net/%s/device/sriov/%d/ingress_mirr",
+				"rem", vf, ifname, target);
+			sprintf(cmd_eg, "echo %s %d > /sys/class/net/%s/device/sriov/%d/egress_mirr",
+				"rem", vf, ifname, target);
+			break;
+		case MIRROR_IN:
+			sprintf(cmd_in, "echo %s %d > /sys/class/net/%s/device/sriov/%d/ingress_mirr",
+				"rem", vf, ifname, target);
+			sprintf(cmd_eg, "echo %s %d > /sys/class/net/%s/device/sriov/%d/egress_mirr",
+				"add", vf, ifname, target);
+			break;
+		case MIRROR_OUT:
+			sprintf(cmd_in, "echo %s %d > /sys/class/net/%s/device/sriov/%d/ingress_mirr",
+				"add", vf, ifname, target);
+			sprintf(cmd_eg, "echo %s %d > /sys/class/net/%s/device/sriov/%d/egress_mirr",
+				"rem", vf, ifname, target);
+			break;
+		case MIRROR_ALL:
+			sprintf(cmd_in, "echo %s %d > /sys/class/net/%s/device/sriov/%d/ingress_mirr",
+				"add", vf, ifname, target);
+			sprintf(cmd_eg, "echo %s %d > /sys/class/net/%s/device/sriov/%d/egress_mirr",
+				"add", vf, ifname, target);
+			break;
+
+	}
+
+	ret = system(cmd_in);
+
+	if (ret < 0) {
+	//	printf("cmd exec returned %d\n", ret);
+	}
+
+	ret = system(cmd_eg);
+
+	if (ret < 0) {
+	//	printf("cmd exec returned %d\n", ret);
+	}
+
+	return 0;
+}
+
+int
+vfd_mlx5_set_vf_tcqos( portid_t port_id, uint32_t vf, uint8_t tc, uint32_t rate )
+{
+	char ifname[IF_NAMESIZE];
+	char cmd[256] = "";
+	int ret;
+
+	if (vfd_mlx5_get_ifname(port_id, ifname))
+		return -1;
+
+	sprintf(cmd, "echo %d %d > /sys/class/net/%s/device/sriov/%d/min_tx_tc_rate",
+		tc, rate, ifname, vf);
 
 	ret = system(cmd);
 
