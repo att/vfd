@@ -9,6 +9,18 @@
 				macros used here are defined in the two setup files in the parent directory
 				(making them available to all VFd doc source). 
 				
+	Build:
+				These commands can be used to build various output from this source using
+				one of the {X}fm fommatters:
+					MARKDOWN=1 tfm README.xfm README.md
+					MARKDOWN=0 tfm README.xfm README.txt
+					MARKDOWN=0 pfm README.xfm README.ps
+					MARKDOWN=0 hfm README.xfm README.html
+
+				or just run 'mk all'.
+
+				This document is currently used as the main VFd readme, so the .md and .txt 
+				versions should be copied to the upper level directory and checked in.
 .fi
 
 .sf Helvetica
@@ -16,17 +28,16 @@
 .hn off
 
 .if hfm
-.co bg white
-.co #000000
+	.co bg white
+	.co #000000
 .fi
 
 .cs file ../setup_style.im
 .im ../setup.im
 .im ../setup_image.im
 
-.ll 6i
-.cd 1 6i
-	
+.dv image_url_base https://raw.githubusercontent.com/wiki/att/vfd/images/overview
+
 .** while it makes sense to leave spaces after opening and before closing of macro parens (e.g. &ital( word )
 .** this actually causes issues for the space sensitive markdown world. Since we must support this beast
 .** of an output format, be warned that spaces will likely cause issues, as well as make it more difficult
@@ -37,6 +48,8 @@
 .st 18p
 .sf Helvetica
 .gv date
+
+.** generate a title for html/postscript
 .if !tfm
 	.bc start
 	Virtual Function Daemon -- VFd
@@ -46,11 +59,6 @@
 	.bc end
 	.st &textsize
 	.ll 6i
-.ei
-	.** .im ../caution.im 
-	.** &bold(Virtual Function Daemon -- VFd)
-	.** .sp
-	.** &bold(&sub_title)
 .fi
 
 .st &textsize
@@ -86,7 +94,7 @@ requests.
 .gv figure
 .dv overview_fig &_fig
 &center_start
-&image( figures/overview.eps x=1.5i close proportional : 3 : General relationship of NIC, VFs, "guests" and VFd : wiki_images/overview/overview.png )
+&image( figures/overview.eps x=1.5i close proportional : 3 : General relationship of NIC, VFs, "guests" and VFd : &{image_url_base}/overview.png )
 &center_end
 
 Figure &overview_fig illustrates the relationship between the NIC (PF), the configured VFs,
@@ -106,8 +114,23 @@ In addition, VFd will configure the PF and VFs to:
 	&item Enable and configure DCB quality of service.
 &end_list
 &uindent
-
 .sp 1
+
+In addition to the NIC configurations listed above, VFd provides the means to access the 
+packet and byte counters allowing for them to be available to the user; something that is
+not possible when using a kernel driver to manage the VFs.  
+Statistics, both at the PF and VF level include:
+.sp .5
+&indent
+&beg_list( &lic1 )
+	&item Packet counts for inbound (Rx) and outbound (Tx)
+	&item Byte counts, Tx and Rx
+	&item Error packet count
+	&item Count of spoofed packets
+&end_list
+&uindent
+.sp 1
+
 
 &h2( The Guests )
 &start_note( .5i )
@@ -151,6 +174,7 @@ In addition to managing the configurations of all VFs, VFd also provides real-ti
 policy enforcement when a guest makes a request to configure it's interface.
 The following are examples of guest actions which require the approval of VFd before the 
 requested changes are actually applied o the VF:
+.cc .5i 
 .sp .5
 &beg_list
 &item Add or modify VLAN ID(s)
@@ -202,7 +226,7 @@ untagged packets from being written onto a VF's queue.
 .gv figure
 .dv strip_fig &_fig
 .sp 1
-&cimage( figures/vlan_strip.eps x=.5i close proportional : 2.5 : On transmit, insert VLAN tag into untagged packet (top to middle), and into a single tagged packet (middle to bottom). On receipt, the reverse. : wiki_images/overview/vlan_strip.png )
+&cimage( figures/vlan_strip.eps x=.85i close proportional : 2 : On transmit, insert VLAN tag into untagged packet (top to middle), and into a single tagged packet (middle to bottom). On receipt, the reverse. : &{image_url_base}/vlan_strip.png )
 
 &h3( Stripping and Inserting VLAN Tags )
 The VLAN ID, or tag, may be automatically removed, stripped, as a packet is received, 
@@ -218,11 +242,14 @@ of the correct ID is the responsibility of the sending process, and cannot be ad
 packet by the NIC. 
 
 &h3( Q in Q Stripping )
+.if false
 &start_note( .5i )
 	In the near future some NICs might support the removal of both inner and outer VLAN IDs. 
 	At this time, VFd does not provide any support for this.
 .sp .1
 &end_note
+.fi 
+
 Packets arriving with multiple embedded VLAN IDs (figure &strip_fig, bottom), also known as Q in Q, are subject to the same stripping
 practice as described above.  
 Only the first, or &ital(outer) tag, is removed from a received packet, and only the outer 
@@ -230,7 +257,7 @@ tag will be inserted on transmit.
 Using the illustration as an example, the middle packet would be delivered to the guest after
 stripping, and the bottom packet would be transmitted.
 It is the responsibility of the guest software (kernel driver, or DPDK application) to properly
-distinguish packets, if necessary, based on the VLAN ID which remains in the packet &note .sm . 
+distinguish packets, if necessary, based on the VLAN ID which remains in the packet.
 
 
 &h2( MAC Addresses )
@@ -293,7 +320,7 @@ When set, an attempt by a guest to increase the MTU value over this limit will b
 
 
 &h1( Traffic Mirroring )
-&start_note( .4 )
+&start_note( .4i )
 	The directional notation of mirrored traffic is relative to the guest, and not to the NIC or 
 	switch. Thus &ital(inbound) means traffic received; inbound to the guest.
 .sp .1
@@ -303,6 +330,30 @@ VFd provides for real-time mirror configuration, independent of VF configuration
 inbound &note .sm , outbound, or all of a VF's traffic to be duplicated and passed to another VF on the
 same PF. 
 
+.ca start table1.ca
+.sp 1
+.if hfm
+	.bc start
+.ei
+	&table( 2.8i 2.8i )
+.fi
+	&image( figures/mirror_in.eps x=.1i close proportional  : 1.5 : Inbound mirroring showting traffic also being delivered to Guest B. : &{image_url_base}/mirror_in.png )
+&table_cell()
+	&image( figures/mirror_out.eps x=.1i close proportional : 1.5 : Outbound mirroring showing all Tx traffic from Guest A delivered to Guest B. : &{image_url_base}/mirror_out.png )
+.if hfm
+	.bc end
+.ei
+	&table_end
+.fi
+.ca end
+
+.gv remain
+.if &_iremain 3 <
+	.oe .im table1.ca
+.ei
+	.im table1.ca
+.fi
+
 .sp
 Mirroring traffic locally has benefits with respect to debugging connectivity issues as well as
 application issues.
@@ -310,24 +361,6 @@ However, there are potential impacts, some serious, to the overall throughput of
 traffic is mirrored over the NIC bridge. 
 For instance, a badly behaved application used as the receiver for mirrored traffic has the potential
 to block all traffic to the source VF.
-
-.sp 1
-.if hfm
-	.bc start
-.ei
-	&table( 2.8i 2.8i )
-.fi
-	&image( figures/mirror_in.eps x=.1i close proportional  : 2 : Inbound mirroring showting traffic also being delivered to Guest B. : wiki_images/overview/mirror_in.png )
-&table_cell()
-	&image( figures/mirror_out.eps x=.1i close proportional : 2 : Outbound mirroring showing all Tx traffic from Guest A delivered to Guest B. : wiki_images/overview/mirror_out.png )
-.if hfm
-	.bc end
-.ei
-	&table_end
-.fi
-.sp
-
-
 
 .** -----------------------------------------------------------------------------------------------
 .if ! pfm
@@ -353,6 +386,7 @@ to block all traffic to the source VF.
 
 
 
+.ln
 .gv version
 .gv Date
 &def_list( .75i &ditext )
@@ -362,5 +396,4 @@ to block all traffic to the source VF.
 &di(Formatter) &_ver
 &end_dlist
 
-.cs end
-.cs end
+&quit

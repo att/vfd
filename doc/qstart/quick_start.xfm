@@ -25,7 +25,7 @@
 .** use markdown.im to set up for any of the formatters, not just when MARKDOWN
 .** is set.
 .** 
-.im doc/setup.im
+.im ../setup.im
 
 .if ! super
 	.dv msg ###ERROR### markdown.im seems to be missing or incomplete
@@ -34,7 +34,24 @@
 	.qu
 .fi
 
-&h1(Virtual Function Daemon -- VFd)
+.** generate a title for html/postscript
+.if !tfm
+	.st 18
+	.bc start
+	Virtual Function Daemon -- VFd
+	.br
+	.st 14
+	VFd Quick Start Guide
+	.bc end
+	.st &textsize
+	.ll 6i
+.fi
+
+.if pfm
+	&h1(Introduction)
+.ei
+	&h1(Virtual Function Daemon -- Quick Start)
+.fi
 VFd is a DPDK application which provides for the configuration of, and policy 
 enforcement over, VFs which have been allocated on one or more PFs of a NIC.
 For each VF that VFd is to manage a JSON configuration file outlining the 
@@ -43,10 +60,13 @@ or dynamically while VFd is running.
 The overall vision for VFd is to be the hypervisor of the NIC world. 
 .sp 1
 
+.if false
+.**  this was at one point in time our readme...
 This &ital(README) will provide a brief overview of VFd capabilities with respect to 
 PF and VF configuration, policy enforcement and finally a quick
 start guide to help those who'd like to avoid wandering through the documentation
 contained on the repo wiki. 
+.fi
 
 &h2(Configuration)
 Via the VF's configuration file, the following may be specified:
@@ -78,7 +98,7 @@ unable to reset their MAC address, or the address must be supplied from an outsi
 source. 
 .sp 1
 When no MAC addresses are given in a VF's configuration, a randomly generated address
-is configured for the VF at the time the VF is attachd to the guest.  
+is configured for the VF at the time the VF is attached to the guest.  
 When this is done it is still possible for the guest to override the random address
 with one of their choosing.
 
@@ -371,12 +391,16 @@ lrwxrwxrwx  1 root root       0 Jan 26 08:31 virtfn11 -> ../0000:08:12.6
 .** ---------------------------- capture floating control -------------------------------------
 .** this will be included in pfm mode to float the text to the left of the figure
 .ca start float.ca
+	.** if we're processing as a part of an on eject block, force top line
+	.sp .1
+
     .** get and save the current y value so we can come back to it
     .gv y
-    .dv top_y &_cury
+    .dv top_y [ &_cury &textsize - ]
 	.** snag the figure, into a table for visualisation/separation
     .ll -3.5i
     .in +3.5i
+	.sp .5
 	.ta B b=1 2.15i
 	.im config.ca
 	.et
@@ -401,10 +425,11 @@ lrwxrwxrwx  1 root root       0 Jan 26 08:31 virtfn11 -> ../0000:08:12.6
 .** if not in pfm, figure sucked in later
 .if pfm
 	.gv figure
-	.dv config_fig
+	.dv config_fig &_fig
 	.gv remain
 	.if &_iremain 7 <
-		.oe page .im float.ca
+		.** push oneject such that 'n' no state is saved allowing us to set floating 
+		.oe page nostate .im float.ca 
 	.ei
 		.im float.ca
 	.fi
@@ -419,7 +444,7 @@ to supply the alternate location to VFd.
 
 .sp
 The configuration file contains expected information such as log file locations, 
-log retention durations, and verbosity levels.
+log retention time specifications, and verbosity levels.
 It also contains the configuration of each PF that VFd is to manage. 
 .if pfm
 	Figure &config_fig provides a sample configuration for VFd.
@@ -427,6 +452,7 @@ It also contains the configuration of each PF that VFd is to manage.
 	A small sample configuration file below illustrates the layout.
 .fi
 For each PF described in the config, identified by its PCIID, the following information can be supplied:
+
 
 &beg_list(&lic1)
 &item Promiscuous mode
@@ -475,9 +501,12 @@ deleted (note that the suffix is &bold(not) given on the command line):
 &ex_end
 
 &h3(VF Configuration Contents)
+.gv figure
+.dv vf_config_fig
 The contents of a VF config file defines the PF that the VF is managed by, the VF
-ID (number), and other parameters as illustrated below.
+ID (number), and other parameters as illustrated in figure &vf_config_fig.
 
+.ca start vf_config.ca
 &ex_start
 {
     "comments":      "VF test config for PF 0, VF 1 ",
@@ -507,11 +536,28 @@ ID (number), and other parameters as illustrated below.
 }
 &ex_end_nosp
 .fg A sample VF configuration file.
+.sp
+.ca end
+
+.** if in pfm formatter, ensure the figure fits on the current page, else push it to next
+.if pfm
+	.gv remain
+	.if &_iremain 3 <
+		.oe page .im vf_config.ca 
+	.ei
+		.im vf_config.ca
+	.fi
+.ei
+	.** non-page oriented output just suck it in here.
+	.im vf_config.ca
+.fi
+
+
 .sp 1
 
 For most guests, there is no need to specify any MAC addresses, and allowing unknown
 unicast should generally be &cw(false) unless you are very sure that you want the guest
-to receive every packet destined for an unknown MAC address on one of the conifigured VLANs. 
+to receive every packet destined for an unknown MAC address on one of the configured VLANs. 
 When the &cw(strip_stag) setting is true, the NIC will remove the VLAN ID (the outer
 tag if QinQ encapsulation is being used) before the packet is presented to the VF. 
 On transmit, the VLAN ID listed, if only one is listed, will automatically be 
@@ -614,11 +660,18 @@ If the goal is to use a DPDK application in the guest, then the proper driver wi
 need to be bound to the device before it can be started. 
 
 
-.sp 2
+.pa
 .lw 0
 .ln
 .gv Date
 .gv version
-&_date; &_ver
+.gv Date
+
+&def_list( .85i &ditext )
+&di(Source) vfd/doc/qstart/quick_start.xfm
+&di(Original) 3 February 2018
+&di(Revised) &_date
+&di(Formatter) &_ver
+&end_dlist
 
 &quit

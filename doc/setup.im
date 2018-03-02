@@ -41,19 +41,24 @@
 .** -------------------------------------------------------------------------------
 
 .if pfm
-	.cd 1 6.5i i=.75i m=0i
+	.** .cd 1 6.5i i=.75i m=0i
+
+	.** using 6.5 with indent of 1i at the column level centers pg numbers on pg nicely
+	.** use indent to center the text column.
+	.cd 1 6.5i i=1.i m=0i
 .ei
 	.cd 1 6.8i i=0i m=0i
 .fi
 
-.ll 6.5i
-.in .5i
+.** best defaults for pfm; overridden for other formatters below
+.ll 6i
+.in .25i
 .sf Helvetica
 .st 10
 
-.dh 1  m=.5i e=no s=3,.5 i=0 p=14 f=Helvetica-bold r=.75i
-.dh 2  m=.5i s=1.5,.5 i=0      p=12 f=Helvetica-bold  r=.25i
-.dh 3  m=.5i s=1,0 i=0      p=10 f=Helvetica-bold	r=.25i
+.dh 1  m=.25i e=no s=3,.5 i=0 p=14 f=Helvetica-bold r=.75i
+.dh 2  m=.25i s=1.5,.5 i=0      p=12 f=Helvetica-bold  r=.25i
+.dh 3  m=.25i s=1,0 i=0      p=10 f=Helvetica-bold	r=.25i
 
 .ju on
 .hn off
@@ -65,7 +70,7 @@
 .dv ditext Helvetica-bold
 .dv cwfont Courier
 
-.** super sccript number for start_note macro
+.** supersccript number for start_note macro
 .dv ss_num 1
 
 .**  these macros are common for prfm/tfm, markdown will override some
@@ -90,8 +95,6 @@
 .dv ex_end      .fo on .sf ^&textfont .st ^&textsize .in -.15i .ll +.25i .sp 1
 .dv ex_end_nosp .fo on .sf ^&textfont .st ^&textsize .in -.15i .ll +.25i .sp .1
 	
-.ll 5.75i
-
 .dv h1 .h1 $1	
 .dv h2 .h2 $1
 .dv h3 .h3 $1
@@ -132,7 +135,6 @@
 	.dv cw .tf Courier 8p  $1 ^:
 
 	.** image has the form:  &image(postscript cmd:link:url)
-	.in .5i
 	.dv http http://
 .ei
 	.dv http ` `
