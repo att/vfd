@@ -1,16 +1,14 @@
 #!/usr/bin/env ksh
 
-#	Abstract:	This script will run all of the important tests and create a single
-#				log file in the current directory with output from each. if the
-#				-l option is given, then we assume that we are doing valgrind 
-#				leak/memory check analysis and will expect to find a working copy
-#				of valgrind either via the PATH or in $HOME.
-#
+#	Abstract:	This script will run all of the tests and create a single
+#				log file in the current directory with output from each.
+#				If the -l option is given, then we assume that we are doing
+#				valgrind leak/memory check analysis and will expect to find
+#				a working copy of valgrind either via the PATH or in $HOME.
 #				When running valgrnd, we only check for errors that it reports
 #				and don't look for specific errors in the output of the tests,
 #				so to cover everything possible, run twice; once with -l and
 #				once without.
-#
 #	Date:		27 February 2018
 #	Author:		E. Scott Daniels
 #
@@ -32,13 +30,23 @@ function check4err {
 		return
 	fi
 
-	# if callser set a value for ignore conditionals, then n errors is acceptable.
+	# if caller set a value for ignore conditionals, then n errors is acceptable.
 	#
-	if grep -q "ERROR SUMMARY: $ignore_conditionals errors" /tmp/PID$$.out
+	if grep -q "ERROR SUMMARY: 0 errors" /tmp/PID$$.out		# even if ignore is set, answer might be 0, so check that first
 	then
 		echo "[OK]"
 	else
-		echo "[FAIL]"
+		if (( ignore_conditionals > 0 ))
+		then
+			if grep -q "ERROR SUMMARY: $ignore_conditionals errors" /tmp/PID$$.out
+			then
+				echo "[OK]"
+			else
+				echo "[FAIL]"
+			fi
+		else
+			echo "[FAIL]"
+		fi
 	fi
 
 	ignore_conditionals=0
@@ -174,7 +182,7 @@ function bleat {
 	if [[ -z $valgrind ]]		# scan output to validate further if not doing leak analysis
 	then
 		c=$( ls foo.log* |wc -l )
-		if (( $c == 3 ))
+		if (( c == 3 ))
 		then
 			if grep -q "NOT" /tmp/PID$$.out foo.log*		# messages in any log with NOT are bad
 			then
