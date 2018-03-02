@@ -28,17 +28,14 @@
 .hn off
 
 .if hfm
-.co bg white
-.co #000000
+	.co bg white
+	.co #000000
 .fi
 
 .cs file ../setup_style.im
 .im ../setup.im
 .im ../setup_image.im
 
-.ll 6i
-.cd 1 6i
-	
 .** while it makes sense to leave spaces after opening and before closing of macro parens (e.g. &ital( word )
 .** this actually causes issues for the space sensitive markdown world. Since we must support this beast
 .** of an output format, be warned that spaces will likely cause issues, as well as make it more difficult
