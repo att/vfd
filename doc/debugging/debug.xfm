@@ -14,7 +14,7 @@
 .hn off
 
 .im ../setup.im
-.in 0i
+.** .in 0i
 .xx 2
 .xx 0
 
@@ -47,14 +47,14 @@
 
 
 &h1(Overview)
-&start_note
-	A basic primer on SR-IOV can be found at .br
+&start_note( .5i )
+	A basic primer on SR-IOV can be found using the following URL: .br
 	&{http}www.intel.com/content/dam/doc/application-note/pci-sig-sr-iov-primer-sr-iov-technology-paper.pdf
 	.sp .3
 &end_note
 
 VFd is a daemon which manages the configuration of virtual and physical functions (VFs and PFs) which 
-are exposed by an SR-IOV &super capable network interface card (NIC).  
+are exposed by an SR-IOV &note capable network interface card (NIC).  
 Configuration and management is accomplished via DPDK which requires a DPDK enabled driver be attached
 to both the NIC PF and VFs which are to be made accessible to the guests through SR-IOV.
 Once a DPDK driver is bound to the PF and VFs, the usual debugging tools (e.g. tcpdump) become unavailable.

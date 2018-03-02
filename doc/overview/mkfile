@@ -1,0 +1,33 @@
+
+# plan9 mk
+
+<../master.mk
+
+fig_src = overview mirror_out mirror_in vlan_strip
+
+all:V: vfd_overview.pdf  vfd_overview.md vfd_overview.html vfd_overview.txt figures 
+
+figures:V: ${fig_src:%=figures/%.eps}
+images:V: ${fig_src:%=figures/%.png}
+
+vfd_overview.html:: ../setup.im overview.xfm figures
+	hfm overview.xfm vfd_overview.html
+
+vfd_overview.ps:: ../setup.im overview.xfm figures
+	pfm overview.xfm vfd_overview.ps
+
+vfd_overview.txt:: ../setup.im overview.xfm figures
+	MARKDOWN=0 tfm overview.xfm vfd_overview.txt
+
+vfd_overview.md:: ../setup.im overview.xfm figures
+	MARKDOWN=1 tfm overview.xfm vfd_overview.o
+	sed 's/^ //' vfd_overview.o >vfd_overview.md
+	rm vfd_overview.o
+
+# ditch _everything_ that can be rebuilt
+nuke:V: clean
+	rm -f  *.ps *.pdf *.md
+
+# ditch only intermediates and tmp files
+clean:V:
+	rm -f *.ecnfile *.bcnfile *.ca *.sp

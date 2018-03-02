@@ -1,0 +1,30 @@
+
+# plan9 style mk
+
+<../master.mk
+
+fig_src = 
+
+all:V: vfd_quick_start.pdf  vfd_quick_start.md vfd_quick_start.html
+
+#figures:V: ${fig_src:%=figures/%.eps}
+#images:V: ${fig_src:%=figures/%.png}
+
+vfd_quick_start.html:: ../setup.im quick_start.xfm
+	hfm quick_start.xfm vfd_quick_start.html
+
+vfd_quick_start.ps:: ../setup.im quick_start.xfm
+	pfm quick_start.xfm vfd_quick_start.ps
+
+vfd_quick_start.md:: ../setup.im quick_start.xfm
+	MARKDOWN=1 tfm quick_start.xfm vfd_quick_start.o
+	sed 's/^ //' vfd_quick_start.o >vfd_quick_start.md
+	rm vfd_quick_start.o
+
+# ditch _everything_ that can be rebuilt
+nuke:V: clean
+	rm -f  *.ps *.pdf *.md
+
+# ditch only intermediates and tmp files
+clean:V:
+	rm -f *.ecnfile *.bcnfile *.ca *.sp

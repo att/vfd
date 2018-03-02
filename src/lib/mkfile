@@ -5,7 +5,7 @@ jsmn_lib = -L jsmn -ljsmn
 cc = gcc
 cflags = -I jsmn -g
 
-binaries = jwrapper_test parm_file_test list_test fifo_test bleat_test id_mgr_test
+binaries = jwrapper_test parm_file_test list_test fifo_test bleat_test id_mgr_test filesys_test  pfx_list_test  vf_config_test
 
 %.o: %.c
 	$cc $cflags -c $prereq
@@ -13,7 +13,7 @@ binaries = jwrapper_test parm_file_test list_test fifo_test bleat_test id_mgr_te
 all:V: libvfd.a jsmn
 
 lib = libvfd.a
-lib_src = jwrapper jw_xapi symtab config ng_flowmgr fifo list_files bleat hot_plug id_mgr
+lib_src = jwrapper jw_xapi symtab config ng_flowmgr fifo list_files bleat hot_plug id_mgr filesys
 $lib(%.o):N:    %.o
 $lib:   ${lib_src:%=$lib(%.o)}
     ksh '(
@@ -58,13 +58,18 @@ pfx_list_test::	pfx_list_test.c $lib
 id_mgr_test::	id_mgr_test.c $lib
 	$cc $cflags id_mgr_test.c -o id_mgr_test -L. -lvfd $jsmn_lib
 
-
+filesys_test::	filesys_test.c $lib
+	$cc $cflags filesys_test.c -o filesys_test -L. -lvfd $jsmn_lib
 
 hot_plug_test::	hot_plug_test.c $lib
 	$cc $cflags hot_plug_test.c -o hot_plug_test -L. -lvfd $jsmn_lib
 
 
-all_tests:V:	parm_file_test jwrapper_test jwrapper_test2 vf_config_test fifo_test bleat_test list_test pfx_list_test
+all_tests:V: $binaries
+
+#jwrapper_test jwrapper_test2 parm_file_test vf_config_test fifo_test bleat_test \
+#	list_test pfx_list_test id_mgr_test filesys_test hot_plug_test hot_plug_test
+
 
 test:V:
 	ksh jwrapper_test.ksh

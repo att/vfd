@@ -4,12 +4,7 @@ support VFd.  These patches, along with the command(s) to apply them to DPDK
 should be described below.  Patches will be removed from this directory when 
 they are available in the current DPDK release. 
 
-We assume that VFD_PATH is the path to the VFd src directory.
-
-dpdk-dev-net-ixgbe-fix-VF-RX-hang.patch
-cd $RTE_SDK
-git apply --whitesapace=fix $VFD_PATH/dpdk_patches/dpdk-dev-net-ixgbe-fix-VF-RX-hang.patch
-
+We assume that VFD_SRC is the path to the VFd src directory.
 
 dpdk-ixgbe_pf_host_configure.patch
 This patch prevents the PF code in DPDK from returning a failure indication when a 
@@ -18,3 +13,17 @@ more complex
 
 cd $RTE_SDK
 git apply --ignore-whitespace $VFD_PATH/dpdk_patches/dpdk-ixgbe_pf_host_configure.patch
+
+Starting in 2018, patches will be named with a leading dpdk<yymm>- to indicate
+the release year and month (dpdk) that the patch applies to.  Patches will be 
+removed after a bit of time, but should allow for the regression of dpdk by 
+a couple of releases in order to evaluate VFd code against older DPDK versions
+if necessary.
+
+dpdk 1802 patches:
+dpdk1802-ixgbe_macvlan.patch
+	This patch prevents RX hang for ixgbe controlled devices
+
+	cd $RTE_SDK
+	git apply --ignore-whitespace $VFD_PATH/dpdk_patches/dpdk1802-ixgbe_macvlan.patch
+

@@ -70,18 +70,27 @@
 #include <rte_ethdev.h>
 #include <rte_string_fns.h>
 #include <rte_spinlock.h>
+#include <rte_version.h>
+
+#if VFD_KERNEL
+#include "vfd_nl.h"
+#endif
 
 #include <vfdlib.h>
 
 #include "vfd_bnxt.h"
 #include "vfd_ixgbe.h"
 #include "vfd_i40e.h"
+#include "vfd_mlx5.h"
 
 
 // ---------------------------------------------------------------------------------------
 #define SET_ON				1		// on/off parm constants
 #define SET_OFF				0
 #define FORCE				1
+
+#define KEEP_DEFAULT		0		// keep default mac when clearing
+#define RESET_DEFAULT		1		// reset default mac with a random address
 
 #define VF_VAL_MCAST		0		// constants passed to get_vf_value()
 #define VF_VAL_BCAST		1
@@ -213,6 +222,7 @@ struct vf_s
 	int     strip_ctag;          
 	int     strip_stag;          
 	int     insert_stag;         
+	int     insert_ctag;         
 	int     vlan_anti_spoof;      // if use VLAN filter then set VLAN anti spoofing
 	int     mac_anti_spoof;       // set MAC anti spoofing when MAC filter is in use
 	int     allow_bcast;
@@ -226,13 +236,14 @@ struct vf_s
 	int     num_macs;
 	int		first_mac;				// index of first mac in list (1 if VF has not changed their mac, 0 if they've pushed one down)
 	int     vlans[MAX_VF_VLANS];
-	char    macs[MAX_VF_MACS][18];
+	char    macs[MAX_VF_MACS][18];	// human readable MAC strings
 	int     rx_q_ready;
 	int 	default_mac_set;
 
 	uid_t	owner;					// user id which 'owns' the VF (owner of the config file from stat())
 	char*	start_cb;				// user commands driven just after initialisation and just before termination
 	char*	stop_cb;
+	char*	config_name;			// name given in config file for delete confirmation
 	uint8_t	qshares[MAX_TCS];		// percentage of each queue (TC) that has been set in the config for the vf
 };
 
@@ -262,8 +273,8 @@ typedef struct sriov_port_s
 	int     	num_mirrors;
 	int			nvfs_config;			// actual number of configured vfs; could be less than max
 	int			ntcs;					// number traffic clases (must be 4 or 8)
-	int     	num_vfs;
-	struct  	mirror_s mirrors[MAX_VFS];		// mirror info for each VF
+	int     	num_vfs;					// number of VF spaces in the list used, NOT the total allocated on the port
+	struct  	mirror_s mirrors[MAX_VFS];	// mirror info for each VF
 	struct  	vf_s vfs[MAX_VFS];
 	tc_class_t*	tc_config[MAX_TCS];		// configuration information (max/min lsp/gsp) for the TC	(set from config)
 	int*		vftc_qshares;			// queue percentages arranged by vf/tc (computed with each add/del of a vf)
@@ -282,7 +293,7 @@ typedef struct sriov_conf_c
 	int     num_ports;						// number of ports actually used in ports array
 	struct sriov_port_s ports[MAX_PORTS];	// ports; CAUTION: order may not be device id order
 	rte_spinlock_t update_lock;				// we lock the config during update and deployment
-	void*	mir_id_mgr;							// reference point for the id manager to allocate mirror ids
+	void*	mir_id_mgr;						// reference point for the id manager to allocate mirror ids
 } sriov_conf_t;
 
 
@@ -398,6 +409,7 @@ void init_port_config(void);
 
 int get_split_ctlreg( portid_t port_id, uint16_t vf_id );
 int set_mirror( portid_t port_id, uint32_t vf, uint8_t id, uint8_t target, uint8_t direction );
+int set_mirror_wrp( portid_t port_id, uint32_t vf, uint8_t id, uint8_t target, uint8_t direction );
 void set_queue_drop( portid_t port_id, int state );
 void set_split_erop( portid_t port_id, uint16_t vf_id, int state );
 
@@ -457,8 +469,7 @@ int suss_loopback( int port );
 struct sriov_port_s *suss_port( int portid );
 struct vf_s *suss_vf( int port, int vfid );
 struct mirror_s*  suss_mirror( int port, int vfid );
-void push_mac( int port, int vf, char* mac );
-extern int add_mac( int port, int vfid, char* mac );
+
 
 void add_refresh_queue(u_int8_t port_id, uint16_t vf_id);
 void process_refresh_queue(void);
@@ -466,7 +477,7 @@ int is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter );
 
 int vfd_update_nic( parms_t* parms, sriov_conf_t* conf );
 int vfd_init_fifo( parms_t* parms );
-int is_valid_mac_str( char* mac );
+//int is_valid_mac_str( char* mac );
 char*  gen_stats( sriov_conf_t* conf, int pf_only, int pf );
 int get_nic_type(portid_t port_id);
 int get_mac_antispoof( portid_t port_id );
@@ -475,6 +486,14 @@ int get_num_vfs( uint32_t port_id );
 void discard_pf_traffic( portid_t portid );
 
 void log_port_state( struct sriov_port_s* port, const_str msg );
+
+// ---- mac support ---------------------------------------
+extern int mac_init( void );
+extern int add_mac( int port, int vfid, char* mac );
+extern int can_add_mac( int port, int vfid, char* mac );
+extern int clear_macs( int port, int vfid, int assign_random );
+extern int push_mac( int port, int vfid, char* mac );
+extern int set_macs( int port, int vfid );
 
 //-- testing --
 extern void set_fc_on( portid_t pf, int force );
@@ -498,6 +517,7 @@ void qos_set_credits( portid_t pf, int mtu, int* rates, int tc8_mode );
 extern void qos_enable_arb( portid_t pf );
 extern void qos_set_tdplane( portid_t pf, uint8_t* pctgs, uint8_t *bwgs, int ntcs, int mtu );
 extern void qos_set_txpplane( portid_t pf, uint8_t* pctgs, uint8_t *bwgs, int ntcs, int mtu );
+extern void mlx5_set_vf_tcqos( sriov_port_t *port, uint32_t link_speed );
 
 
 //------- these are hacks in the dpdk library and we  must find a good way to rid ourselves of them ------

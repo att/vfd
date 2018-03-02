@@ -16,6 +16,11 @@
 				22 Sep 2017 : Prevent hanging lock in add_ports if already called.
 				25 Sep 2017 : Fix validation of mirror target bug.
 				10 Oct 2017 : Add support for mirror update and show mirror commands.
+				30 Jan 2017 : correct bug in mirror target range check (issue #242)
+				09 Feb 2018 : Fix potential memory leak if no json files exist in directory.
+								Correct loop initialisation bug; $259
+				14 Feb 2018 : Add support to keep config file name field and compare at delete. (#262)
+				19 Feb 2018 : Add support for 'live' config directory (#263)
 */
 
 
@@ -45,6 +50,86 @@ extern int vfd_init_fifo( parms_t* parms ) {
 
 	return 0;
 }
+
+/*
+	Move a 'used' configuration file. If suffix is nil, then we move the file to the 'live'
+	directory and do not change the filename.  If a suffix is provided, we just rename the 
+	file adding the suffix (assuming foo.json will be renamed foo.json.error in the spot
+	where the virtualisation manager left the bad meat.
+*/
+static void relocate_vf_config( parms_t* parms, char* filename, const_str suffix ) {
+	char	wbuf[2048];
+	unsigned int len;
+	const_str base;								// basename portion of filename
+
+	memset( wbuf, 0, sizeof( wbuf ) );			// keeps valgrind happy
+
+	if( suffix == NULL ) {						// move to the live directory
+		len = snprintf( wbuf, sizeof( wbuf ), "%s_live/", parms->config_dir );
+	} else {
+		if( (base = strrchr( filename, '/' )) != NULL ) {		// point 1 past the last slant
+			if( ++base == 0 ) {
+				bleat_printf( 0, "internal mishap: relocate vf config with suffix cannot be directory: %s", filename );
+				return;
+			}
+		} else {
+			base = filename;
+		}
+		len = snprintf( wbuf, sizeof( wbuf ), "%s/%s%s", parms->config_dir, base, suffix );
+	}
+
+	if( len >= sizeof( wbuf ) ) {			// truncated, config directory path just too bloody long
+		bleat_printf( 0, "cannot construct a target file or path to relocate %%s", filename );
+		return;
+	}
+
+	if( ! mv_file( filename, wbuf ) ) {
+		bleat_printf( 0, "config file relocation from %s to %s failed: %s", filename, wbuf, strerror( errno ) );
+	} else {
+		bleat_printf( 2, "config file relocated from %s to %s", filename, wbuf );
+	}
+}
+
+/*
+	Removes a vf configuration file from the live directory. If the directory name
+	passed is not nil, then the file is moved there and given a trailing dash (-), 
+	otherwise it is just unlinked.
+*/
+static void delete_vf_config( const_str fname, const_str target_dir ) {
+	char wbuf[2048];
+	const_str	tok;
+
+	if( ! target_dir ) {
+		if( unlink( fname ) < 0 ) {
+			bleat_printf( 0, "del_vf_conf: unable to unlink config file: %s: %s", fname, strerror( errno ) );
+			return;
+		}
+
+		bleat_printf( 2, "vdel_vf_conf: f config file deleted: %s", fname );
+		return;
+	}
+
+	if( (tok = strrchr( fname, '/' )) == NULL ) {		// point at basename if a full path (which it should be)
+		tok = fname;
+	} else {
+		tok++;
+	}
+
+	if( snprintf( wbuf, sizeof( wbuf ), "%s/%s-", target_dir, tok ) >= (int) sizeof( wbuf ) ) {
+		bleat_printf( 0, "del_vf_conf: unable to create target pathname, just unlinked: %s", fname );
+		unlink( fname );
+		return;	
+	}
+	
+	if( ! mv_file( fname, wbuf ) ) {
+		bleat_printf( 0, "del_vf_conf: unable to move %s to %s; just unlinked", fname, wbuf );
+		return;
+	}
+
+	bleat_printf( 2, "del_vf_conf: moved %s to %s", fname, wbuf );
+	
+}
+
 
 // ---------------------- validation --------------------------------------------------------------------------
 
@@ -203,7 +288,7 @@ void gen_port_qshares( sriov_port_t *port ) {
 			}
 		} else {
 			bleat_printf( 3, "no qshare normalisation needed: tc=%d sum=%d", i,  sums[i] );
-			for( j = i; j < port->num_vfs; j++ ) {
+			for( j = 0; j < port->num_vfs; j++ ) {
 				if( (vfid = port->vfs[j].num) >= 0 ){								// active VF
 					norm_pctgs[(vfid * ntcs)+i] =  port->vfs[j].qshares[i];			// sum is 100, stash unchanged
 				}
@@ -339,6 +424,7 @@ static char* gen_mirror_stats( struct sriov_conf_c* conf, int limit ) {
 						case MIRROR_IN: dir = "in"; break;
 						case MIRROR_OUT: dir = "out"; break;
 						case MIRROR_ALL: dir = "all"; break;
+						default: dir = "off";
 					}
 
 					blen += snprintf( wbuf, sizeof( wbuf ), "  vf %d (%s) ==> vf %d\n", v, dir, mirror->target );
@@ -518,7 +604,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	struct vf_s*	vf;					// point at the vf we need to fill in
 	char mbuf[BUF_1K];					// message buffer if we fail
 	int tot_vlans = 0;					// must count vlans and macs to ensure limit not busted
-	int tot_macs = 0;
+	//int tot_macs = 0;
 	float tot_min_rate = 0;
 	
 
@@ -568,6 +654,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		if( reason ) {
 			*reason = strdup( mbuf );
 		}
+		free_config( vfc );
 		return 0;
 	}
 
@@ -588,7 +675,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 			}
 
 			tot_vlans += port->vfs[i].num_vlans;
-			tot_macs += port->vfs[i].num_macs;
+			//tot_macs += port->vfs[i].num_macs;
 			tot_min_rate += port->vfs[i].min_rate;
 		}
 	}
@@ -651,42 +738,6 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		return 0;
 	}
 
-	if( vfc->nmacs + tot_macs > MAX_PF_MACS ) { 			// would bust the total across the whole PF
-		snprintf( mbuf, sizeof( mbuf ), "number of macs supplied (%d) cauess total for PF to exceed the maximum (%d)", vfc->nmacs, MAX_PF_MACS );
-		bleat_printf( 1, "vf not added: %s", mbuf );
-		if( reason ) {
-			*reason = strdup( mbuf );
-		}
-		free_config( vfc );
-		return 0;
-	}
-
-
-	if( vfc->nmacs > MAX_VF_MACS-1 ) {						// reduced by one so that the guest can push one down as the default mac
-		snprintf( mbuf, sizeof( mbuf ), "number of macs supplied (%d) exceeds the maximum (%d)", vfc->nmacs, MAX_VF_MACS-1 );
-		bleat_printf( 1, "vf not added: %s", mbuf );
-		if( reason ) {
-			*reason = strdup( mbuf );
-		}
-		free_config( vfc );
-		return 0;
-	}
-
-	/*
-	We now allow multiple VLAN IDs when stripping.  Strip is set (1) and insert is cleared (0) which 
-	causes strip on Rx and the tag indicated in the packet descriptor to be inserted on Tx.
-
-	if( vfc->strip_stag  &&  vfc->nvlans > 1 ) {		// one vlan is allowed when stripping
-		snprintf( mbuf, sizeof( mbuf ), "conflicting options: strip_stag may not be supplied with a list of vlan ids" );
-		bleat_printf( 1, "vf not added: %s", mbuf );
-		if( reason ) {
-			*reason = strdup( mbuf );
-		}
-		free_config( vfc );
-		return 0;
-	}
-	*/
-
 	if( vfc->nvlans <= 0 ) {							// must have at least one VLAN defined or bad things happen on the NIC
 		snprintf( mbuf, sizeof( mbuf ), "vlan id list is empty; it must contain at least one id" );
 		bleat_printf( 1, "vf not added: %s", mbuf );
@@ -734,40 +785,27 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		}
 	}
 
-	if( vfc->nmacs == 1 ) {											// only need range check if one
-		if( is_valid_mac_str( vfc->macs[0] ) < 0 ) {
-			snprintf( mbuf, sizeof( mbuf ), "invalid mac in list: %s", vfc->macs[0] );
-			bleat_printf( 1, "vf not added: %s", mbuf );
+	if( vfc->nmacs > MAX_VF_MACS ) {				// too many mac addresses specified for this (can_add cannot check this until VF/PF is actually added to config)
+		snprintf( mbuf, sizeof( mbuf ), "too many mac addresses given: %d > limit of %d", vfc->nmacs, MAX_VF_MACS );
+		bleat_printf( 0, "vf not added: %s", mbuf );
+		if( reason ) {
+			*reason = strdup( mbuf );
+		}
+		free_config( vfc );
+		return 0;
+	}
+
+	for( i = 0; i < vfc->nmacs-1; i++ ) {			// if a mac is duplicated it will be weeded out when we add
+		if( ! can_add_mac( port->rte_port_number, -1, vfc->macs[i] ) ) {			// must pass -1 for vfid as it's not in the config yet
+			snprintf( mbuf, sizeof( mbuf ), "mac cannot be added to this port (inuse, or max exceeded for VF): %s", vfc->macs[i] );
+			bleat_printf( 0, "vf not added: %s", mbuf );
 			if( reason ) {
 				*reason = strdup( mbuf );
 			}
 			free_config( vfc );
 			return 0;
 		}
-	} else {
-		for( i = 0; i < vfc->nmacs-1; i++ ) {
-			if( is_valid_mac_str( vfc->macs[i] ) < 0 ) {					// range check
-				snprintf( mbuf, sizeof( mbuf ), "invalid mac in list: %s", vfc->macs[i] );
-				bleat_printf( 1, "vf not added: %s", mbuf );
-				if( reason ) {
-					*reason = strdup( mbuf );
-				}
-				free_config( vfc );
-				return 0;
-			}
-
-			for( j = i+1; j < vfc->nmacs; j++ ) {
-				if( strcmp( vfc->macs[i], vfc->macs[j] ) == 0 ) {			// dup check
-					snprintf( mbuf, sizeof( mbuf ), "dupliate mac in list: %s", vfc->macs[i] );
-					bleat_printf( 1, "vf not added: %s", mbuf );
-					if( reason ) {
-						*reason = strdup( mbuf );
-					}
-					free_config( vfc );
-					return 0;
-				}
-			}
-		}
+		bleat_printf( 2, "mac address added to config: %s",  vfc->macs[i] );
 	}
 
 	if( ! (port->flags & PF_OVERSUB) ) {						// if in strict mode, ensure TC amounts can be added to current settings without busting 100% cap
@@ -777,6 +815,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 			if( reason ) {
 				*reason = strdup( mbuf );
 			}
+			free_config( vfc );
 			return 0;
 		}
 	}
@@ -787,6 +826,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		if( reason ) {
 			*reason = strdup( mbuf );
 		}
+		free_config( vfc );
 		return 0;
 	}
 
@@ -810,8 +850,8 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	}
 
 	if( vfc->mirror_dir != MIRROR_OFF ) {
-		if( vfc->mirror_target == vfc->vfid ||  vfc->mirror_target < 0 || vfc->mirror_target > port->num_vfs ) {
-			snprintf( mbuf, sizeof( mbuf ), "mirror target is out of range or is the same as this VF (%d): %d", (int) vfc->vfid, vfc->mirror_target );
+		if( vfc->mirror_target == vfc->vfid ||  vfc->mirror_target < 0 || vfc->mirror_target > port->nvfs_config ) {
+			snprintf( mbuf, sizeof( mbuf ), "mirror target is out of range or is the same as this VF (%d): target=%d range=0-%d", (int) vfc->vfid, vfc->mirror_target, port->nvfs_config );
 			if( reason ) {
 				*reason = strdup( mbuf );
 			}
@@ -820,6 +860,10 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 			return 0;
 		}
 
+	}
+
+	if( vfc->name == NULL ) {
+		vfc->name = strdup( "missing" );
 	}
 
 	// -------------------------------------------------------------------------------------------------------------
@@ -834,12 +878,14 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 
 	vf = &port->vfs[vidx];						// copy from config data doing any translation needed
 	memset( vf, 0, sizeof( *vf ) );				// assume zeroing everything is good
+	vf->config_name = strdup( vfc->name );		// hold name for delete
 	vf->owner = vfc->owner;
 	vf->num = vfc->vfid;
 	port->vfs[vidx].last_updated = ADDED;		// signal main code to configure the buggger
 	vf->strip_stag = vfc->strip_stag;
 	vf->strip_ctag = vfc->strip_ctag;
 	vf->insert_stag = vfc->strip_stag;			// both are pulled from same config parm
+	vf->insert_ctag = vfc->strip_ctag;			// both are pulled from same config parm
 	vf->allow_bcast = vfc->allow_bcast;
 	vf->allow_mcast = vfc->allow_mcast;
 	vf->allow_un_ucast = vfc->allow_un_ucast;
@@ -885,8 +931,10 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	vf->num_vlans = vfc->nvlans;
 
 	for( i = 1; i <= vfc->nmacs; i++ ) {				// src is 0 based but vf list is 1 based to allow for easy push if guests sets a default mac
-		strcpy( vf->macs[i], vfc->macs[i-1] );			// length vetted earlier, so this is safe
+		//strcpy( vf->macs[i], vfc->macs[i-1] );						// length vetted earlier, so this is safe
+		add_mac( port->rte_port_number, vf->num, vfc->macs[i-1] );		// this should not fail as we vetted it before
 	}
+
 	vf->num_macs = vfc->nmacs;
 	vf->first_mac = 1;								// if guests pushes a mac, we'll add it to [0] and reset the index
 
@@ -907,26 +955,36 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 
 /*
 	Get a list of all config files and add each one to the current config.
-	If one fails, we will generate an error and ignore it.
+	If one fails, we will generate an error and ignore it. We take the config dir name
+	supplied in the main VFd configuration and add "_live" to build the directory 
+	of live vf configuration files.  This prevents the virtualisation manager from 
+	dropping a few files while we're down which have conflicts/duplications that
+	would cause a non-deterministic start state.
 */
 extern void vfd_add_all_vfs(  parms_t* parms, sriov_conf_t* conf ) {
 	char** flist; 					// list of files to pull in
 	int		llen;					// list length
 	int		i;
+	char	wbuf[2048];				// we'll bang on our 'live' designation to the config dir string in this
 
 	if( parms == NULL || conf == NULL ) {
 		bleat_printf( 0, "internal mishap: NULL conf or parms pointer passed to add_all_vfs" );
 		return;
 	}
 
-	flist = list_files( parms->config_dir, "json", 1, &llen );
+	if( snprintf( wbuf, sizeof( wbuf ), "%s_live", parms->config_dir ) >= (int) sizeof( wbuf ) ) {		// create something like /var/lib/vfd/config_live
+		bleat_printf( 0, "WRN: cannot construct live directory; work buffer not large enough (%d)", (int) sizeof( wbuf ) );
+		return;
+	}
+
+	flist = list_files( wbuf, "json", 1, &llen );
 	if( flist == NULL || llen <= 0 ) {
-		bleat_printf( 1, "zero vf configuration files (*.json) found in %s; nothing restored", parms->config_dir );
+		bleat_printf( 1, "zero vf configuration files (*.json) found in %s_live; nothing restored", parms->config_dir );
+		free_list( flist, 0 );											// still must free core structure
 		return;
 	}
 
 	bleat_printf( 1, "adding %d existing vf configuration files to the mix", llen );
-
 	
 	for( i = 0; i < llen; i++ ) {
 		bleat_printf( 2, "parsing %s", flist[i] );
@@ -941,11 +999,16 @@ extern void vfd_add_all_vfs(  parms_t* parms, sriov_conf_t* conf ) {
 /*
 	Delete a VF from a port.  We expect the name of a file which we can read the
 	parms from and suss out the pciid and the vfid.  Those are used to find the
-	info in the global config and render it useless. The first thing we attempt
-	to do is to remove or rename the config file.  If we can't do that we
-	don't do anything else because we'd give the false sense that it was deleted
-	but on restart we'd recreate it, or worse have a conflict with something that
-	was added.
+	info in the global config and render it useless. The delete will be rejected
+	if the name in the parm file doesn't match the name we saved when adding the
+	configuration.  This is a false sense of security, but was a user request
+	so it was added.  The first thing we attempt to do is to remove or rename the 
+	config file.  If we can't do that we don't do anything else because we'd give 
+	the false sense that it was deleted but on restart we'd recreate it, or worse 
+	have a conflict with something that was added. 
+
+	Regardless of the outcome after reading the configuration file, if we can open 
+	the file we will delete it.
 */
 extern int vfd_del_vf( parms_t* parms, sriov_conf_t* conf, char* fname, char** reason ) {
 	vf_config_t* vfc;					// raw vf config file contents	
@@ -953,18 +1016,27 @@ extern int vfd_del_vf( parms_t* parms, sriov_conf_t* conf, char* fname, char** r
 	int vidx;							// index into the vf array
 	struct sriov_port_s* port = NULL;	// reference to a single port in the config
 	char mbuf[BUF_1K];					// message buffer if we fail
+	unsigned int mblen = BUF_1K - 1;	// length of usable spaece in work buffer
+	char*	target_dir = NULL;			// target directory if keep is set
+
+	mbuf[mblen-1] = 0;					// avoid needing a check for each snprintf	
+
+	
+	if( parms->delete_keep ) {											// need to keep the old by renaming it with a trailing -
+		target_dir = parms->config_dir;									// we'll move files back to this dir
+	}
 	
 	if( conf == NULL || fname == NULL ) {
 		bleat_printf( 0, "vfd_del_vf called with nil config or filename pointer" );
 		if( reason ) {
-			snprintf( mbuf, sizeof( mbuf), "internal mishap: config ptr was nil" );
+			snprintf( mbuf, mblen, "internal mishap: config ptr was nil" );
 			*reason = strdup( mbuf );
 		}
 		return 0;
 	}
 
 	if( (vfc = read_config( fname )) == NULL ) {
-		snprintf( mbuf, sizeof( mbuf ), "unable to read config file: %s: %s", fname, errno > 0 ? strerror( errno ) : "unknown sub-reason" );
+		snprintf( mbuf, mblen, "unable to read config file: %s: %s", fname, errno > 0 ? strerror( errno ) : "unknown sub-reason" );
 		bleat_printf( 1, "vfd_del_vf failed: %s", mbuf );
 		if( reason ) {
 			*reason = strdup( mbuf );
@@ -972,40 +1044,14 @@ extern int vfd_del_vf( parms_t* parms, sriov_conf_t* conf, char* fname, char** r
 		return 0;
 	}
 
-	if( parms->delete_keep ) {											// need to keep the old by renaming it with a trailing -
-		snprintf( mbuf, sizeof( mbuf ), "%s-", fname );
-		if( rename( fname, mbuf ) < 0 ) {
-			snprintf( mbuf, sizeof( mbuf ), "unable to rename config file: %s: %s", fname, strerror( errno ) );
-			bleat_printf( 1, "vfd_del_vf failed: %s", mbuf );
-			if( reason ) {
-				*reason = strdup( mbuf );
-			}
-			free_config( vfc );
-			return 0;
-		}
-	} else {
-		if( unlink( fname ) < 0 ) {
-			snprintf( mbuf, sizeof( mbuf ), "unable to delete config file: %s: %s", fname, strerror( errno ) );
-			bleat_printf( 1, "vfd_del_vf failed: %s", mbuf );
-			if( reason ) {
-				*reason = strdup( mbuf );
-			}
-			free_config( vfc );
-			return 0;
-		}
-	}
-
-	bleat_printf( 2, "del: config data: name: %s", vfc->name );
-	bleat_printf( 2, "del: config data: pciid: %s", vfc->pciid );
-	bleat_printf( 2, "del: config data: vfid: %d", vfc->vfid );
-
-	if( vfc->pciid == NULL || vfc->vfid < 0 ) {
-		snprintf( mbuf, sizeof( mbuf ), "unable to read config file: %s", fname );
-		bleat_printf( 1, "vfd_del_vf failed: %s", mbuf );
+	if( vfc->pciid == NULL || vfc->vfid < 0 ) {						// file opened and parsed, but information we need was missing
+		snprintf( mbuf, mblen, "invalid configuration contents in file: %s", fname );
+		bleat_printf( 1, "no config change related to del request: %s", mbuf );
 		if( reason ) {
 			*reason = strdup( mbuf );
 		}
 		free_config( vfc );
+		delete_vf_config( fname, target_dir );
 		return 0;
 	}
 
@@ -1017,12 +1063,13 @@ extern int vfd_del_vf( parms_t* parms, sriov_conf_t* conf, char* fname, char** r
 	}
 
 	if( port == NULL ) {
-		snprintf( mbuf, sizeof( mbuf ), "%s: could not find port %s in the config", vfc->name, vfc->pciid );
-		bleat_printf( 1, "vf not added: %s", mbuf );
-		free_config( vfc );
+		snprintf( mbuf, mblen, "%s: could not find port %s in the config", vfc->name, vfc->pciid );
+		bleat_printf( 1, "no config change related to del request: %s", mbuf );
 		if( reason ) {
 			*reason = strdup( mbuf );
 		}
+		free_config( vfc );
+		delete_vf_config( fname, target_dir );
 		return 0;
 	}
 
@@ -1034,16 +1081,65 @@ extern int vfd_del_vf( parms_t* parms, sriov_conf_t* conf, char* fname, char** r
 		}
 	}
 
-	if( vidx >= 0 ) {									//  it's there -- take down in the config
-		port->vfs[vidx].last_updated = DELETED;			// signal main code to nuke the puppy (vfid stays set so we don't see it as a hole until it's gone)
-	} else {
-		bleat_printf( 1, "warning: del didn't find the pciid/vf combination in the active config: %s/%d", vfc->pciid, vfc->vfid );
+	if( vidx < 0 ) {									//  vf not configured on this port
+		snprintf( mbuf, mblen, "%s: vf %d not configured on port %s", vfc->name, vfc->vfid, vfc->pciid );
+		bleat_printf( 1, "no config change related to del request: %s", mbuf );
+		if( reason ) {
+			*reason = strdup( mbuf );
+		}
+		free_config( vfc );
+		delete_vf_config( fname, target_dir );
+		return 0;
 	}
+
+	if( strcmp( vfc->name, port->vfs[vidx].config_name ) != 0 ) { 				// confirm name in current config matches what we had when we added it
+		snprintf( mbuf, mblen, "%s: name in config did not match name given when VF was added: expected %s, found %s", vfc->name,  port->vfs[vidx].config_name, vfc->name );
+		bleat_printf( 1, "no config change related to del request: %s", mbuf );
+		if( reason ) {
+			*reason = strdup( mbuf );
+		}
+		free_config( vfc );
+		delete_vf_config( fname, target_dir );
+		return 0;
+	}
+
+	delete_vf_config( fname, target_dir );
+/*
+	if( parms->delete_keep ) {											// need to keep the old by renaming it with a trailing -
+		snprintf( mbuf, mblen, "%s-", fname );
+		if( rename( fname, mbuf ) < 0 ) {
+			snprintf( mbuf, mblen, "unable to rename config file: %s: %s", fname, strerror( errno ) );
+			bleat_printf( 1, "vfd_del_vf failed: %s", mbuf );
+			if( reason ) {
+				*reason = strdup( mbuf );
+			}
+			free_config( vfc );
+			return 0;
+		}
+	} else {
+		if( unlink( fname ) < 0 ) {
+			snprintf( mbuf, mblen, "unable to delete config file: %s: %s", fname, strerror( errno ) );
+			bleat_printf( 1, "vfd_del_vf failed: %s", mbuf );
+			if( reason ) {
+				*reason = strdup( mbuf );
+			}
+			free_config( vfc );
+			return 0;
+		}
+	}
+*/
+
+	bleat_printf( 2, "del: config data: name: %s", vfc->name );
+	bleat_printf( 2, "del: config data: pciid: %s", vfc->pciid );
+	bleat_printf( 2, "del: config data: vfid: %d", vfc->vfid );
+
+	port->vfs[vidx].last_updated = DELETED;			// signal main code to nuke the puppy (vfid stays set so we don't see it as a hole until it's gone)
 	
 	if( reason ) {
 		*reason = NULL;
 	}
 	bleat_printf( 2, "VF was deleted: %s %s id=%d", vfc->name, vfc->pciid, vfc->vfid );
+	free_config( vfc );
 	return 1;
 }
 
@@ -1054,9 +1150,9 @@ extern int vfd_del_vf( parms_t* parms, sriov_conf_t* conf, char* fname, char** r
 	so we'll try only a few times if we make absolutely no progress.
 */
 extern int vfd_write( int fd, const_str buf, int len ) {
-	int	tries = 5;				// if we have this number of times where there is no progress we give up
-	int	nsent;					// number of bytes actually sent
-	int n2send;					// number of bytes left to send
+	int	tries = 10;				// we'll try for about 2.5 seconds and then we give up
+	int	nsent = 0;				// number of bytes actually sent
+	int n2send = 0;				// number of bytes left to send
 
 
 	if( (n2send = len) <= 0 ) {
@@ -1064,6 +1160,7 @@ extern int vfd_write( int fd, const_str buf, int len ) {
 		return 0;
 	}
 
+	bleat_printf( 2, "response write starts for %d bytes", len );
 	while( n2send > 0 && tries > 0 ) {
 		nsent = write( fd, buf, n2send );
 		if( nsent < 0 ) {
@@ -1072,21 +1169,21 @@ extern int vfd_write( int fd, const_str buf, int len ) {
 				return -1;
 			}
 
-			bleat_printf( 1, "response write soft error (will retry ) attempting=%d, written=%d bytes desired=%d: %s", n2send, len - n2send, len, strerror( errno ) );
+			bleat_printf( 2, "response write would block (will retry ) attempting=%d, prev-written=%d bytes total-desired=%d: %s", n2send, len - n2send, len, strerror( errno ) );
 			nsent = 0;									// will soft fail and try up to max
-		}
+		} 
 			
 		if( nsent == n2send ) {
 			return len;
 		}
 
 		if( nsent > 0 ) { 		// something sent, so we assume iplex is actively reading
-			bleat_printf( 1, "response write partial:  nsent=%d n2send=%d", nsent, n2send - nsent );
+			bleat_printf( 2, "response write partial:  nsent=%d n2send=%d", nsent, n2send - nsent );
 			n2send -= nsent;
 			buf += nsent;
 		} else {
 			tries--;
-			usleep(500000);			// .5s
+			usleep(250000);			// .25s
 			
 		}
 	}
@@ -1127,7 +1224,7 @@ extern void vfd_response( char* rpipe, int state, const_str msg ) {
 			vfd_write( fd, msg, strlen( msg ) );				// ignore state; we need to close the json regardless
 		}
 
-		snprintf( buf, sizeof( buf ), "\" }\n" );				// terminate the json
+		snprintf( buf, sizeof( buf ), "\" }\n\n" );				// terminate the json
 		vfd_write( fd, buf, strlen( buf ) );
 		bleat_printf( 2, "response written to pipe" );			// only if all of message written
 	}
@@ -1308,6 +1405,7 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 		bleat_printf( 1, "req_if: forever loop entered" );
 	}
 
+	memset( mbuf, 0, sizeof( mbuf ) );								// avoid valgrind's kinckers twisting because it's not intiialised
 	*mbuf = 0;
 	do {
 		if( (req = vfd_read_request( parms )) != NULL ) {
@@ -1328,7 +1426,8 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 					}
 
 					bleat_printf( 2, "adding vf from file: %s", mbuf );
-					if( vfd_add_vf( conf, req->resource, &reason ) ) {		// read the config file and add to in mem config if ok
+					if( vfd_add_vf( conf, mbuf, &reason ) ) {				// read the config file and add to in mem config if ok
+						relocate_vf_config( parms, mbuf, NULL );			// move the config to the live directory on success (nil suffix indicates live dir)
 						if( vfd_update_nic( parms, conf ) == 0 ) {			// added to config was good, drive the nic update
 							snprintf( mbuf, sizeof( mbuf ), "vf added successfully: %s", req->resource );
 							vfd_response( req->resp_fifo, RESP_OK, mbuf );
@@ -1341,6 +1440,7 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 							bleat_printf( 1, "vf add failed nic update error" );
 						}
 					} else {
+						relocate_vf_config( parms, mbuf, ".error" );		// move the config file to *.error for debugging, but keep in same directory
 						snprintf( mbuf, sizeof( mbuf ), "unable to add vf: %s: %s", req->resource, reason );
 						vfd_response( req->resp_fifo, RESP_ERROR, mbuf );
 						free( reason );
@@ -1384,6 +1484,8 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 						if( port_xstats_display( 0, stats_buf, sizeof( char ) * 1024 * 10 ) > 0 ) {
 							bleat_printf( 0, "%s", stats_buf );
 						}
+
+						free( stats_buf );
 					}
 					break;
 

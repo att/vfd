@@ -1,0 +1,48 @@
+
+Obviously, this directory contains documentation. From the 
+various source files (*.xfm) we can build postscript, html, 
+ascii text and markdown output; postscript can be converted
+to PDF by ghostscript or a similar tool.  {X}fm is a document
+formatting utilty set which reads DCF script source and 
+generates one of three output formats: postscript, text or
+html.  Using a macro set, the text output can be made to look
+like markdown provided that the leading space is removed. 
+
+We use one of the documents here (probably overview) as the 
+main readme for VFd, and running 'mk readme' in this directory
+will generate the .md version of the document and copy it to 
+the proper place.  You will need to commit it into the repo
+to push up the changes. 
+
+The setup files here (*.im) are used to provide a common 
+look and feel across documents, and to provide the necessary
+macros which enable the generation of markdown output. The
+image setup file is the only 'tricky' one as it provides support
+to float the image to the next page when generating .ps output.
+
+Illustrations for the documents are created using xfig as it
+saves figures as plain ASCII text which can easily be versioned
+as source in a repo.  Further, they are easily converted to 
+embedded postscript or image (.png, .jpg) files as are needed.
+Executing 'mk images' in each directory should generate .png 
+files, if any,  needed for the wiki pages. 
+
+Image files (.eps, .png, etc.) are NOT stashed into this repo.
+In order to reference them in markdown documents included either
+on the wiki or the main README, they will need to be stashed in 
+the wiki repo under the proper directory in images/ and referenced
+with the following URL base:
+
+   https://raw.githubusercontent.com/wiki/att/vfd/images/
+
+
+Other documentation here is used to populate the repo's wiki
+pages.  To update the wiki, including adding updated images
+use the following steps:
+
+	1) generate the desired .md file (e.g. hackers.md)
+	2) clone the wiki from the repo:
+		git clone https://github.com/att/vfd.wiki.git
+	3) overlay the document in the wiki repo 
+	4) commit the change and verify on github
+

@@ -1,0 +1,677 @@
+.if false
+	Source to generate the readme in one of various forms using {X}fm:
+		MARKDOWN=1 tfm README.xfm README.md
+		MARKDOWN=0 pfm README.xfm README.ps
+		MARKDOWN=0 hfm README.xfm README.html
+
+	or just run 'mk all'.
+
+	DO NOT modify the README.md/.ps/.html/.pdf files manually; change the source and
+	rebuild!!
+
+.fi
+
+.** install xfm and ensure env variable XFM_LIB points to the library directory where templates live
+.** HOME/lib is a good place for them if you've installed in your own environment and not in a system
+.** library.
+.gv e XFM_LIB lib
+.if !lib
+	.gv e HOME home
+	.dv lib &{home}/lib
+.fi
+
+.** get specialised macros based on output format; might override defs above
+.** because this file uses odd variables for markdown (e.g. &beg_list) we must
+.** use markdown.im to set up for any of the formatters, not just when MARKDOWN
+.** is set.
+.** 
+.im ../setup.im
+
+.if ! super
+	.dv msg ###ERROR### markdown.im seems to be missing or incomplete
+	.sv msg
+	&msg
+	.qu
+.fi
+
+.** generate a title for html/postscript
+.if !tfm
+	.st 18
+	.bc start
+	Virtual Function Daemon -- VFd
+	.br
+	.st 14
+	VFd Quick Start Guide
+	.bc end
+	.st &textsize
+	.ll 6i
+.fi
+
+.if pfm
+	&h1(Introduction)
+.ei
+	&h1(Virtual Function Daemon -- Quick Start)
+.fi
+VFd is a DPDK application which provides for the configuration of, and policy 
+enforcement over, VFs which have been allocated on one or more PFs of a NIC.
+For each VF that VFd is to manage a JSON configuration file outlining the 
+desired setup for the VF is made available to VFd either at process start time
+or dynamically while VFd is running. 
+The overall vision for VFd is to be the hypervisor of the NIC world. 
+.sp 1
+
+.if false
+.**  this was at one point in time our readme...
+This &ital(README) will provide a brief overview of VFd capabilities with respect to 
+PF and VF configuration, policy enforcement and finally a quick
+start guide to help those who'd like to avoid wandering through the documentation
+contained on the repo wiki. 
+.fi
+
+&h2(Configuration)
+Via the VF's configuration file, the following may be specified:
+
+&beg_list( &lic1 )
+&item  The VLAN ID(s) that the VF participates in.  Transmitted packets
+	are ensured to have one of the ID specified, and received packets will
+	be passed to the guest only if the VLAN tag in the packet matches one
+	of the IDs in the configuration. (In addition, see MAC addresses.)
+
+&item  The MAC addres(es) which will also be used to filter received packets
+	(along with the VLAN ID). Packets transmitted by the guest must also
+	use one of the listed MAC addresses as the source address in the L2 header.
+	
+&item  Whether or not broadcast packets, unknown unicast, or multicast packets
+	will be allowed to be received by the VF.
+
+&item Whether or not the outer VLAN ID will be stripped (removed) from the received
+	packets, and automatically inserted on transmitted packets. 
+&end_list
+
+&h2(MAC Addresses)
+In most cases the MAC addresses are &bold(not) supplied in the configuration file. 
+If a guest needs to alter the MAC address of a device, for instance as might be necessary 
+to bond two interfaces, the address that the guest sets through the driver will be 
+accepted and added to the VF configuration by VFd.
+The MAC list in the configuration file is available for cases where the guest is
+unable to reset their MAC address, or the address must be supplied from an outside
+source. 
+.sp 1
+When no MAC addresses are given in a VF's configuration, a randomly generated address
+is configured for the VF at the time the VF is attached to the guest.  
+When this is done it is still possible for the guest to override the random address
+with one of their choosing.
+
+&h2(Policy)
+VFd serves to enforce some policies with respect to limits and/or use of each 
+VF under its control. 
+If QoS is enabled, this extends to providing the NIC with the proper configuration 
+which implements bandwidth limits for the VF. 
+VFd enforces the following policies:
+
+&beg_list( &lic1 )
+&item Only VLAN IDs which are listed for the VF may be set by the guest
+&item MAC and VLAN ID spoof checking is always enabled
+&item MAC address assignments are vetted to ensure that there are no duplicates 
+	on the same PF, and to ensure that the total limit supported by the NIC
+	is not exceeded. 
+&end_list
+
+&h1(Requirements)
+It is currently possible to build VFd on top of DPDK versions 17.11 and 18.02.
+The VFd library requires a third party basic JSON parser which is available from 
+github, and will automatically be cloned and built when the archive is created.
+
+&h2(Patches)
+Occasionally, there are patches which must be applied to DPDK in order to permit
+VFd to be built.
+These patches can be found in the &cw(dpdk_patch) directory and are organised
+by the DPDK version to which they apply.
+There is also a script located in the patch directory which may be used to apply
+the patches for a particular version. 
+
+&h2(Linux Kernel)
+VFd has been tested on Linux kernels starting with 3.13, and has also been used
+successfully with Linux 4.x kernels.
+VFd may work with older kernels, but that territory is uncharted.
+
+&h2(Additional Documentation)
+The wiki associated with the github repository for VFd contains several different
+documents which should be useful. 
+These can be found by clicking the &ital(Pages) link which appears on the right
+side of the main wiki page.  
+The documents include:
+
+&beg_list(&lic1)
+&item User's guide
+&item Building the &cw(igb_uio) driver
+&item Debugging Tricks
+&item i40e Based Troubleshooting
+&end_list
+
+&h1(Quick Start)
+To jump start your experience, the following should serve as a quick reference to 
+setup and test an environment with VFd.  
+The user's guide, and the readme in the source directory have more details than
+will be provided in the following paragraphs should you need it.
+The following steps are described in more detail below
+
+&beg_list
+&item Clone and build DPDK
+&item Clone and build VFd
+&item Create VFs on the PFs to be controlled
+&item Create the main VFd configuration file
+&item Create individual VF configuration files
+&item Start VFd
+&item Start a guest and test
+&end_list
+
+
+&h2(Build DPDK)
+If you don't already have DPDK installed, you will need to pull the repo and build
+it.  
+You will need to do this even if you are not building VFd (you have a VFd binary
+or .deb file) in order to have a working copy of the &cw(igb_uio) driver which has been 
+compiled on the system. 
+The following steps can be followed to build the &cw(igb_uio) driver, and will also 
+prepare the DPDK library for a VFd build if needed.
+
+&def_list( .35i &boldtext a=1 f=%d. )
+&auto_num() Create a directory; we'll assume $HOME/build
+&auto_num() Switch to the build directory
+&auto_num( ) Execute: git clone http://dpdk.org/git/dpdk
+&auto_num() Switch to the  dpdk/usertools directory
+&auto_num() Execute the dpdk-setup.sh script and when prompted enter the  
+	menu option that builds the library on your system.  This will also build the &cw(igb_uio) driver.
+&auto_num() Following a successful build, return to the main menu and select the option that installs the &cw(igb_uio) driver
+&auto_num() Exit the script
+&auto_num() Set the following environment variables (the values given are 
+	likely to be correct, however if you opted for a different
+	directory, or are building on a different type of system the values
+	will need to reflect your environment):
+	.sp 1
+	export RTE_SDK=$HOME/build/dpdk
+	&break
+	export RTE_TARGET=x86_64-native-linuxapp-gcc
+
+&end_dlist
+
+You may need to install gcc, make and/or cmake, to be able to build DPDK. 
+
+&h2(Build VFd)
+This step can be skipped if you have a package (.deb etc.) or binary which 
+you will be using.
+
+.sp 1
+If you are going to build VFd, you will need to clone it from github, then
+build the library and binary. 
+Once built, you can run it from the build directory, or move it to 
+a desired directory for execution. 
+The following steps list what needs to be done:
+
+&def_list( .25i &boldtext a=1 f=%d. )
+&auto_num() Switch to the build directory
+&auto_num() Run git clone https://github.com/att/vfd.git
+&auto_num() Switch to the vfd/src directory
+&auto_num() Run 'make' which should build the library (cloning any third
+	party libraries and building them as are needed), and then will build VFd. 
+&auto_num() Optionally build the vreq tool by switching to the system 
+	directory and running 'make vreq'.
+&auto_num() Install, if desired, by copying vfd/build/app/vfd to a bin
+	directory of your choosing. You will likely also want to copy
+	iplex.py  and vreq (if you built it) from the src/system directory
+	to the binary; ensuring that the mode is set properly (executable)
+	for each.
+&end_dlist
+
+.sp
+You can verify that VFd was built correctly by running it
+with the &cw(-?) option which will produce a usage message and should 
+indicate the date and time that the build occurred. 
+
+&h2(Creating VFs) 
+For each PF on each NIC that will be under the control of VFd, you need
+to establish one or more VFs.  
+This is accomplished by binding the &cw(igb_uio) driver to the PF(s), and then 
+writing the number of desired VFs for each PF into a device file associated with 
+the PF. 
+The following paragraphs provide the necessary commands to accomplish this.
+
+&h3(Binding The igb_uio Driver)
+The &cw(dpdk-devbind.py) script in the DPDK directory &cw($HOME/build/dpdk/usertools)
+can be used to display a list of available devices to which the &cw(igb_uio) driver 
+can be attached. 
+Executing the script with the &cw(-s) option causes a status display to be 
+written to the tty device; it  will include the following information for 
+devices that are not bound to DPDK capable drivers:
+
+&ex_start
+Network devices using kernel driver
+============================================
+0000:08:00.0 'Ethernet Controller 10-Gigabit X540-AT2 1528' drv=ixgbe unused=igb_uio,vfio-pci
+0000:08:00.1 'Ethernet Controller 10-Gigabit X540-AT2 1528' drv=ixgbe unused=igb_uio,vfio-pci
+&ex_end
+
+The important pieces of information in the output are the PCI address for the device (column 0) and 
+the list of unused drivers for the device. 
+Assuming the &cw(igb_uio) driver was successfully loaded, and the device is capable,
+the unused list should contain the igb_uio driver.
+The driver can be bound to these devices with the &cw(dpdk-devbind.py) script:
+
+&ex_start
+  dpdk-devbind.py -b igb_uio 0000:08:00.0
+&ex_end
+
+This command will need to be executed for each device; all devices which share a NIC must be 
+bound to the &cw(igb_uio) driver.
+Once bound, running the script with the status option should show these devices listed
+under those uing a DPDK compatible driver, and the drv= parameter should indicate
+that it is indeed bound to the &cw(igb_uio) driver.
+
+&ex_start
+Network devices using DPDK-compatible driver
+============================================
+0000:08:00.0 'Ethernet Controller 10-Gigabit X540-AT2 1528' drv=igb_uio unused=vfio-pci
+0000:08:00.1 'Ethernet Controller 10-Gigabit X540-AT2 1528' drv=igb_uio unused=vfio-pci
+&ex_end
+
+&h3(Creating VFs)
+VFs are created on a given PF by communicating to the driver the desired number of VFs.
+This is typically accomplished by using the &cw( echo ) command to write the number
+into a file somewhere in the sysfs filesystem.  
+Assuming one of the addresses from the previous example, the command to 
+set 32 VFs on the PF would be:
+
+&ex_start
+$ echo 32 >/sys/devices/pci0000:00/0000:00:03.0/0000:08:00.0/sriov_numvfs
+&ex_end
+
+The number of VFs can also be adjusted by first setting the number to zero (0), and 
+then setting the desired number as illustrated above. 
+To change the the number of VFs configured for a PF, VFd must &bold(not) be running
+and all guests which were using the VFs must be detached from them.
+
+.sp 1
+After creating the VFs, the directory can be listed which should now show a 
+set of symbolic links, one for each VF.
+
+&ex_start
+$ ls -al /sys/devices/pci0000:00/0000:00:03.0/0000:08:00.0
+:
+lrwxrwxrwx  1 root root       0 Jan 26 08:31 virtfn0 -> ../0000:08:10.0
+lrwxrwxrwx  1 root root       0 Jan 26 08:31 virtfn1 -> ../0000:08:10.2
+lrwxrwxrwx  1 root root       0 Jan 26 08:31 virtfn10 -> ../0000:08:12.4
+lrwxrwxrwx  1 root root       0 Jan 26 08:31 virtfn11 -> ../0000:08:12.6
+:
+&ex_end
+
+
+.** --------------------- capture the example text in an external file for a bit ----------------
+.ca start config.ca
+.sf &cwfont
+.st 7
+.sp .5
+.if pfm
+	.dv hold_size &extextsize
+	.dv extextsize 7
+.fi
+&ex_start
+{   
+ "log_dir":      "/var/log/vfd",
+ "log_keep":           10,
+ "log_level":           1,
+ "init_log_level":      3,
+ "dpdk_log_level":      1,
+ "dpdk_init_log_level": 2,
+ "config_dir":   
+    "/var/lib/vfd/config",
+ "fifo":
+    "/var/lib/vfd/request",
+ "cpu_mask":           "0x01",
+ "numa_mem":           "64,64",
+ "default_mtu":        1500,
+ "enable_qos":         false,
+ "enable_flowcontrol": false,
+    
+ "pciids": [ 
+   { "id": "0000:08:00.0",
+     "promiscuous": false,
+     "mtu": 9240,
+     "hw_strip_crc":    true,
+     "enable_loopback": true,
+     "pf_driver":   "igb-uio",
+     "vf_driver":   "vfio-pci",
+     "vf_oversubscription": 
+                         true,
+     "tclasses": [
+       { "name": "best effort",
+         "pri": 0,
+         "latency": false,
+         "lsp": false,
+         "bsp": false,
+         "max_bw": 100,
+         "min_bw": 10 },
+       { "name": "realtime",
+         "pri": 1,
+         "latency": false,
+         "lsp": false,
+         "bsp": false,
+         "max_bw": 100,
+         "min_bw": 40 },
+       { "name": "voice",
+         "pri": 2,
+         "latency": false,
+         "lsp": false,
+         "bsp": false,
+         "max_bw": 100,
+         "min_bw": 40 },
+       { "name": "control",
+         "pri": 3,
+         "latency": false,
+         "lsp": false,
+         "bsp": false,
+         "max_bw": 100,
+         "min_bw": 10 }
+    ],
+
+    "bw_grps": { "bwg0": [0],
+                "bwg1": [1, 2],
+                "bwg2": [3]
+               }
+ ]
+}
+&ex_end_nosp
+.if pfm
+	.dv extextsize &hold_size
+.fi
+.sf &textfont
+.st &textsize
+.ca end
+
+.** ---------------------------- capture floating control -------------------------------------
+.** this will be included in pfm mode to float the text to the left of the figure
+.ca start float.ca
+	.** if we're processing as a part of an on eject block, force top line
+	.sp .1
+
+    .** get and save the current y value so we can come back to it
+    .gv y
+    .dv top_y [ &_cury &textsize - ]
+	.** snag the figure, into a table for visualisation/separation
+    .ll -3.5i
+    .in +3.5i
+	.sp .5
+	.ta B b=1 2.15i
+	.im config.ca
+	.et
+	.bc start
+		.fg Sample VFd configuration file.
+	.bc end
+	.sp 1
+
+	.in -3.5i
+	.ll +3.5i
+    
+    .** note that no length is given; when y= is used; length is assumed to be the current position
+    .** also, topy must be suffixed with 'p' because the value saved above is points.
+    .fm w=3.25i y=&{top_y}p
+.ca end
+
+
+
+&h2(Create The Main Configuration)
+
+.** if in pfm formatter, render the figure here if room, and float text round it; else on new page
+.** if not in pfm, figure sucked in later
+.if pfm
+	.gv figure
+	.dv config_fig &_fig
+	.gv remain
+	.if &_iremain 7 <
+		.** push oneject such that 'n' no state is saved allowing us to set floating 
+		.oe page nostate .im float.ca 
+	.ei
+		.im float.ca
+	.fi
+.fi
+
+A master configuration file is used to provide overall information to VFd
+during initialisation.  
+The default location for the  file is &cw(/etc/vfd/vfd.cfg,) but the file 
+can be placed in any location that makes sense for the installation. 
+If not placed in the default location, the &cw(-c) command line option must be used
+to supply the alternate location to VFd.  
+
+.sp
+The configuration file contains expected information such as log file locations, 
+log retention time specifications, and verbosity levels.
+It also contains the configuration of each PF that VFd is to manage. 
+.if pfm
+	Figure &config_fig provides a sample configuration for VFd.
+.ei
+	A small sample configuration file below illustrates the layout.
+.fi
+For each PF described in the config, identified by its PCIID, the following information can be supplied:
+
+
+&beg_list(&lic1)
+&item Promiscuous mode
+&item Maximum MTU (overrides default in the main section)
+&item Enable hardware stripping of the CRC
+&item Whether to allow oversubscription when QoS mode is enabled
+&end_list
+
+The traffic class and bandwidth group sections can be omitted if 
+QoS is not enabled in the main section.
+The driver information for each device is not used by VFd, but is provided
+for any setup script that might configure the NICs automatically before
+starting VFd. 
+
+
+
+.** ------- if not in pfm then render the figure after the section, inline -----
+.if ! pfm
+	.im config.ca
+.fi
+
+
+&h2(Create A VF Configuration)
+A VF configuration is needed to communicate to VFd the specifications and policies for a VF that VFd will manage. 
+One VF configuration file must be &ital(added) to VFd for each VF that will be attached to a guest.
+These configuration files contain a simple set of JSON and are placed into the directory 
+identified by the &cw(config_dir) parameter in the main VFd configuration. 
+The files can be named using any text string provided that there are no embedded blanks
+and that the file suffix is &cw(.json.) 
+
+.sp 1
+VF configuration files present in the directory when VFd is started are 
+read and added to the list of managed VFs during initialisation. 
+While VFd is running, configurations can be added by creating a new file and using
+the &cw(iplex add) command which causes VFd to read the configuration file and 
+add it to the mix. 
+If a configuration is no longer needed, the &cw(iplex delete) command can be used to 
+remove the VF from those managed.
+The following show how the configuration in &cw(kad_0_1.json) can be added and 
+deleted (note that the suffix is &bold(not) given on the command line):
+
+.cc 1i
+&ex_start
+ $ iplex add /var/lib/vfd/config/kad_0_1
+ $ iplex delete /var/lib/vfd/config/kad_0_1
+&ex_end
+
+&h3(VF Configuration Contents)
+.gv figure
+.dv vf_config_fig
+The contents of a VF config file defines the PF that the VF is managed by, the VF
+ID (number), and other parameters as illustrated in figure &vf_config_fig.
+
+.ca start vf_config.ca
+&ex_start
+{
+    "comments":      "VF test config for PF 0, VF 1 ",
+ 
+    "name":             "kad_0_1",
+    "pciid":            "0000:08:00.0",
+    "vfid":             1,
+ 
+    "strip_stag":       true,
+ 
+    "allow_bcast":      true,
+    "allow_mcast":      true,
+    "allow_un_ucast":   false,
+ 
+    "vlan_anti_spoof":  true,
+    "mac_anti_spoof":   true,
+ 
+    "vlans":            [ 22, 21 ],
+    "macs":             [ "fa:ce:ed:09:01:01" ],
+ 
+    "queues": [
+        { "priority": 0, "share": "10%" },
+        { "priority": 1, "share": "10%" },
+        { "priority": 2, "share": "10%" },
+        { "priority": 3, "share": "10%" },
+    ]
+}
+&ex_end_nosp
+.fg A sample VF configuration file.
+.sp
+.ca end
+
+.** if in pfm formatter, ensure the figure fits on the current page, else push it to next
+.if pfm
+	.gv remain
+	.if &_iremain 3 <
+		.oe page .im vf_config.ca 
+	.ei
+		.im vf_config.ca
+	.fi
+.ei
+	.** non-page oriented output just suck it in here.
+	.im vf_config.ca
+.fi
+
+
+.sp 1
+
+For most guests, there is no need to specify any MAC addresses, and allowing unknown
+unicast should generally be &cw(false) unless you are very sure that you want the guest
+to receive every packet destined for an unknown MAC address on one of the configured VLANs. 
+When the &cw(strip_stag) setting is true, the NIC will remove the VLAN ID (the outer
+tag if QinQ encapsulation is being used) before the packet is presented to the VF. 
+On transmit, the VLAN ID listed, if only one is listed, will automatically be 
+inserted by the NIC.  
+When more than one VLAN IDs are listed, and stripping is set to &cw(true,) it is
+the responsibility of the guest, or DPDK application in the guest, to identify the
+correct VLAN ID to insert into the packet on transmit and to place the ID into the packet's
+transmit descriptor.  
+When stripping is &cw(false,) the VLAN ID is not removed, and the guest must place
+the ID into each packet transmitted. 
+
+.sp
+While it appears that the spoofing parameters can be changed, they will always be
+set to &cw(true) by VFd, so changing them in the config has no affect.  
+
+&h3(QoS Configuration)
+If QoS is enabled in the main VFd configuration file, the queues array must be 
+present in the VF configuration in order to define the amount (bandwidth percentage)
+that each traffic class, or queue, the VF will be given. 
+When QoS is disabled, this section of the config file can be omitted.
+
+
+
+&h2(Starting VFd)
+Starting VFd is as simple as issuing the command on the command line, as root.
+Assuming that the VFd binary was installed in the &cw(/usr/bin) directory, the command
+would be as follows:
+
+&ex_start
+sudo /usr/bin/vfd >/var/log/vfd/vfd.std 2>&1
+&ex_end
+
+By default, VFd will detach from the tty and create a log file in the log directory 
+identified in the configuration file.  
+The log file is named using the format &cw(vfd.log.<YYYYMMDD>) and is &ital( rolled )
+about midnight each night.
+It is necessary to redirect the standard  output and error files as the underlying 
+DPDK library can sometimes be noisy, and writes to one, or both, of these files. 
+
+.sp 1
+Once VFd is running, the &cw(iplex ping) command can be used to verify that VFd is 
+alive and well. 
+The &cw(iplex show all) command can be used to display a set of statistics about the 
+configured VFs.
+Because VFd must be executed as root, and to prevent any unauthorised access, the 
+communications pipe between iplex and VFd is writable only by root, and as such
+the iplex commands must be run as root.  For example:
+
+&ex_start
+$ sudo iplex ping
+{ "state": "OK", "msg": "pong: +++cec1ed857b823d64671bcaad9b629fd2273efa44-notag    
+build: Jan 31 2018 14:40:41" }
+&ex_end
+
+The resulting output to a ping request is the build information (commit id and 
+build date).
+
+&h2(Starting A Guest)
+There are many ways that a guest can be started which present the guest with one or
+more of the VFd managed VFs. 
+It is beyond the scope of this readme to go into details about starting a guest, but
+we will complete our running configuration example by showing the qemu command 
+that was used to attached the VF illustrated in this document.
+
+
+&ex_start
+sudo qemu-system-x86_64 \
+   -display curses \
+   -nographic \
+   -smp 2 \
+   -cpu host \
+   -m 4096M \
+   -net nic \
+   -net user,net=192.168.1.10,hostfwd=tcp::5551-:22 \
+   -boot d \
+   -hda thin_ubuntu1.qcow2 \
+   -vnc :1 \
+   -enable\
+   -kvm \
+   -device vfio\
+   -pci,host=0000:08:10.3,id=net0 \
+   -device vfio-pci,host=0000:08:10.2,id=net1
+&ex_end
+
+
+The last line of the command shows how the configured VF is attached to the guest.
+Once the guest is running, an &cw(ifconfig) command issued after logging in 
+should show two ethernet devices; one that the 'main' network is configured on
+and the SR-IOV device.  
+If the VF was given a MAC address in the configuration file, that address
+should be presented as a part of the &cw(ifconfig) output.
+If a guest is to be given multiple VFs, one device option per VF on the command
+line will be needed.
+
+.sp 1
+At this point, it should be possible to use &cw(ssh,) or other utility across the
+second network interface; properly configuring it with an IP address, and setting routes
+will be necessary before it can be used.
+If the goal is to use a DPDK application in the guest, then the proper driver will 
+need to be bound to the device before it can be started. 
+
+
+.pa
+.lw 0
+.ln
+.gv Date
+.gv version
+.gv Date
+
+&def_list( .85i &ditext )
+&di(Source) vfd/doc/qstart/quick_start.xfm
+&di(Original) 3 February 2018
+&di(Revised) &_date
+&di(Formatter) &_ver
+&end_dlist
+
+&quit

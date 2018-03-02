@@ -283,6 +283,29 @@ static void qos_set_rxpplane( portid_t pf ) {
 	}
 }
 
+extern void mlx5_set_vf_tcqos( sriov_port_t *port, uint32_t link_speed ) {
+	int *shares = port->vftc_qshares;
+	uint32_t rate;
+	int vfid;
+	int i, j;
+
+	if (port->ntcs != 8) {
+		bleat_printf( 1, "mlx5 set vf tc qos: Cannot set configuration if less then 8 tcs");
+		return;
+	}
+
+	for(i = 0; i < port->num_vfs; i++) {
+		vfid = port->vfs[i].num;
+		if( vfid >= 0 ) {
+			for(j = 0; j < MAX_TCS; j++) {
+				rate = (uint32_t)((float)(link_speed * shares[(vfid * MAX_TCS) + j]) / 100);
+				vfd_mlx5_set_vf_tcqos( port->rte_port_number, vfid, j, rate );
+				bleat_printf( 2, "mlx5 set vf tc qos: port=%d vf=%d tc=%d rate_share=%d%% rate=%dMbps",
+						port->rte_port_number, vfid, j, shares[(vfid * MAX_TCS) + j], rate );
+			}
+		}
+	}
+}
 /*
 	Accepts an array of percentages (rates), where each element defines a percentage of the related
 	TC that the queue is to be given.  These percentages are converted into refil credits

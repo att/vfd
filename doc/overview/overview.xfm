@@ -1,0 +1,399 @@
+
+.if false
+	Mnemonic:	overview.xfm
+	Abstract:	This is the document source to generate the vfd_overview in one of four
+				formats:  postscript (convertable to PDF), html, plain text and markdown.
+				Figures are maintained in xfig (ascii) source for easy git repo deltaing
+				and such that they can easily (and more importantly programatically) 
+				converted to the desired (.eps or .png) format. The majority of the {X}fm
+				macros used here are defined in the two setup files in the parent directory
+				(making them available to all VFd doc source). 
+				
+	Build:
+				These commands can be used to build various output from this source using
+				one of the {X}fm fommatters:
+					MARKDOWN=1 tfm README.xfm README.md
+					MARKDOWN=0 tfm README.xfm README.txt
+					MARKDOWN=0 pfm README.xfm README.ps
+					MARKDOWN=0 hfm README.xfm README.html
+
+				or just run 'mk all'.
+
+				This document is currently used as the main VFd readme, so the .md and .txt 
+				versions should be copied to the upper level directory and checked in.
+.fi
+
+.sf Helvetica
+.st 10
+.hn off
+
+.if hfm
+	.co bg white
+	.co #000000
+.fi
+
+.cs file ../setup_style.im
+.im ../setup.im
+.im ../setup_image.im
+
+.dv image_url_base https://raw.githubusercontent.com/wiki/att/vfd/images/overview
+
+.** while it makes sense to leave spaces after opening and before closing of macro parens (e.g. &ital( word )
+.** this actually causes issues for the space sensitive markdown world. Since we must support this beast
+.** of an output format, be warned that spaces will likely cause issues, as well as make it more difficult
+.** to spell check.
+
+
+.dv sub_title VFd Overview
+.st 18p
+.sf Helvetica
+.gv date
+
+.** generate a title for html/postscript
+.if !tfm
+	.bc start
+	Virtual Function Daemon -- VFd
+	.br
+	.st 14
+	&sub_title
+	.bc end
+	.st &textsize
+	.ll 6i
+.fi
+
+.st &textsize
+.sf &textfont
+
+
+.if !tfm
+	.** with pfm we have a real title; markdown doesn't provide such nice things, so we use the first h1
+	&h1(Introduction)
+.ei
+	&h1( VFd Overview )
+.fi
+&start_note( .5i )
+	A basic primer on SR-IOV can be found via the following URL: .br
+	&{http}www.intel.com/content/dam/doc/application-note/pci-sig-sr-iov-primer-sr-iov-technology-paper.pdf
+	.sp .3
+&end_note
+
+&start_note( .5i )
+	For the purposes of this document, we use the term &ital(guest) to mean either a guest operating system
+	or any application which has been given direct access to an SR-IOV device.
+	.sp .3
+&end_note
+
+Much in the way that a guest operating system requires a hypervisor to provide accessibility to the
+underlying real operating system and hardware, as well as to ensure policies are enforced, there is a 
+similar need for a &ital(NIC hypervisor) when virtual functions (VFs) are directly available through SR-IOV &note.
+While a bit more lightweight than a hypervisor, VFd can be thought of as the NIC hypervisor inasmuch as
+it provides the policy enforcement through both configuration and real-time validation of guest &note
+requests.
+.sp .5
+
+.gv figure
+.dv overview_fig &_fig
+&center_start
+&image( figures/overview.eps x=1.5i close proportional : 3 : General relationship of NIC, VFs, "guests" and VFd : &{image_url_base}/overview.png )
+&center_end
+
+Figure &overview_fig illustrates the relationship between the NIC (PF), the configured VFs,
+the guests, and VFd. 
+VFd acts as the policy implementor by configuring each VF to stipulate which VLAN(s) a VF will receive
+traffic from, and be allowed to send traffic to. 
+In addition, VFd will configure the PF and VFs to:
+.sp .5
+&indent
+&beg_list( &lic1 )
+	&item Strip and insert the outer VLAN tag.
+	&item Enable NIC bridging allowing guest to guest communication.
+	&item Allow unknown unicast traffic to be sent to one or more guests.
+	&item Allow broadcast and multicast traffic to be received/transmitted by a guest.
+	&item Enforce MAC and/or VLAN spoofing (drop spoofed packets).
+	&item Configure multiple MAC addresses for the VF.
+	&item Enable and configure DCB quality of service.
+&end_list
+&uindent
+.sp 1
+
+In addition to the NIC configurations listed above, VFd provides the means to access the 
+packet and byte counters allowing for them to be available to the user; something that is
+not possible when using a kernel driver to manage the VFs.  
+Statistics, both at the PF and VF level include:
+.sp .5
+&indent
+&beg_list( &lic1 )
+	&item Packet counts for inbound (Rx) and outbound (Tx)
+	&item Byte counts, Tx and Rx
+	&item Error packet count
+	&item Count of spoofed packets
+&end_list
+&uindent
+.sp 1
+
+
+&h2( The Guests )
+&start_note( .5i )
+To avoid confusion, we tend not to use the acronym VM when refering to a guest operating system (virtual machine)
+as some vendors refer to the virtual functions on the NIC as VMs which could lead to confusion.
+.sp .1
+&end_note
+
+While the illustration shows only one VF allocated to each guest, it is possible to allocate multiple VFs, from different PFs,
+to a single guest.
+Of the various guests shown in figure &overview_fig, two are illustrations of how guest operating 
+systems, virtual machines &note .sm , can have one, or more, VF allocated as an SR-IOV device.
+Bare metal applications (e.g. DPDK applications) are also able to make use of the VFs offered up by the NIC and generally 
+use the NIC's kernel VF interface/driver to do so.  
+
+&h2( Inside of a VM )
+When a guest operating system is created, and one or more VFs is attached to it, the VF appears
+as a virtual network interface and standard kernel drivers can be used to treat the interface
+as an ordinary ethernet device, configurable with well known tools like &cw(ifconfig) and &cw(ip,) 
+or a DPDK driver may be used to allow DPDK applications to run
+in the virtual machine.
+
+&h2( What VFd Is Not )
+While VFd is implemented as a DPDK application, primarily to easily access the network devices, 
+VFd is &bold(not) a packet processor, and does &bold(not) insert itself into the path of any
+packet.
+
+
+&h1( Necessity )
+A valid, and often asked, question is &ital(why exactly is VFd needed?) 
+It would seem that if the hardware offers all of the sophistication that they do, that the kernel
+drivers would supply the means to configure the hardware such that all of the features could be used.
+However, at least at the present time, this isn't the case, and there are several configuration 
+options which unfortunately cannot be achieved through the kernel drivers.
+In order to take full advantage of the hardware, an independent configuration tool, VFd, is
+required.
+
+.sp
+&h2( Real-time Authorisation )
+In addition to managing the configurations of all VFs, VFd also provides real-time 
+policy enforcement when a guest makes a request to configure it's interface.
+The following are examples of guest actions which require the approval of VFd before the 
+requested changes are actually applied o the VF:
+.cc .5i 
+.sp .5
+&beg_list
+&item Add or modify VLAN ID(s)
+&item Change default MAC address
+&item Add/delete alternate (white list) MAC addresses
+&item Set the MTU value
+&end_list
+.sp
+
+VFd will authorise (ACK) any request provided that the change is within the policy as defined 
+to VFd via the PF and VF configuration files. 
+For example, if a guests requests to add/modify a VLAN ID, it will be permitted only if the 
+requested ID has been defined in the VF's configuration file. 
+MTU changes are limited by the overall maximum MTU defined for each device in the main 
+VFd configuration file. 
+Looking from a policy assurance point of view, VFd provides a service that would otherwise not
+be available even if all NIC features could be exercised through the kernel driver interface as
+the drivers provide no mechanism to call out to an independent authority to make these kinds of
+decisions. 
+
+.sp .1
+&h1( VF Configuration Features )
+The following sections provide a high level explanation of NIC features which may be managed
+using VFd.
+The purpose here is to outline what can be done; for information on how to actually implement
+these, please refer to the &ital(VFd User's Guide.)
+
+
+&h2( Anti-Spoofing )
+&start_note( .5i )
+	For some NICs in order to enable VLAN anti-spoofing, MAC anti-spoofing must also be enabled.
+.sp .1
+&end_note
+&ital(Spoofing) is used in reference to a machine on a network pretending to be another machine, 
+usually by using the other machine's MAC address, or using an unauthorised VLAN ID in packets, or
+possibly both. 
+VFd forces &ital(anti-spoofing) settings to be enabled for VLAN IDs &note under the assumption that
+a guest assigned to a VLAN must always send packets with the assigned ID, but may send with any
+source MAC address. 
+
+
+&h2( VLAN Considerations )
+The list of &ital(approved) VLAN IDs that are given in a VF's configuration file limit the
+packets that the NIC will forward to the VF.
+Only packets containing one of the VLAN IDs in the list are allowed to pass.
+VFd does not permit a VF to see all packets regardless of VLAN ID, nor does it permit
+untagged packets from being written onto a VF's queue.
+
+.gv figure
+.dv strip_fig &_fig
+.sp 1
+&cimage( figures/vlan_strip.eps x=.85i close proportional : 2 : On transmit, insert VLAN tag into untagged packet (top to middle), and into a single tagged packet (middle to bottom). On receipt, the reverse. : &{image_url_base}/vlan_strip.png )
+
+&h3( Stripping and Inserting VLAN Tags )
+The VLAN ID, or tag, may be automatically removed, stripped, as a packet is received, 
+and automatically inserted prior to transmission; both of these actions are performed by the 
+NIC and thus are as efficient as is possible.
+Whether or not one or multiple VLAN IDs are configured for a VF, the stripping of the tag
+is straight forward: the tag is removed from the packet before the packet is presented to the
+VF.
+For the case where a VF receives packets with a single VLAN tag, the process of insertion is
+also straight forward:  the NIC inserts the tag into the packet before transmission.
+When a VF is permitted send and receive packets using one of several VLAN IDs, the insertion 
+of the correct ID is the responsibility of the sending process, and cannot be added to the 
+packet by the NIC. 
+
+&h3( Q in Q Stripping )
+.if false
+&start_note( .5i )
+	In the near future some NICs might support the removal of both inner and outer VLAN IDs. 
+	At this time, VFd does not provide any support for this.
+.sp .1
+&end_note
+.fi 
+
+Packets arriving with multiple embedded VLAN IDs (figure &strip_fig, bottom), also known as Q in Q, are subject to the same stripping
+practice as described above.  
+Only the first, or &ital(outer) tag, is removed from a received packet, and only the outer 
+tag will be inserted on transmit.
+Using the illustration as an example, the middle packet would be delivered to the guest after
+stripping, and the bottom packet would be transmitted.
+It is the responsibility of the guest software (kernel driver, or DPDK application) to properly
+distinguish packets, if necessary, based on the VLAN ID which remains in the packet.
+
+
+&h2( MAC Addresses )
+By default the NIC generates a random MAC address for each VF that is created.  
+This random address is known as the &ital(default MAC,) and is visible to the guest (e.g. it
+is what would be displayed in the output of an &cw(ifconfig) command).
+If it is necessary, the default MAC address can be supplied in a VF's configuration file which
+will replace the random address generated by the NIC.
+
+.cc 2i
+&h3( Guest Generated MAC Addresses )
+It is sometimes desirable for a guest to generate the default MAC, and possibly other &ital(white-list)
+MAC addresses.
+VFd will approve these guest requests provided that:
+.** .sp .5
+&indent
+&beg_list
+&item The address is not in use by another VF on the same PF.
+&item The number of addresses currently allocated on the VF is not at maximum
+&item THe number of addresses currently allocated on the PF is not at maximum.
+&end_list
+&uindent
+
+.sp
+Guest allocated MAC addresses remain in place until the VF configuration is deleted. 
+When the configuration is deleted any guest allocated addresses are replaced by a single, randomly
+generated, default address.
+
+&h2( Broadcast, Unknown Unicast, Multicast Traffic )
+VFd allows each VF to be configured to cause the NIC to allow or reject each of these types of traffic.
+The configuration of a VF provides for three independent settings allowing each to be 
+managed separately.
+All packets falling within each traffic type are subject to VLAN filtering; it is not possible
+for a VF to see &bold(all) *-cast traffic.
+
+
+&h1( PF Configuration Features )
+There are several configuration options that VFd provides which apply to all VFs on a given NIC, or
+to all PFs on the NIC, and thus are supplied in the main VFd configuration file. 
+These configuration options are described in the following sections.
+
+&h2( Loopback )
+By default the NIC bridge is disabled which forces a packet to be transmitted to the switch, and then
+back, should two guests using VFs on the same  PF need to communicate. 
+Enabling the loopback option for a VF will enable the NIC bridge and allow packets to be exchanged
+between VFs on the PF without having to travel onto the real network. 
+
+&h2( Flow Control )
+While evidence suggests that using flow control can significantly impact performance (max throughput), 
+VFd does allow flow control on the NIC to be enabled. 
+
+&h2( Quality of Service )
+VFd is able to configure all PFs to enable Datacenter Bridging (DCB) quality of service. 
+This defines a set of traffic classes and allows the assignment of bandwidth shares (percentages)
+for each VF with respect to each traffic class. 
+
+&h2( MTU Limit )
+The overall maximum MTU limit can be set on each PF. 
+When set, an attempt by a guest to increase the MTU value over this limit will be rejected.
+
+
+&h1( Traffic Mirroring )
+&start_note( .4i )
+	The directional notation of mirrored traffic is relative to the guest, and not to the NIC or 
+	switch. Thus &ital(inbound) means traffic received; inbound to the guest.
+.sp .1
+&end_note
+Traffic mirroring is a specialised form of loopback.
+VFd provides for real-time mirror configuration, independent of VF configuration files, allowing for
+inbound &note .sm , outbound, or all of a VF's traffic to be duplicated and passed to another VF on the
+same PF. 
+
+.ca start table1.ca
+.sp 1
+.if hfm
+	.bc start
+.ei
+	&table( 2.8i 2.8i )
+.fi
+	&image( figures/mirror_in.eps x=.1i close proportional  : 1.5 : Inbound mirroring showting traffic also being delivered to Guest B. : &{image_url_base}/mirror_in.png )
+&table_cell()
+	&image( figures/mirror_out.eps x=.1i close proportional : 1.5 : Outbound mirroring showing all Tx traffic from Guest A delivered to Guest B. : &{image_url_base}/mirror_out.png )
+.if hfm
+	.bc end
+.ei
+	&table_end
+.fi
+.ca end
+
+.gv remain
+.if &_iremain 3 <
+	.oe .im table1.ca
+.ei
+	.im table1.ca
+.fi
+
+.sp
+Mirroring traffic locally has benefits with respect to debugging connectivity issues as well as
+application issues.
+However, there are potential impacts, some serious, to the overall throughput of the NIC when 
+traffic is mirrored over the NIC bridge. 
+For instance, a badly behaved application used as the receiver for mirrored traffic has the potential
+to block all traffic to the source VF.
+
+.** -----------------------------------------------------------------------------------------------
+.if ! pfm
+	&h1( Notes: )
+	.cn showend
+	&line
+.fi
+
+
+.** -----------------------------------------------------------------------------------------------
+.gv remain
+.if &_iremain < 4
+	.pa
+.ei
+	.sp 5
+.fi
+
+.st 8p
+.if tfm
+	.sp 5
+	.im ../caution.im 
+.fi
+
+
+
+.ln
+.gv version
+.gv Date
+&def_list( .75i &ditext )
+&di(Source) vfd/doc/overview/overview.xfm
+&di(Original) 19 February 2018
+&di(Revised) &_date
+&di(Formatter) &_ver
+&end_dlist
+
+&quit
