@@ -157,6 +157,7 @@ extern char* rfifo_read( void* vfifo ) {
 	if( (rbuf = (char *) malloc( sizeof( char ) * RBUF_SIZE )) == NULL ) {
 		return NULL;
 	}
+	memset( rbuf, 0, sizeof( char ) * RBUF_SIZE );						// only to keep valgrind from twisting its knickers
 
 	*rbuf = 0;
 	while( 1 ) {
