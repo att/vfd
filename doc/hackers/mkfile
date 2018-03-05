@@ -26,3 +26,5 @@ vfd_hackers.md:: ../setup.im vfd_hackers.xfm
 	sed 's/^ //' vfd_hackers.o >vfd_hackers.md
 	rm vfd_hackers.o
 
+clean:V:
+	rm -f *.ps *.sp figures/*.eps *.ca *.ecnfile *.bcnfile
