@@ -2,21 +2,20 @@
 
 .ll 6.5i
 .sf Helvetica
-.st 10
-.** 
+.st 10p
+
+.if hfm
+	.co bg white
+	.co #000000
+.fi
 
 .dh 1 m=.5i  e=no s=21 i=0 p=16 f=Helvetica-bold
 .dh 2  m=.5i s=21 i=0      p=14 f=Helvetica-bold 
 .dh 3  m=.5i s=10 i=0      p=12 f=Helvetica-bold
 
-.cd 1 7i
-.ju on
 .hn off
 
 .im ../setup.im
-.** .in 0i
-.xx 2
-.xx 0
 
 	
 .dv sub_title Debugging Tricks
@@ -30,7 +29,7 @@
 	.st 14
 	&sub_title
 	.bc end
-	.st &fontsize
+	.st &textsize
 .ei
 	.im ../caution.im 
 
@@ -47,10 +46,9 @@
 
 
 &h1(Overview)
-&start_note( .5i )
+&start_note( .7i )
 	A basic primer on SR-IOV can be found using the following URL: .br
 	&{http}www.intel.com/content/dam/doc/application-note/pci-sig-sr-iov-primer-sr-iov-technology-paper.pdf
-	.sp .3
 &end_note
 
 VFd is a daemon which manages the configuration of virtual and physical functions (VFs and PFs) which 
@@ -100,15 +98,16 @@ should be all that is needed to start/stop mirroring the traffic into or out fro
 &ex_start
   sudo iplex mirror <pf> <vf> <direction> <target>
 &ex_end
-.sp .5
+
+.cc 1i
 Where:
-&bd( .5i : Helvetica-bold : )
+&def_list( .5i : Helvetica-bold : )
 &di(pf) Is the PF number as reported by the iplex show command.
 &di(vf) Is the VF number of the problem guest.
 &di(direction) Is one of in, out, all, or off to mirror inbound (Rx), outbound (Tx), all (Tx and Rx) 
 	or to turn mirroring off.
 &di(target) Is the VF number that is to receive the mirrored traffic.
-&ed
+&end_dlist
 
 
 .h3 With Older VFd Versions
@@ -133,26 +132,26 @@ The &ital(target) is the VF number of the debugging guest.  This may not be know
 is started (depending on whether the guest is being started manually or via some virtualisation driver).
 The direction may be one of four strings:
 .sp .5
-&bd( .5i : Helvetica-bold : )
+&def_list( .5i : Helvetica-bold : )
 &di(all)  Mirror all traffic to the target.
 &di(in)   Mirror only traffic received and passed to the guest.
 &di(out)  Mirror only traffic which is transmitted from the guest.
 &di(off)  Turn mirroring off.
-&ed
+&end_dlist
 .sp
 
 &h3(Changing Mirroring State)
 To change the mirror state for a running guest involves a set of simple steps:
 
 .sp .5
-&bd( .25i :  &difont : a=1 f=&adi_fmt )
-&adi  Make a back up of the current configuration of the VF configuration (/var/lib/vfd/config).
-&adi  Add the mirroring setting to the backup configuration setting in, our, all, or off as desired.
-&adi  Delete the current configuration from VFd (iplex delete <id>). The configuration file will be removed.
-&adi  Copy the backup file to the config directory giving it the same name as before.
-&adi  Add the newly created configuration to VFd (iplex add <id>).
-&adi  Verify in the VFd log file that mirroring state was changed for the desired VF.
-&ed
+&def_list( .25i  &difont f=%d. a=1  )
+&auto_num  Make a back up of the current configuration of the VF configuration (/var/lib/vfd/config).
+&auto_num  Add the mirroring setting to the backup configuration setting in, our, all, or off as desired.
+&auto_num  Delete the current configuration from VFd (iplex delete <id>). The configuration file will be removed.
+&auto_num  Copy the backup file to the config directory giving it the same name as before.
+&auto_num  Add the newly created configuration to VFd (iplex add <id>).
+&auto_num  Verify in the VFd log file that mirroring state was changed for the desired VF.
+&end_dlist
 .sp
 
 
