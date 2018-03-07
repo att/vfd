@@ -192,6 +192,16 @@ set_vf_link_status(portid_t port_id, uint16_t vf, int status)
 		case VFD_MLX5:
 			diag = vfd_mlx5_set_vf_link_status(port_id, vf, status);
 			break;
+
+		case VFD_NIANTIC:	// these are known, but don't support the call
+			break;
+			
+		case VFD_FVL25:
+			break;
+
+		case VFD_BNXT:
+			break;
+
 		default:
 			bleat_printf( 0, "set_vf_link_status: unknown device type: %u, port: %u", port_id, dev_type);
 	}
@@ -545,6 +555,7 @@ set_vf_allow_untagged(portid_t port_id, uint16_t vf_id, int on)
 		case VFD_BNXT:		
 			ret = vfd_bnxt_allow_untagged(port_id, vf_id, on);
 			break;
+
 		case VFD_MLX5:
 			ret = vfd_mlx5_set_vf_vlan_filter(port_id, 0, VFN2MASK(vf_id), on);
 			break;
@@ -908,6 +919,9 @@ int get_split_ctlreg( portid_t port_id, uint16_t vf_id ) {
 
 		case VFD_BNXT:
 			break;
+
+		case VFD_MLX5:
+			break;
 			
 		default:
 			bleat_printf( 0, "vfd_ixgbe_get_split_ctlreg: unknown device type: %u, port: %u", port_id, dev_type);
@@ -939,6 +953,9 @@ void set_split_erop( portid_t port_id, uint16_t vf_id, int state ) {
 		case VFD_BNXT:
 			vfd_bnxt_set_split_erop(port_id, vf_id, state);
 			break;
+
+		case VFD_MLX5:
+			break;
 			
 		default:
 			bleat_printf( 0, "set_split_erop: unknown device type: %u, port: %u", port_id, dev_type);
@@ -963,6 +980,9 @@ static void set_rx_drop(portid_t port_id, uint16_t vf_id, int state )
 
 		case VFD_BNXT:
 			vfd_bnxt_set_rx_drop(port_id, vf_id, state);
+			break;
+
+		case VFD_MLX5:
 			break;
 			
 		default:
@@ -990,6 +1010,9 @@ extern void set_pfrx_drop(portid_t port_id, int state )
 
 		case VFD_BNXT:
 			//vfd_bnxt_set_pfrx_drop( port_id, state ); 				// not implemented TODO
+			break;
+
+		case VFD_MLX5:
 			break;
 			
 		default:
@@ -1029,6 +1052,9 @@ void set_queue_drop( portid_t port_id, int state ) {
 
 		case VFD_BNXT:
 			result = vfd_bnxt_set_all_queues_drop_en( port_id, !!state ); 				// not implemented TODO
+			break;
+
+		case VFD_MLX5:
 			break;
 			
 		default:
@@ -1111,6 +1137,9 @@ is_rx_queue_on(portid_t port_id, uint16_t vf_id, int* mcounter )
 		case VFD_BNXT:
 			result = vfd_bnxt_is_rx_queue_on(port_id, vf_id, mcounter);
 			break;
+
+		case VFD_MLX5:
+			break;
 			
 		default:
 			bleat_printf( 0, "is_rx_queue_on: unknown device type: %u, port: %u", port_id, dev_type);
@@ -1134,6 +1163,8 @@ disable_default_pool(portid_t port_id)
 			vfd_ixgbe_disable_default_pool( port_id ); 
 			break;
 			
+
+		case VFD_MLX5:
 		case VFD_FVL25:		
 		case VFD_BNXT:
 			break;
@@ -1324,6 +1355,7 @@ nic_stats_display(uint16_t port_id, char * buff, int bsize)
 		case VFD_MLX5:
 			spoffed[port_id] += vfd_mlx5_get_pf_spoof_stats(port_id); 
 			break;
+
 		default:
 			bleat_printf( 0, "nic_stats_display: unknown device type: %u, port: %u", port_id, dev_type);
 			break;	
@@ -1772,6 +1804,9 @@ ping_vfs(portid_t port_id, int vf)
 
 		case VFD_BNXT:
 			retval = vfd_bnxt_ping_vfs(port_id, vf);
+			break;
+
+		case VFD_MLX5:
 			break;
 			
 		default:
