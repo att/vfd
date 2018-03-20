@@ -1,7 +1,7 @@
 # mk; better than make every day.
 
 libs = -L../lib -lvfd 
-vreq_req::	vreq.c ../lib/libvfd.a
+vfd_req::	vreq.c ../lib/libvfd.a
 	gcc -I ../lib ${prereq%% *} -o $target $libs
 
 clean:V:

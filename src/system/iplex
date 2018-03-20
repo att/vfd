@@ -17,6 +17,9 @@
                               where n:m supplies a pf and vf number rather than all or pfs.
                 2017 09 Oct - Add mirror update command and support for config option.
                 2018 21 Feb - Add support for live config directory
+                2018 14 Mar - Allow config to be missing; uses defaults for log/config locations.
+                            Use same directory for response fifo as VFd's fifo to support
+                            containers.
 """
 
 __doc__ = """ iplex
@@ -68,6 +71,13 @@ def _errorMsg(msg):
 
 # read vfd.cfg and validate
 def read_config():
+    if not os.path.isfile( VFD_CONFIG ) :			# no config, gen defaults we need
+        data = {}
+        data["config_dir"] = "/var/lib/vfd/config"
+        data["fifo"]  = "/var/lib/vfd/request"
+        data["log_dir"]  = "/var/log/vfd"
+        return data
+
     with open(VFD_CONFIG) as data_file:
         try:
             data = json.load(data_file)
@@ -82,7 +92,9 @@ class Iplex(object):
 
     def __init__(self, config_data=None, options=None, log=None):
         self.options = options
+
         self.config_data = config_data
+
         self.log = log
 
     def add(self, port_id):
@@ -184,7 +196,7 @@ class Iplex(object):
 
     # Create private fifo
     def __create_fifo(self):
-        resp_fifo = Iplex.PRIVATE_FIFO_PATH+str(os.getpid())
+        resp_fifo = self.config_data['fifo'] + "_IPLEX.%d" % ( os.getpid() )         # use the same baee for the response pipe
         try:
             os.mkfifo(resp_fifo)
         except OSError, e:
@@ -229,6 +241,7 @@ class Iplex(object):
     def __write_read_fifo(self, msg):
         readFd = None
         try:
+
             writeFd = os.open(self.config_data['fifo'], os.O_WRONLY | os.O_NONBLOCK)
             os.write(writeFd, str(msg)+'\n\n')
             os.close(writeFd)
@@ -244,7 +257,7 @@ class Iplex(object):
             os.unlink(self.resp_fifo)
         except OSError as e:
             if errno.ENXIO:
-                self.__errMsg("VFD is not running")
+                self.__errMsg("VFD is not running or fifo not available: %s" % e )
                 self.log.error("VFD does not seem to be running, please start the service ")
             else:
                 self.log.error("%s", e)
