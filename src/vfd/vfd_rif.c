@@ -1160,7 +1160,7 @@ extern int vfd_write( int fd, const_str buf, int len ) {
 		return 0;
 	}
 
-	bleat_printf( 2, "response write starts for %d bytes", len );
+	bleat_printf( 3, "response write starts for %d bytes", len );
 	while( n2send > 0 && tries > 0 ) {
 		nsent = write( fd, buf, n2send );
 		if( nsent < 0 ) {
@@ -1205,7 +1205,11 @@ extern int vfd_write( int fd, const_str buf, int len ) {
 */
 extern void vfd_response( char* rpipe, int state, const_str vfd_rid, const_str msg ) {
 	int 	fd;
-	char	buf[BUF_1K];
+	char	buf[BUF_1K * 4];
+	char*	dmsg;			// duplicate message that we can mutilate
+	char*	dptr;			// pointer into dmsg for strtok
+	char*	tok;
+	const_str	sep = "";
 
 	if( rpipe == NULL ) {
 		bleat_printf( 1, "response: unable to respond, response pipe name is nil" );
@@ -1229,17 +1233,26 @@ extern void vfd_response( char* rpipe, int state, const_str vfd_rid, const_str m
 		bleat_printf( 2, "sending response: %s(%d) [%d] %d bytes", rpipe, fd, state, strlen( msg ) );
 	}
 
-	snprintf( buf, sizeof( buf ), "{ \"action\": \"response\", \"vfd_rid\": \"%s\", \"state\": \"%s\", \"msg\": \"", vfd_rid, state ? "ERROR" : "OK" );
+	snprintf( buf, sizeof( buf ), "{ \"action\": \"response\", \"vfd_rid\": \"%s\", \"state\": \"%s\", \"msg\": [ ", vfd_rid, state ? "ERROR" : "OK" );
 	bleat_printf( 3, "response: header: %s", buf );
-	if ( vfd_write( fd, buf, strlen( buf ) ) > 0 ) {
-		if ( msg != NULL ) {
-			vfd_write( fd, msg, strlen( msg ) );				// ignore state; we need to close the json regardless
-		}
 
-		snprintf( buf, sizeof( buf ), "\" }\n\n" );				// terminate the json
-		vfd_write( fd, buf, strlen( buf ) );
-		bleat_printf( 2, "response written to pipe" );			// only if all of message written
+	if( vfd_write( fd, buf, strlen( buf ) ) > 0 ) {
+		if( msg != NULL  && (dmsg = strdup( msg )) != NULL ) {
+			dptr = dmsg;
+			while( (tok = strtok_r( NULL, "\n", &dptr )) != NULL ) {	//  bloody json doesn't accept strings with newlines, so we build an array; grrr
+				snprintf( buf, sizeof( buf ), "%s\"%s\"", sep, tok );
+				vfd_write( fd, buf, strlen( buf ) );					// ignore state; we need to close the json regardless
+				sep = ",\n";											// after the first we need commas before the next
+			}
+
+			free( dmsg );
+		}
 	}
+	
+	snprintf( buf, sizeof( buf ), " ] }\n@eom@\n" );				// terminate the the message array, then the json
+	vfd_write( fd, buf, strlen( buf ) );
+	bleat_printf( 2, "response written to pipe" );			// only if all of message written
+
 
 	bleat_pop_lvl();			// we assume it was pushed when the request received; we pop it once we respond
 	close( fd );
@@ -1477,11 +1490,11 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 					if( strchr( req->resource, '/' ) != NULL ) {									// assume fully qualified if it has a slant
 						strcpy( mbuf, req->resource );
 					} else {
-						snprintf( mbuf, sizeof( mbuf ), "%s/%s", parms->config_dir, req->resource );
+						snprintf( mbuf, sizeof( mbuf ), "%s_live/%s", parms->config_dir, req->resource );		// if unqualified, assume it's in the live for deletion
 					}
 
 					bleat_printf( 1, "deleting vf from file: %s", mbuf );
-					if( vfd_del_vf( parms, conf, req->resource, &reason ) ) {		// successfully updated internal struct
+					if( vfd_del_vf( parms, conf, mbuf, &reason ) ) {		// successfully updated internal struct
 						if( vfd_update_nic( parms, conf ) == 0 ) {			// nic update was good too
 							snprintf( mbuf, sizeof( mbuf ), "vf deleted successfully: %s", req->resource );
 							vfd_response( req->resp_fifo, RESP_OK, req->vfd_rid, mbuf );
@@ -1542,6 +1555,8 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 										} else {
 											vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, "unable to generate stats" );
 										}
+									} else {
+										vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, "unrecognised show suboption" );
 									}
 									break;
 
@@ -1554,6 +1569,8 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 										} else {
 											vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, "unable to generate extended stats" );
 										}
+									} else {
+										vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, "unrecognised show suboption" );
 									}
 									break;
 
@@ -1565,6 +1582,8 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 										} else {
 											vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, "unable to generate mirror stats" );
 										}
+									} else {
+										vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, "unrecognised show suboption" );
 									}
 									break;
 
@@ -1576,8 +1595,10 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 										} else {
 											vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, "unable to generate pf stats" );
 										}
+									} else {
+										vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, "unrecognised show suboption" );
 									}
-										break;
+									break;
 								
 								default:
 									if( isdigit( *req->resource ) ) {						// dump just for the indicated pf
@@ -1591,7 +1612,8 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 										if( req->resource ) {
 											bleat_printf( 2, "show: unknown target supplied: %s", req->resource );
 										}
-										vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, "unable to generate stats: unnown target supplied (not one of all, pfs, extended or pf-number)" );
+										vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, 
+												"unable to generate stats: unnown target supplied (not one of all, pfs, extended or pf-number)" );
 									}
 							}
 						}
