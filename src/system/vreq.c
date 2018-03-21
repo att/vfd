@@ -151,7 +151,7 @@ int do_show( int argc, char** argv, char* v_channel, char* r_channel ) {
 
 
 	if( (vfifo = open_rchannel( v_channel )) >= 0 ) {
-		snprintf( fmt, sizeof( fmt ), "{ \"action\": \"show\", \"params\": { \"resource\": \"%%s\", \"loglevel\": %d, \"r_fifo\": \"%s\"} }\n", 
+		snprintf( fmt, sizeof( fmt ), "{ \"action\": \"show\", \"vfd_rid\": \"vreq-static-req\", \"params\": { \"resource\": \"%%s\", \"loglevel\": %d, \"r_fifo\": \"%s\"} }\n", 
 			log_level, r_channel );
 
 		switch( *(argv[0]) ) {
@@ -198,7 +198,7 @@ int do_dump( char* v_channel, char* r_channel ) {
 
 
 	if( (vfifo = open_rchannel( v_channel )) >= 0 ) {
-		snprintf( buf, sizeof( buf ), "{ \"action\": \"dump\", \"params\": { \"resource\": null, \"loglevel\": 0, \"r_fifo\": \"%s\"} }\n", r_channel );
+		snprintf( buf, sizeof( buf ), "{ \"action\": \"dump\", \"vfd_rid\": \"vreq-static-req\", \"params\": { \"resource\": null, \"loglevel\": 0, \"r_fifo\": \"%s\"} }\n", r_channel );
 		write( vfifo, buf, strlen( buf ) );
 		rc = 1;
 	}
@@ -220,7 +220,7 @@ int do_ping( char* v_channel, char* r_channel ) {
 
 
 	if( (vfifo = open_rchannel( v_channel )) >= 0 ) {
-		snprintf( buf, sizeof( buf ), "{ \"action\": \"ping\", \"params\": { \"resource\": null, \"loglevel\": 0, \"r_fifo\": \"%s\"} }\n", r_channel );
+		snprintf( buf, sizeof( buf ), "{ \"action\": \"ping\", \"vfd_rid\": \"vreq-static-req\", \"params\": { \"resource\": null, \"loglevel\": 0, \"r_fifo\": \"%s\"} }\n", r_channel );
 		write( vfifo, buf, strlen( buf ) );
 		rc = 1;
 	}
