@@ -40,7 +40,7 @@ extern int vfd_init_fifo( parms_t* parms ) {
 	}
 
 	umask( 0 );
-	parms->rfifo = rfifo_create( parms->fifo_path, 0666 );		//TODO -- set mode more sanely, but this runs as root, so regular users need to write to this thus open wide for now
+	parms->rfifo = rfifo_open( parms->fifo_path, 0666 );		//TODO -- set mode more sanely, but this runs as root, so regular users need to write to this thus open wide for now
 	if( parms->rfifo == NULL ) {
 		bleat_printf( 0, "ERR: unable to create request fifo (%s): %s", parms->fifo_path, strerror( errno ) );
 		return -1;
@@ -1160,7 +1160,7 @@ extern int vfd_write( int fd, const_str buf, int len ) {
 		return 0;
 	}
 
-	bleat_printf( 2, "response write starts for %d bytes", len );
+	bleat_printf( 3, "response write starts for %d bytes", len );
 	while( n2send > 0 && tries > 0 ) {
 		nsent = write( fd, buf, n2send );
 		if( nsent < 0 ) {
@@ -1198,15 +1198,30 @@ extern int vfd_write( int fd, const_str buf, int len ) {
 	that the requestor opens the pipe before sending the request so that if it is delayed after
 	sending the request it does not prevent us from writing to the pipe.  If we don't open in 	
 	non-blocked mode we could hang foever if the requestor dies/aborts.
+
+	To work with remote requests (tokay and containers) the response must contain an action which
+	is 'response', and the vfd_rid which was passed in.  This allows a single response pipe to be
+	used, and allows for future expansion of other information sent via the pipe, not just responses.
 */
-extern void vfd_response( char* rpipe, int state, const_str msg ) {
+extern void vfd_response( char* rpipe, int state, const_str vfd_rid, const_str msg ) {
 	int 	fd;
-	char	buf[BUF_1K];
+	char	buf[BUF_1K * 4];
+	char*	dmsg;			// duplicate message that we can mutilate
+	char*	dptr;			// pointer into dmsg for strtok
+	char*	tok;
+	const_str	sep = "";
 
 	if( rpipe == NULL ) {
+		bleat_printf( 1, "response: unable to respond, response pipe name is nil" );
 		return;
 	}
 
+	if( vfd_rid == NULL ) {
+		bleat_printf( 1, "response: did not have a vfd_rid to send back" );
+		vfd_rid = "not-supplied";
+	}
+
+	bleat_printf( 3, "response: opening response pipe: %s", rpipe );
 	if( (fd = open( rpipe, O_WRONLY | O_NONBLOCK, 0 )) < 0 ) {
 	 	bleat_printf( 0, "unable to deliver response: open failed: %s: %s", rpipe, strerror( errno ) );
 		return;
@@ -1218,16 +1233,26 @@ extern void vfd_response( char* rpipe, int state, const_str msg ) {
 		bleat_printf( 2, "sending response: %s(%d) [%d] %d bytes", rpipe, fd, state, strlen( msg ) );
 	}
 
-	snprintf( buf, sizeof( buf ), "{ \"state\": \"%s\", \"msg\": \"", state ? "ERROR" : "OK" );
-	if ( vfd_write( fd, buf, strlen( buf ) ) > 0 ) {
-		if ( msg != NULL ) {
-			vfd_write( fd, msg, strlen( msg ) );				// ignore state; we need to close the json regardless
-		}
+	snprintf( buf, sizeof( buf ), "{ \"action\": \"response\", \"vfd_rid\": \"%s\", \"state\": \"%s\", \"msg\": [ ", vfd_rid, state ? "ERROR" : "OK" );
+	bleat_printf( 3, "response: header: %s", buf );
 
-		snprintf( buf, sizeof( buf ), "\" }\n\n" );				// terminate the json
-		vfd_write( fd, buf, strlen( buf ) );
-		bleat_printf( 2, "response written to pipe" );			// only if all of message written
+	if( vfd_write( fd, buf, strlen( buf ) ) > 0 ) {
+		if( msg != NULL  && (dmsg = strdup( msg )) != NULL ) {
+			dptr = dmsg;
+			while( (tok = strtok_r( NULL, "\n", &dptr )) != NULL ) {	//  bloody json doesn't accept strings with newlines, so we build an array; grrr
+				snprintf( buf, sizeof( buf ), "%s\"%s\"", sep, tok );
+				vfd_write( fd, buf, strlen( buf ) );					// ignore state; we need to close the json regardless
+				sep = ",\n";											// after the first we need commas before the next
+			}
+
+			free( dmsg );
+		}
 	}
+	
+	snprintf( buf, sizeof( buf ), " ] }\n@eom@\n" );				// terminate the the message array, then the json
+	vfd_write( fd, buf, strlen( buf ) );
+	bleat_printf( 2, "response written to pipe" );			// only if all of message written
+
 
 	bleat_pop_lvl();			// we assume it was pushed when the request received; we pop it once we respond
 	close( fd );
@@ -1237,6 +1262,10 @@ extern void vfd_response( char* rpipe, int state, const_str msg ) {
 	Cleanup a request and free the memory.
 */
 extern void vfd_free_request( req_t* req ) {
+	if( req->vfd_rid != NULL ) {
+		free( req->vfd_rid );
+	}
+
 	if( req->resource != NULL ) {
 		free( req->resource );
 	}
@@ -1248,7 +1277,7 @@ extern void vfd_free_request( req_t* req ) {
 }
 
 /*
-	Read an iplx request from the fifo, and format it into a request block.
+	Read a request from the fifo, and format it into a request block.
 	A pointer to the struct is returned; the caller must use vfd_free_request() to
 	properly free it.
 */
@@ -1256,6 +1285,7 @@ extern req_t* vfd_read_request( parms_t* parms ) {
 	void*	jblob;				// json parsing stuff
 	char*	rbuf;				// raw request buffer from the pipe
 	char*	stuff;				// stuff teased out of the json blob
+	char*	rid;				// request id we must track for caller
 	req_t*	req = NULL;
 	int		lvl;				// log level supplied
 
@@ -1271,14 +1301,13 @@ extern req_t* vfd_read_request( parms_t* parms ) {
 		return NULL;
 	}
 
-	if( (stuff = jw_string( jblob, "action" )) == NULL ) {
+	if( (stuff = jw_string( jblob, "action" )) == NULL ) {					// CAUTION: switch below expects stuff to have action
 		bleat_printf( 0, "ERR: request received without action: %s", rbuf );
 		free( rbuf );
 		jw_nuke( jblob );
 		return NULL;
 	}
 
-	
 	if( (req = (req_t *) malloc( sizeof( *req ) )) == NULL ) {
 		bleat_printf( 0, "ERR: memory allocation error tying to alloc request for: %s", rbuf );
 		free( rbuf );
@@ -1288,6 +1317,10 @@ extern req_t* vfd_read_request( parms_t* parms ) {
 	memset( req, 0, sizeof( *req ) );
 
 	bleat_printf( 2, "raw message: (%s)", rbuf );
+
+	if( (rid = jw_string( jblob, "params.vfd_rid" )) != NULL ) {					// if request id supplied
+		req->vfd_rid = strdup( rid );
+	}
 
 	switch( *stuff ) {				// we assume compiler builds a jump table which makes it faster than a bunch of nested string compares
 		case 'a':
@@ -1337,6 +1370,8 @@ extern req_t* vfd_read_request( parms_t* parms ) {
 	}
 	if( (stuff = jw_string( jblob, "params.r_fifo")) != NULL ) {
 		req->resp_fifo = strdup( stuff );
+	} else {
+		bleat_printf( 1, "no response fifo given in request" );
 	}
 	
 	req->log_level = lvl = jw_missing( jblob, "params.loglevel" ) ? 0 : (int) jw_value( jblob, "params.loglevel" );
@@ -1414,8 +1449,9 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 
 			switch( req->rtype ) {
 				case RT_PING:
+					bleat_printf( 3, "responding to ping" );
 					snprintf( mbuf, sizeof( mbuf ), "pong: %s", version );
-					vfd_response( req->resp_fifo, RESP_OK, mbuf );
+					vfd_response( req->resp_fifo, RESP_OK, req->vfd_rid, mbuf );
 					break;
 
 				case RT_ADD:
@@ -1430,19 +1466,19 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 						relocate_vf_config( parms, mbuf, NULL );			// move the config to the live directory on success (nil suffix indicates live dir)
 						if( vfd_update_nic( parms, conf ) == 0 ) {			// added to config was good, drive the nic update
 							snprintf( mbuf, sizeof( mbuf ), "vf added successfully: %s", req->resource );
-							vfd_response( req->resp_fifo, RESP_OK, mbuf );
+							vfd_response( req->resp_fifo, RESP_OK, req->vfd_rid, mbuf );
 							bleat_printf( 1, "vf added: %s", mbuf );
 						} else {
 							// TODO -- must turn the vf off so that another add can be sent without forcing a delete
 							// 		update_nic always returns good now, so this waits until it catches errors and returns bad
 							snprintf( mbuf, sizeof( mbuf ), "vf add failed: unable to configure the vf for: %s", req->resource );
-							vfd_response( req->resp_fifo, RESP_ERROR, mbuf );
+							vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, mbuf );
 							bleat_printf( 1, "vf add failed nic update error" );
 						}
 					} else {
 						relocate_vf_config( parms, mbuf, ".error" );		// move the config file to *.error for debugging, but keep in same directory
 						snprintf( mbuf, sizeof( mbuf ), "unable to add vf: %s: %s", req->resource, reason );
-						vfd_response( req->resp_fifo, RESP_ERROR, mbuf );
+						vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, mbuf );
 						free( reason );
 					}
 					if( bleat_will_it( 4 ) ) {					// TODO:  remove after testing
@@ -1454,19 +1490,19 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 					if( strchr( req->resource, '/' ) != NULL ) {									// assume fully qualified if it has a slant
 						strcpy( mbuf, req->resource );
 					} else {
-						snprintf( mbuf, sizeof( mbuf ), "%s/%s", parms->config_dir, req->resource );
+						snprintf( mbuf, sizeof( mbuf ), "%s_live/%s", parms->config_dir, req->resource );		// if unqualified, assume it's in the live for deletion
 					}
 
 					bleat_printf( 1, "deleting vf from file: %s", mbuf );
-					if( vfd_del_vf( parms, conf, req->resource, &reason ) ) {		// successfully updated internal struct
+					if( vfd_del_vf( parms, conf, mbuf, &reason ) ) {		// successfully updated internal struct
 						if( vfd_update_nic( parms, conf ) == 0 ) {			// nic update was good too
 							snprintf( mbuf, sizeof( mbuf ), "vf deleted successfully: %s", req->resource );
-							vfd_response( req->resp_fifo, RESP_OK, mbuf );
+							vfd_response( req->resp_fifo, RESP_OK, req->vfd_rid, mbuf );
 							bleat_printf( 1, "vf deleted: %s", mbuf );
 						} // TODO need else -- see above
 					} else {
 						snprintf( mbuf, sizeof( mbuf ), "unable to delete vf: %s: %s", req->resource, reason );
-						vfd_response( req->resp_fifo, RESP_ERROR, mbuf );
+						vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, mbuf );
 						free( reason );
 					}
 					if( bleat_will_it( 4 ) ) {					// TODO:  remove after testing
@@ -1477,7 +1513,7 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 				case RT_DUMP:									// spew everything to the log
 					dump_dev_info( conf->num_ports);			// general info about each port
   					dump_sriov_config( conf );					// pf/vf specific info
-					vfd_response( req->resp_fifo, RESP_OK, "dump captured in the log" );
+					vfd_response( req->resp_fifo, RESP_OK, req->vfd_rid, "dump captured in the log" );
 
 					char*	stats_buf;
 					if( (stats_buf = (char *) malloc( sizeof( char ) * 10 * 1024 )) != NULL ) {
@@ -1493,10 +1529,10 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 					if( parms->forreal ) {
 						if( vfd_update_mirror( conf, req->resource, &reason ) ) {
 							snprintf( mbuf, sizeof( mbuf ), "mirror update successful: %s", req->resource );
-							vfd_response( req->resp_fifo, RESP_OK, mbuf );
+							vfd_response( req->resp_fifo, RESP_OK, req->vfd_rid, mbuf );
 						} else {
 							snprintf( mbuf, sizeof( mbuf ), "mirror update failed: %s: %s", req->resource, reason ? reason : "" );
-							vfd_response( req->resp_fifo, RESP_ERROR, mbuf );
+							vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, mbuf );
 						}
 						bleat_printf( 1, "%s", mbuf );
 
@@ -1508,17 +1544,19 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 				case RT_SHOW:
 					if( parms->forreal ) {
 						if( req->resource == NULL ) {
-							vfd_response( req->resp_fifo, RESP_ERROR, "unable to generate stats: internal mishap: null resource" );
+							vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, "unable to generate stats: internal mishap: null resource" );
 						} else {
 							switch( *req->resource ) {
 								case 'a':
 									if( strcmp( req->resource, "all" ) == 0 ) {				// dump just the VF information
 										if( (buf = gen_stats( conf, !PFS_ONLY, ALL_PFS )) != NULL )  {
-											vfd_response( req->resp_fifo, RESP_OK, buf );
+											vfd_response( req->resp_fifo, RESP_OK, req->vfd_rid, buf );
 											free( buf );
 										} else {
-											vfd_response( req->resp_fifo, RESP_ERROR, "unable to generate stats" );
+											vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, "unable to generate stats" );
 										}
+									} else {
+										vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, "unrecognised show suboption" );
 									}
 									break;
 
@@ -1526,54 +1564,61 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 									if( strncmp( req->resource, "ex", 2 ) == 0 ) {							// show extended stats
 										buf = gen_exstats( conf );						// create a buffer with stats for all ports
 										if( buf != NULL ) {
-											vfd_response( req->resp_fifo, RESP_OK, buf );
+											vfd_response( req->resp_fifo, RESP_OK, req->vfd_rid, buf );
 											free( buf );
 										} else {
-											vfd_response( req->resp_fifo, RESP_ERROR, "unable to generate extended stats" );
+											vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, "unable to generate extended stats" );
 										}
+									} else {
+										vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, "unrecognised show suboption" );
 									}
 									break;
 
 								case 'm':			// show mirrors for a pf
 									if( strncmp( req->resource, "mirror", 6 ) == 0 ) {
 										if( (buf = gen_mirror_stats( conf, -1 )) != NULL ) {
-											vfd_response( req->resp_fifo, RESP_OK, buf );
+											vfd_response( req->resp_fifo, RESP_OK, req->vfd_rid, buf );
 											free( buf );
 										} else {
-											vfd_response( req->resp_fifo, RESP_ERROR, "unable to generate mirror stats" );
+											vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, "unable to generate mirror stats" );
 										}
+									} else {
+										vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, "unrecognised show suboption" );
 									}
 									break;
 
 								case 'p':
 									if( strcmp( req->resource, "pfs" ) == 0 ) {								// dump just the PF information (skip vf)
 										if( (buf = gen_stats( conf, PFS_ONLY, ALL_PFS )) != NULL )  {
-											vfd_response( req->resp_fifo, RESP_OK, buf );
+											vfd_response( req->resp_fifo, RESP_OK, req->vfd_rid, buf );
 											free( buf );
 										} else {
-											vfd_response( req->resp_fifo, RESP_ERROR, "unable to generate pf stats" );
+											vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, "unable to generate pf stats" );
 										}
+									} else {
+										vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, "unrecognised show suboption" );
 									}
-										break;
+									break;
 								
 								default:
 									if( isdigit( *req->resource ) ) {						// dump just for the indicated pf
 										if( (buf = gen_stats( conf, !PFS_ONLY, atoi( req->resource ) )) != NULL )  {
-											vfd_response( req->resp_fifo, RESP_OK, buf );
+											vfd_response( req->resp_fifo, RESP_OK, req->vfd_rid, buf );
 											free( buf );
 										} else {
-											vfd_response( req->resp_fifo, RESP_ERROR, "unable to generate pf stats" );
+											vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, "unable to generate pf stats" );
 										}
 									} else {												// assume we dump for all
 										if( req->resource ) {
 											bleat_printf( 2, "show: unknown target supplied: %s", req->resource );
 										}
-										vfd_response( req->resp_fifo, RESP_ERROR, "unable to generate stats: unnown target supplied (not one of all, pfs, extended or pf-number)" );
+										vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, 
+												"unable to generate stats: unnown target supplied (not one of all, pfs, extended or pf-number)" );
 									}
 							}
 						}
 					} else {
-						vfd_response( req->resp_fifo, RESP_ERROR, "VFD running in 'no harm' (-n) mode; no stats available." );
+						vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, "VFD running in 'no harm' (-n) mode; no stats available." );
 					}
 					break;
 
@@ -1589,12 +1634,12 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 						snprintf( mbuf, sizeof( mbuf ), "loglevel out of range: %d", req->log_level );
 					}
 
-					vfd_response( req->resp_fifo, rc, mbuf );
+					vfd_response( req->resp_fifo, rc, req->vfd_rid, mbuf );
 					break;
 					
 
 				default:
-					vfd_response( req->resp_fifo, RESP_ERROR, "dummy request handler: urrecognised request." );
+					vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, "dummy request handler: urrecognised request." );
 					break;
 			}
 

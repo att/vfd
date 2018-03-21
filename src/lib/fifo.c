@@ -33,14 +33,11 @@ typedef struct {
 	char*	rbuf;				// raw read buffer
 } fifo_t;
 
+
 /*
-	Create our read fifo. We use flow manager to actually buffer and 
-	parse out full json blocks from the fifo so that the application 
-	can issue a read block and get a block, or get nothing. Thus the 
-	return is a void pointer which is actually a pointer that our functions
-	can use.
+	This is the support for the create or open rifio functions.
 */
-extern void* rfifo_create( char* fname, int mode ) {
+static void* copen_pipe( char* fname, int mode, int unlink_first ) {
 	int fd;
 	fifo_t*	fifo = NULL;
 
@@ -48,9 +45,11 @@ extern void* rfifo_create( char* fname, int mode ) {
 		mode = 0660;
 	}
 
-	unlink( fname );								// hard unlink and we don't care if this fails
-	if( mkfifo( fname, mode ) < 0 ) {
-		return NULL;								// can't make send back err errno still set
+	if( unlink_first ) {
+		unlink( fname );								// hard unlink and we don't care if this fails
+		if( mkfifo( fname, mode ) < 0 ) {
+			return NULL;								// can't make send back err errno still set
+		}
 	}
 
 	if( (fd =  open( fname, O_RDONLY | O_NONBLOCK, mode )) >= 0 ) {				// open for reading (create) and in non-blocking mode so we continue initialisation
@@ -77,6 +76,40 @@ extern void* rfifo_create( char* fname, int mode ) {
 	}
 
 	return fifo;
+}
+
+/*
+	Create our read fifo. We use flow manager to actually buffer and 
+	parse out full json blocks from the fifo so that the application 
+	can issue a read block and get a block, or get nothing. Thus the 
+	return is a void pointer which is actually a pointer that our functions
+	can use.
+*/
+extern void* rfifo_create( char* fname, int mode ) {
+	return copen_pipe( fname, mode, 1 );
+}
+
+/*
+	Opens the named pipe if it exists, creates it otherwise. If there is a file
+	with the given name, and it's not a fifo, then we'll force it to unlink
+	in the copen_pipe() call.
+	Returns a 'handle' that can be passed to other functions here, or NULL
+	on error.
+*/
+extern void* rfifo_open( char* fname, int mode ) {
+	struct stat fstats;
+
+	if( fname == NULL ) {
+		return NULL;
+	}
+
+	if( stat( fname, &fstats ) == 0 ) {
+		if( S_ISFIFO( fstats.st_mode ) ) {
+			return copen_pipe( fname, mode, 0 );	// open without unlinking
+		}
+	} 
+
+	return copen_pipe( fname, mode, 1 );			// not there, not pipe, unlink if something there and then create
 }
 
 

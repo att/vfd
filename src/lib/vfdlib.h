@@ -160,6 +160,7 @@ void ng_flow_ref( void *vf, char *buf, long len );
 extern void* rfifo_create( char* fname, int mode );
 extern void rfifo_close( void* vfifo );
 extern void rfifo_detect_close( void* vfifo );
+extern void* rfifo_open( char* fname, int mode );
 extern char* rfifo_read( void* vfifo );
 extern char* rfifo_readln( void* vfifo );
 extern char* rfifo_blk_readln( void* vfifo );
