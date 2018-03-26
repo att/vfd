@@ -78,6 +78,7 @@
 				10 Jan 2018 - mlx5: Add VF mirroring support.
 				10 Jan 2018 - mlx5: Add VF queue sharing per TC.
 				19 Feb 2018 - Add support to ensure config directories exist. (#263)
+				26 Mar 2018 - Send log to file unless log_dir == stderr; allow -f for container with log file.
 */
 
 
@@ -1587,28 +1588,35 @@ main(int argc, char **argv)
 		exit( 1 );
 	}
 
+	bleat_set_lvl( g_parms->init_log_level );											// set log level from config, or default init level now
 	if( (running_config = (sriov_conf_t *) malloc( sizeof( *running_config ) )) == NULL ) {
 		bleat_printf( 0, "abort: unable to allocate memory for running config" );
 		exit( 1 );
 	}
 	memset( running_config, 0, sizeof( *running_config ) );
-	rte_spinlock_init( &running_config->update_lock );			// initialise and leave unlocked
-	running_config->mir_id_mgr = mk_idm( 256 );					// make an id manager with 256 ID 'slots' for allocating mirror IDs
+	rte_spinlock_init( &running_config->update_lock );						// initialise and leave unlocked
+	running_config->mir_id_mgr = mk_idm( 256 );								// make an id manager with 256 ID 'slots' for allocating mirror IDs
 
-	snprintf( log_file, BUF_1K, "%s/vfd.log", g_parms->log_dir );
-	if( run_asynch ) {
+	if( strcmp( g_parms->log_dir, "stderr" ) != 0 ) {						// something other than stdin, we'll switch even if -f given
+		snprintf( log_file, BUF_1K, "%s/vfd.log", g_parms->log_dir );
 		bleat_printf( 1, "setting log to: %s", log_file );
-		bleat_printf( 3, "detaching from tty (daemonise)" );
-		daemonize( g_parms->pid_fname );
 		bleat_set_log( log_file, 86400 );									// open bleat log with date suffix _after_ daemonize so it doesn't close our fd
 		if( g_parms->log_keep > 0 ) {										// set days to keep log files
 			bleat_set_purge( g_parms->log_dir, "vfd.log.", g_parms->log_keep * 86400 );
 		}
 	} else {
-		bleat_printf( 2, "-f supplied, staying attached to tty" );
+		bleat_printf( 2, "stderr supplied as log file, messages will continue here" );
 	}
 	free( log_file );
-	bleat_set_lvl( g_parms->init_log_level );											// set default level
+
+	if( run_asynch ) {				// -f not given, detach from parent
+		bleat_printf( 3, "detaching from tty (daemonise)" );
+		daemonize( g_parms->pid_fname );
+	} else {
+		bleat_printf( 2, "-f supplied, staying attached to parent process" );
+	}
+
+
 	bleat_printf( 0, "VFD %s %s initialising", vnum, version );
 	bleat_printf( 0, "config dir set to: %s", g_parms->config_dir );
 
