@@ -21,6 +21,9 @@
                             Use same directory for response fifo as VFd's fifo to support
                             containers.
 				2018 03 Apr - Allow delete when running in virtualisation's container.
+							Ensure that missing values in the config are replaced with defaults.
+							Don't stack dump if config file cannot be opened or read, or has bad json.
+							Allow VFd responses to span multiple read buffers.
 """
 
 __doc__ = """ iplex
@@ -52,7 +55,9 @@ from logging.handlers import RotatingFileHandler
 import fcntl
 import platform
 
-VFD_CONFIG = '/etc/vfd/vfd.cfg'		# default; --conf= overrides from command line
+#VFD_CONFIG = '/etc/vfd/vfd.cfg'		# default; --conf= overrides from command line
+VFD_CONFIG = None		# there is no default; we'll search for /etc/vfd/vfd.cfg or /var/lib/vfd/etc.cfg and use those if --config not given
+
 
 # logging
 def setup_logging(logfile, config_data):
@@ -70,22 +75,60 @@ def _errorMsg(msg):
     data['msg'] = msg
     print data
 
-# read vfd.cfg and validate
-def read_config():
-    if not os.path.isfile( VFD_CONFIG ) :			# no config, gen defaults we need
-        data = {}
-        data["config_dir"] = "/var/lib/vfd/config"
-        data["fifo"]  = "/var/lib/vfd/request"
-        data["log_dir"]  = "/var/log/vfd"
-        return data
 
-    with open(VFD_CONFIG) as data_file:
-        try:
-            data = json.load(data_file)
-        except ValueError:
-            _errorMsg(VFD_CONFIG + " is not a valid json")
-            sys.exit(1)
-        return data
+# generate a hash with the default values to use if config missing or undefined in config
+def gen_cfg_defaults( ) :
+    data = {}
+    data["config_dir"] = "/var/lib/vfd/config"                  # works for both bare metal and container world
+
+    if os.path.isdir( "/var/log/vfd" ) :                        # only on bare metal, else default to /tmp
+        data["log_dir"]  = "/var/log/vfd"
+    else :
+        data["log_dir"]  = "/tmp"
+
+    if os.path.isdir( "/var/lib/vfd/pipes" ) :                  # fifos go in here for containers
+        data["fifo"]  = "/var/lib/vfd/pipes/request"
+    else :
+        data["fifo"]  = "/var/lib/vfd/request"                  # assume bare metal.
+
+    return data
+
+
+# read vfd.cfg and validate
+def read_config( fname ):
+    if fname == None :
+        if os.path.isfile( "/var/lib/vfd/etc/vfd.cfg" ) :       # container world where defaults don't work
+            fname = "/var/lib/vfd/etc/vfd.cfg"
+        else :
+            if os.path.isfile( "/etc/vfd.cfg" ) :               # old bare metal environment
+                fname = "/etc/vfd.cfg"
+
+    if fname == None  or  not os.path.isfile( fname ) :	# no config, gen defaults we need
+        return gen_cfg_defaults()
+
+    try :
+        with open(fname) as data_file:
+            try:
+                data = json.load(data_file)
+            except ValueError:
+                _errorMsg(fname + " does not contain valid json")
+                os._exit(1)										# do not bubble up, nor dump messy stack dump
+
+            defaults = gen_cfg_defaults()						# ensure the cfg file had all we need
+            if data["fifo"] == None :
+                data["fifo"] = defaults["fifo"]
+            if data["config_dir"] == None :
+                data["config_dir"] = defaults["config_dir"]
+            if data["log_dir"] == None :
+                data["log_dir"] = defaults["log_dir"]
+
+            return data
+
+    except :
+        e = sys.exc_info()[0]
+        _errorMsg( " unable to open or read config file: %s: %s" % (fname, e) )
+        os._exit( 1 )
+
 
 class Iplex(object):
 
@@ -189,10 +232,10 @@ class Iplex(object):
 	# and we'll let VFd reject the request if the file isn't valid. 
     #
     def __assert_live_vfconfig( self, port_id ) :
-		if os.path.isdir( self.config_data['config_dir'] + "_live" ) == False :
-			return
+        if os.path.isdir( self.config_data['config_dir'] + "_live" ) == False :
+            return
 
-        filename = os.path.join(self.config_data['config_dir'] + "_live", port_id)+'.json'
+        filename = os.path.join(self.config_data['config_dir'] + "_live", port_id) + '.json'
         if os.path.isfile( filename ) :
             self.log.info("valid vf config file: %s", filename)
             return filename
@@ -257,8 +300,14 @@ class Iplex(object):
                 if platform.system() == 'Linux':
                     fcntl.F_SETPIPE_SZ = 1031
                     fcntl.fcntl(readFd, fcntl.F_SETPIPE_SZ, 1024 * 60)
-            buf = self.__read_fd(readFd)
-            resp_data = json.dumps(buf.strip(' \n\t'))
+            buf = ""
+            rbuf = self.__read_fd(readFd)                                   # read first buffer (could be incomplete)
+            while rbuf.endswith( "@eom@" ) == False :
+                buf += rbuf
+                rbuf = self.__read_fd(readFd)                               # read next buffer (could be incomplete)
+
+            buf += rbuf.rstrip( "@eom@" )                                  # tuck in last one without end of message marker
+            resp_data = json.dumps( buf.strip(' \n\t'), indent=2 )
             print(ast.literal_eval(resp_data))
             os.close(readFd)
             os.unlink(self.resp_fifo)
@@ -280,7 +329,7 @@ if __name__ == '__main__':
     if options["--conf"] != None:
         VFD_CONFIG = options["--conf"]
 
-    config_data = read_config()
+    config_data = read_config( VFD_CONFIG )
     log = setup_logging('iplex.log', config_data)
     iplex = Iplex(config_data, options, log)
 
