@@ -1209,7 +1209,7 @@ extern void vfd_response( char* rpipe, int state, const_str vfd_rid, const_str m
 	char*	dmsg;			// duplicate message that we can mutilate
 	char*	dptr;			// pointer into dmsg for strtok
 	char*	tok;
-	const_str	sep = "";
+	const_str	sep = "\n";	// message seperators in the array; lead newline helps with visual alignment which can be important
 
 	if( rpipe == NULL ) {
 		bleat_printf( 1, "response: unable to respond, response pipe name is nil" );
@@ -1233,7 +1233,7 @@ extern void vfd_response( char* rpipe, int state, const_str vfd_rid, const_str m
 		bleat_printf( 2, "sending response: %s(%d) [%d] %d bytes", rpipe, fd, state, strlen( msg ) );
 	}
 
-	snprintf( buf, sizeof( buf ), "{ \"action\": \"response\", \"vfd_rid\": \"%s\", \"state\": \"%s\", \"msg\": [ ", vfd_rid, state ? "ERROR" : "OK" );
+	snprintf( buf, sizeof( buf ), "{ \"action\": \"response\", \"vfd_rid\": \"%s\", \"state\": \"%s\", \"msg\": [", vfd_rid, state ? "ERROR" : "OK" );
 	bleat_printf( 3, "response: header: %s", buf );
 
 	if( vfd_write( fd, buf, strlen( buf ) ) > 0 ) {
