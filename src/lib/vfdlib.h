@@ -232,6 +232,12 @@ extern void idm_free( void* vid );
 extern int rm_file( const_str fname, int backup );
 extern int mv_file( const_str fname, char* target );
 extern int ensure_dir( const_str pathname );
+extern int is_dir( const_str pathname );
+extern int is_file( const_str pathname );
+extern int is_fifo( const_str pathname );
+extern int file_exists( const_str pathname );
+extern int cp_file( const_str path1, const_str path2, int rm_src );
+
 
 
 #endif
