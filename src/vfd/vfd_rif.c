@@ -21,6 +21,8 @@
 								Correct loop initialisation bug; $259
 				14 Feb 2018 : Add support to keep config file name field and compare at delete. (#262)
 				19 Feb 2018 : Add support for 'live' config directory (#263)
+				04 Apr 2018 : Change mv to copy with src-unlink to allow for 'move' to a directory
+								on a different file system (possible container requirement).
 */
 
 
@@ -83,7 +85,7 @@ static void relocate_vf_config( parms_t* parms, char* filename, const_str suffix
 		return;
 	}
 
-	if( ! mv_file( filename, wbuf ) ) {
+	if( ! cp_file( filename, wbuf, 1 ) ) {		// copy and unlink src
 		bleat_printf( 0, "config file relocation from %s to %s failed: %s", filename, wbuf, strerror( errno ) );
 	} else {
 		bleat_printf( 2, "config file relocated from %s to %s", filename, wbuf );
