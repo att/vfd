@@ -1469,6 +1469,46 @@ dump_sriov_config( sriov_conf_t* sriov_config)
 	}
 }
 
+
+void 
+get_cpu_usage(void)
+{
+    static struct rusage ru_last;
+    static struct timeval tv_last;
+    static int printed = 0;
+
+    struct rusage ru_now;  
+    struct timeval tv_now;
+
+    double cpu_udelta, cpu_sdelta, time_delta, cpu_pcent;
+
+    getrusage(RUSAGE_SELF, &ru_now);
+    gettimeofday(&tv_now, NULL);
+
+    cpu_udelta = ((double) ru_now.ru_utime.tv_sec - (double) ru_last.ru_utime.tv_sec) * 1000000
+    + (double) ru_now.ru_utime.tv_usec - (double) ru_last.ru_utime.tv_usec; 
+
+    cpu_sdelta = ((double) ru_now.ru_stime.tv_sec - (double) ru_last.ru_stime.tv_sec) * 1000000
+    + (double) ru_now.ru_stime.tv_usec - (double) ru_last.ru_stime.tv_usec; 
+
+    time_delta = (tv_now.tv_sec - tv_last.tv_sec) * 1000000 + tv_now.tv_usec - tv_last.tv_usec;
+
+    cpu_pcent = (cpu_udelta + cpu_sdelta) / time_delta * 100.0;
+
+    if (cpu_pcent > 5) {
+        if (!printed) 
+            bleat_printf(1, "CRI: High CPU utilization: %0.2f%s\n", (cpu_udelta + cpu_sdelta) / time_delta * 100.0, "%");
+
+        // don't print too often ~30sec
+        printed++;
+        if (printed > 60)
+            printed = 0;
+    } 
+
+    ru_last = ru_now;
+    tv_last = tv_now;
+}
+
 // ===============================================================================================================
 int
 main(int argc, char **argv)
@@ -1843,6 +1883,9 @@ main(int argc, char **argv)
 		usleep(50000);			// .5s
 
 		while( vfd_req_if( g_parms, running_config, 0 ) ); 				// process _all_ pending requests before going on
+
+		get_cpu_usage();
+
 		// Discard any RX traffic...
 		for (portid = 0; portid < n_ports; portid++)
 			discard_pf_traffic(portid);

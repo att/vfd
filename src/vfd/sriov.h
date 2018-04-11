@@ -45,6 +45,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <sys/resource.h>
 
 #include <rte_alarm.h>
 #include <rte_common.h>
@@ -519,6 +520,7 @@ extern void qos_set_tdplane( portid_t pf, uint8_t* pctgs, uint8_t *bwgs, int ntc
 extern void qos_set_txpplane( portid_t pf, uint8_t* pctgs, uint8_t *bwgs, int ntcs, int mtu );
 extern void mlx5_set_vf_tcqos( sriov_port_t *port, uint32_t link_speed );
 
+void get_cpu_usage(void);
 
 //------- these are hacks in the dpdk library and we  must find a good way to rid ourselves of them ------
 struct rth_eth_dev;
