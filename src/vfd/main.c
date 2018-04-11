@@ -1495,9 +1495,9 @@ get_cpu_usage(void)
 
     cpu_pcent = (cpu_udelta + cpu_sdelta) / time_delta * 100.0;
 
-    if (cpu_pcent > 5) {
+    if (cpu_pcent > VFD_MAX_CPU) {
         if (!printed) 
-            bleat_printf(1, "CRI: High CPU utilization: %0.2f%s\n", (cpu_udelta + cpu_sdelta) / time_delta * 100.0, "%");
+            bleat_printf(0, "CRI: High CPU utilization: %0.2f%s\n", (cpu_udelta + cpu_sdelta) / time_delta * 100.0, "%");
 
         // don't print too often ~30sec
         printed++;

@@ -172,6 +172,9 @@ typedef uint16_t streamid_t;
 #define PF_FC_ON	0x04		// turn flow control on for port
 #define PF_PROMISC	0x08		// set promisc for the port when high
 
+
+#define VFD_MAX_CPU	5			// CPU% threshold
+
 /*
 	Provides a static port configuration struct with defaults.
 */
