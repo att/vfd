@@ -45,6 +45,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <sys/resource.h>
 
 #include <rte_alarm.h>
 #include <rte_common.h>
@@ -170,6 +171,9 @@ typedef uint16_t streamid_t;
 #define PF_OVERSUB	0x02		// allow qos oversubscription
 #define PF_FC_ON	0x04		// turn flow control on for port
 #define PF_PROMISC	0x08		// set promisc for the port when high
+
+
+#define VFD_MAX_CPU	5			// CPU% threshold
 
 /*
 	Provides a static port configuration struct with defaults.
@@ -519,6 +523,7 @@ extern void qos_set_tdplane( portid_t pf, uint8_t* pctgs, uint8_t *bwgs, int ntc
 extern void qos_set_txpplane( portid_t pf, uint8_t* pctgs, uint8_t *bwgs, int ntcs, int mtu );
 extern void mlx5_set_vf_tcqos( sriov_port_t *port, uint32_t link_speed );
 
+void chk_cpu_usage( char* msg_type, double threshold );
 
 //------- these are hacks in the dpdk library and we  must find a good way to rid ourselves of them ------
 struct rth_eth_dev;

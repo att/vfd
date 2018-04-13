@@ -10,6 +10,8 @@
     "config_dir":   "/var/lib/vfd/config",
     "fifo":         "/var/lib/vfd/request",
     "cpu_mask":		"0x01",
+	"cpu_alarm":	"15%",
+	"cpu_alarm_type": "WRN:",
 	"numa_mem":		"64,64",
     "default_mtu":	1500,
 	"enable_qos":	false,

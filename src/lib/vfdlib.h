@@ -86,6 +86,8 @@ typedef struct {
 	char*	fifo_path;      		// path to fifo that cli will write to
 	int		log_keep;       		// number of days of logs to keep (do we need this?)
 	int		delete_keep;			// if true we will keep the deleted config files in the confid directory (marked with trailing -)
+	double	cpu_alrm_thresh;		// we'll alarm if our cpu usage is over this amount
+	char*	cpu_alrm_type;			// allow user to decide if these are critical, errors, or just warnings; default is warn
 	char*	config_dir;     		// directory where nova writes pf config files
 	char*	stats_path;				// filename where we might dump stats
 	char*	pid_fname;				// if we daemonise we should write our pid here.
@@ -160,6 +162,7 @@ void ng_flow_ref( void *vf, char *buf, long len );
 extern void* rfifo_create( char* fname, int mode );
 extern void rfifo_close( void* vfifo );
 extern void rfifo_detect_close( void* vfifo );
+extern void* rfifo_open( char* fname, int mode );
 extern char* rfifo_read( void* vfifo );
 extern char* rfifo_readln( void* vfifo );
 extern char* rfifo_blk_readln( void* vfifo );
@@ -231,6 +234,12 @@ extern void idm_free( void* vid );
 extern int rm_file( const_str fname, int backup );
 extern int mv_file( const_str fname, char* target );
 extern int ensure_dir( const_str pathname );
+extern int is_dir( const_str pathname );
+extern int is_file( const_str pathname );
+extern int is_fifo( const_str pathname );
+extern int file_exists( const_str pathname );
+extern int cp_file( const_str path1, const_str path2, int rm_src );
+
 
 
 #endif

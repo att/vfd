@@ -123,12 +123,28 @@ function jwrapper3 {
 
 # create some dummy files and ensure that we can move/arrange them as needed
 function file_sys {
-	touch delete_file
+	ps -elf >delete_file			# file with some meat to verify copy
+	m5b=$( md5sum <delete_file )
 	touch move_file
 	touch backup_file
 
-	$valgrind filesys_test delete_file move_file filesys_test_dir1 $PWD/filesys_test_dir2 backup_file  >/tmp/PID$$.out 2>&1
+	dir2=$PWD/filesys_test_dir2 
+	$valgrind filesys_test delete_file move_file filesys_test_dir1 $dir2 backup_file  >/tmp/PID$$.out 2>&1
 	rc=$?
+
+	if [[ -e $dir2/delete_file ]]
+	then
+		echo "[FAIL] unlink on copy file still existed in $dir2" >>/tmp/PID$$.out 2>&1
+		rc=1
+		ls -al $dir2 >>/tmp/PID$$.out 2>&1
+	fi
+
+	m5a=$( md5sum <$dir2/copied_file )
+	if [[ "$m5a" != "$m5b" ]]
+	then
+		echo "[FAIL] copied file didn't have good checksum" >>/tmp/PID$$.out 2>&1
+		rc=1
+	fi
 
 	rm -fr filesys_test_dir* backup_file-
 	return $rc
