@@ -86,6 +86,8 @@ typedef struct {
 	char*	fifo_path;      		// path to fifo that cli will write to
 	int		log_keep;       		// number of days of logs to keep (do we need this?)
 	int		delete_keep;			// if true we will keep the deleted config files in the confid directory (marked with trailing -)
+	double	cpu_alrm_thresh;		// we'll alarm if our cpu usage is over this amount
+	char*	cpu_alrm_type;			// allow user to decide if these are critical, errors, or just warnings; default is warn
 	char*	config_dir;     		// directory where nova writes pf config files
 	char*	stats_path;				// filename where we might dump stats
 	char*	pid_fname;				// if we daemonise we should write our pid here.

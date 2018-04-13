@@ -1471,14 +1471,22 @@ dump_sriov_config( sriov_conf_t* sriov_config)
 
 
 void 
-get_cpu_usage(void)
+chk_cpu_usage( char* msg_type, double threshold )
 {
     static struct rusage ru_last;
     static struct timeval tv_last;
     static int printed = 0;
+	static int check_now = 600;		// initial delay to bump us past startup usage
+	static double last_pct = 0.0;	// last observed percentage
 
     struct rusage ru_now;  
     struct timeval tv_now;
+
+	if( --check_now > 0 || terminated ) {			// expect we might burst when shutting down; don't alarm
+		return;
+	}
+
+	check_now = 100;				// reset "timer"; next check in about 5 seeconds
 
     double cpu_udelta, cpu_sdelta, time_delta, cpu_pcent;
 
@@ -1486,25 +1494,29 @@ get_cpu_usage(void)
     gettimeofday(&tv_now, NULL);
 
     cpu_udelta = ((double) ru_now.ru_utime.tv_sec - (double) ru_last.ru_utime.tv_sec) * 1000000
-    + (double) ru_now.ru_utime.tv_usec - (double) ru_last.ru_utime.tv_usec; 
+    	+ (double) ru_now.ru_utime.tv_usec - (double) ru_last.ru_utime.tv_usec; 
 
     cpu_sdelta = ((double) ru_now.ru_stime.tv_sec - (double) ru_last.ru_stime.tv_sec) * 1000000
-    + (double) ru_now.ru_stime.tv_usec - (double) ru_last.ru_stime.tv_usec; 
+    	+ (double) ru_now.ru_stime.tv_usec - (double) ru_last.ru_stime.tv_usec; 
 
     time_delta = (tv_now.tv_sec - tv_last.tv_sec) * 1000000 + tv_now.tv_usec - tv_last.tv_usec;
 
-    cpu_pcent = (cpu_udelta + cpu_sdelta) / time_delta * 100.0;
+    cpu_pcent = (cpu_udelta + cpu_sdelta) / time_delta;
+	//bleat_printf( 2, "CPU utilization: %0.2f%% arlarm over %d%%", cpu_pcent * 100, (int) (threshold * 100) );
 
-    if (cpu_pcent > VFD_MAX_CPU) {
-        if (!printed) 
-            bleat_printf(0, "CRI: High CPU utilization: %0.2f%s\n", (cpu_udelta + cpu_sdelta) / time_delta * 100.0, "%");
+    if( cpu_pcent > threshold ) {
+        if( cpu_pcent > last_pct || !printed )  {					// it's been a while, or it's still increasing, print now
+            bleat_printf(0, "%s High CPU utilization: %0.2f%%", msg_type, cpu_pcent * 100 );
+		}
 
-        // don't print too often ~30sec
         printed++;
-        if (printed > 60)
+        if (printed > 6 ) {		// assuming we check every 5s, ensure we print about every 30s
             printed = 0;
+		}
+
     } 
 
+	last_pct = cpu_pcent;
     ru_last = ru_now;
     tv_last = tv_now;
 }
@@ -1884,7 +1896,7 @@ main(int argc, char **argv)
 
 		while( vfd_req_if( g_parms, running_config, 0 ) ); 				// process _all_ pending requests before going on
 
-		get_cpu_usage();
+		chk_cpu_usage( g_parms->cpu_alrm_type, g_parms->cpu_alrm_thresh );
 
 		// Discard any RX traffic...
 		for (portid = 0; portid < n_ports; portid++)
@@ -1908,7 +1920,7 @@ main(int argc, char **argv)
 	close_ports();				// clean up the PFs, terminate mirrors
 
 	gettimeofday(&st.endTime, NULL);
-	bleat_printf( 1, "duration %.f sec\n", timeDelta(&st.endTime, &st.startTime));
+	bleat_printf( 1, "duration %.f sec\n", timeDelta(&st.endTime, &st.startTime)/1000 );
 
 	return EXIT_SUCCESS;
 }
