@@ -29,6 +29,7 @@
 __doc__ = """ iplex
     Usage:
     iplex [--conf=<config>] (add | update | delete | status) <port-id> [--loglevel=<value>] 
+    iplex [--conf=<config>] cpu_alarm <pctg> [--loglevel=<value>] 
     iplex [--conf=<config>] mirror <pf> <vf> <dir> [<target>]  [--loglevel=<value>]
     iplex [--conf=<config>] show <what> [--loglevel=<value>] 
     iplex [--conf=<config>] verbose [--loglevel=<value>] 
@@ -39,7 +40,7 @@ __doc__ = """ iplex
         -h, --help      show this help message and exit
         --version       show version and exit
         --loglevel=<value>  Default logvalue [default: 0]
-        <what> may be one of:  all, pfs, extended, or <n> where <n> is a PF number.
+        for show, <what> may be one of:  all, pfs, extended, or <n> where <n> is a PF number.
         <dir> is the mirror direction: one of: {in | out | all | off}.
 """
 
@@ -86,10 +87,10 @@ def gen_cfg_defaults( ) :
     else :
         data["log_dir"]  = "/tmp"
 
-    if os.path.isdir( "/var/lib/vfd/pipes" ) :                  # fifos go in here for containers
+    if os.path.isfile( "/var/lib/vfd/pipes/request" ) :               # fifos go in here for containers
         data["fifo"]  = "/var/lib/vfd/pipes/request"
     else :
-        data["fifo"]  = "/var/lib/vfd/request"                  # assume bare metal.
+        data["fifo"]  = "/var/lib/vfd/request"   		               # assume bare metal.
 
     return data
 
@@ -184,6 +185,13 @@ class Iplex(object):
         self.__write_read_fifo(msg)
         return
 
+    def cpu_alarm( self ) :
+        self.filename = None
+        self.resp_fifo = self.__create_fifo()
+        msg = self.__request_message( "cpu_alarm" )
+        self.__write_read_fifo(msg)
+        return
+
     def verbose(self):
         self.filename=None
         self.resp_fifo = self.__create_fifo()
@@ -270,6 +278,9 @@ class Iplex(object):
                 msg["params"]["resource"] = self.options["<pf>"] + " " + self.options["<vf>"] + " " + self.options["<dir>"]
                 if self.options["<target>"] != None:
                     msg["params"]["resource"] +=  " " + self.options["<target>"]
+            else :
+                if action == "cpu_alarm" :
+                    msg["params"]["resource"] = self.options["<pctg>"]				# pick up generic option
                 
         msg["params"]["loglevel"] = int(self.options["--loglevel"])
         msg["params"]["r_fifo"] = self.resp_fifo
@@ -347,6 +358,8 @@ if __name__ == '__main__':
         iplex.dump()
     elif options['mirror']:
         iplex.mirror()
+    elif options["cpu_alarm"]:
+		iplex.cpu_alarm()
     else:
         if options['show']:
             iplex.show()

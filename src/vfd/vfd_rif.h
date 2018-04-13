@@ -26,6 +26,7 @@
 #define RT_VERBOSE 5
 #define RT_DUMP 6
 #define RT_MIRROR 7				// mirror on/off command
+#define RT_CPU_ALARM 8			// set the cpu alarm threshold
 
 #define BUF_1K	1024			// simple buffer size constants
 #define BUF_10K BUF_1K * 10

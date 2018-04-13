@@ -1330,6 +1330,10 @@ extern req_t* vfd_read_request( parms_t* parms ) {
 			req->rtype = RT_ADD;
 			break;
 
+		case 'c':					// assume "cpu_alrm_thresh"
+			req->rtype = RT_CPU_ALARM;
+			break;
+
 		case 'd':
 		case 'D':
 			if( strcmp( stuff, "dump" ) == 0 ) {
@@ -1623,6 +1627,28 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 						vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, "VFD running in 'no harm' (-n) mode; no stats available." );
 					}
 					break;
+
+				case RT_CPU_ALARM:
+						if( req->resource != NULL ) {
+							if( strchr( req->resource, '%' ) ) {				// allow 30% or .30
+								parms->cpu_alrm_thresh = (double) atoi( req->resource ) / 100.0;
+							} else {
+								parms->cpu_alrm_thresh = strtod( req->resource, NULL );
+							}
+							if( parms->cpu_alrm_thresh < 0.05 ) {
+								parms->cpu_alrm_thresh = 0.05;			// enforce sanity (no upper limit enforced allowing it to be set off with high value)
+							}
+
+							bleat_printf( 1, "cpu alarm threshold changed to %d%%", (int) (parms->cpu_alrm_thresh  * 100) );
+							snprintf( mbuf, sizeof( mbuf ), "cpu alarm threshold changed to: %d%%", (int) (parms->cpu_alrm_thresh * 100) );
+						} else {
+							rc = 1;
+							snprintf( mbuf, sizeof( mbuf ), "cpu alarm threshold not changed to: bad or missing value" );
+						}
+
+						vfd_response( req->resp_fifo, rc, req->vfd_rid, mbuf );
+						break;
+
 
 				case RT_VERBOSE:
 					if( req->log_level >= 0 ) {
