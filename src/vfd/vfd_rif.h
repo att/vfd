@@ -26,6 +26,7 @@
 #define RT_VERBOSE 5
 #define RT_DUMP 6
 #define RT_MIRROR 7				// mirror on/off command
+#define RT_CPU_ALARM 8			// set the cpu alarm threshold
 
 #define BUF_1K	1024			// simple buffer size constants
 #define BUF_10K BUF_1K * 10
@@ -35,6 +36,7 @@ typedef struct request {
 	char*	resource;			// parm file name, show target, etc.
 	char*	resp_fifo;			// name of the return pipe
 	int		log_level;			// for verbose
+	char*	vfd_rid;			// request id that must be placed into the response (allows single response pipe by request process)
 } req_t;
 
 // ------------------ prototypes ---------------------------------------------
@@ -45,7 +47,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason );
 extern void vfd_add_all_vfs(  parms_t* parms, sriov_conf_t* conf );
 extern int vfd_del_vf( parms_t* parms, sriov_conf_t* conf, char* fname, char** reason );
 extern int vfd_write( int fd, const char* buf, int len );
-extern void vfd_response( char* rpipe, int state, const char* msg );
+extern void vfd_response( char* rpipe, int state, const_str vfd_rid, const char* msg );
 extern void vfd_free_request( req_t* req );
 extern req_t* vfd_read_request( parms_t* parms );
 extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever );

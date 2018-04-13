@@ -19,6 +19,7 @@
 				10 Jul 2017 : We now support "mac": "addr" rather than an array.
 				07 Feb 2018 : Add memory support back.
 				14 Feb 2018 : Add default for vf config name.
+				13 Apr 2018 : Add cpu alarm threshold to the config.
 
 	TODO:		convert things to the new jw_xapi functions to make for easier to read code.
 */
@@ -188,6 +189,26 @@ extern parms_t* read_parms( char* fname ) {
 		parms->init_log_level = !jw_is_value( jblob, "init_log_level" ) ? 1 : (int) jw_value( jblob, "init_log_level" );
 		parms->log_keep = !jw_is_value( jblob, "log_keep" ) ? 30 : (int) jw_value( jblob, "log_keep" );
 		parms->delete_keep = !jw_is_bool( jblob, "delete_keep" ) ? 0 : (int) jw_value( jblob, "delete_keep" );
+
+		parms->cpu_alrm_thresh = 0.10;										// default to 10%
+		if( jw_is_value( jblob, "cpu_alarm" ) ) {							// we allow real float value e.g. 1.05 == 105%, or string
+			parms->cpu_alrm_thresh = (double) jw_value( jblob, "cpu_alarm" );
+		} else {
+			if( (stuff = jw_string( jblob, "cpu_alarm" )) != NULL ) {		// assume something like "30%" or just "30"
+				k = atoi( stuff );
+				parms->cpu_alrm_thresh = (double) k / 100.0;
+			}
+		}
+		if( parms->cpu_alrm_thresh < 0.05 ) {
+			parms->cpu_alrm_thresh = .05;				// enforce some level of sanity
+		}
+
+		if( (stuff = jw_string( jblob, "cpu_alarm_type" )) != NULL ) {		// default to "WRN:" but allow them to change to CRI or something else
+			parms->cpu_alrm_type = strdup( stuff );
+		} else {
+			parms->cpu_alrm_type = strdup( "WRN:" );
+		}
+			
 		
 		if( jw_is_bool( jblob, "enable_qos" ) ) {
 			if( jw_value( jblob, "enable_qos" ) ) {

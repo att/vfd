@@ -78,6 +78,7 @@
 				10 Jan 2018 - mlx5: Add VF mirroring support.
 				10 Jan 2018 - mlx5: Add VF queue sharing per TC.
 				19 Feb 2018 - Add support to ensure config directories exist. (#263)
+				26 Mar 2018 - Send log to file unless log_dir == stderr; allow -f for container with log file.
 */
 
 
@@ -1468,6 +1469,58 @@ dump_sriov_config( sriov_conf_t* sriov_config)
 	}
 }
 
+
+void 
+chk_cpu_usage( char* msg_type, double threshold )
+{
+    static struct rusage ru_last;
+    static struct timeval tv_last;
+    static int printed = 0;
+	static int check_now = 600;		// initial delay to bump us past startup usage
+	static double last_pct = 0.0;	// last observed percentage
+
+    struct rusage ru_now;  
+    struct timeval tv_now;
+
+	if( --check_now > 0 || terminated ) {			// expect we might burst when shutting down; don't alarm
+		return;
+	}
+
+	check_now = 100;				// reset "timer"; next check in about 5 seeconds
+
+    double cpu_udelta, cpu_sdelta, time_delta, cpu_pcent;
+
+    getrusage(RUSAGE_SELF, &ru_now);
+    gettimeofday(&tv_now, NULL);
+
+    cpu_udelta = ((double) ru_now.ru_utime.tv_sec - (double) ru_last.ru_utime.tv_sec) * 1000000
+    	+ (double) ru_now.ru_utime.tv_usec - (double) ru_last.ru_utime.tv_usec; 
+
+    cpu_sdelta = ((double) ru_now.ru_stime.tv_sec - (double) ru_last.ru_stime.tv_sec) * 1000000
+    	+ (double) ru_now.ru_stime.tv_usec - (double) ru_last.ru_stime.tv_usec; 
+
+    time_delta = (tv_now.tv_sec - tv_last.tv_sec) * 1000000 + tv_now.tv_usec - tv_last.tv_usec;
+
+    cpu_pcent = (cpu_udelta + cpu_sdelta) / time_delta;
+	//bleat_printf( 2, "CPU utilization: %0.2f%% arlarm over %d%%", cpu_pcent * 100, (int) (threshold * 100) );
+
+    if( cpu_pcent > threshold ) {
+        if( cpu_pcent > last_pct || !printed )  {					// it's been a while, or it's still increasing, print now
+            bleat_printf(0, "%s High CPU utilization: %0.2f%%", msg_type, cpu_pcent * 100 );
+		}
+
+        printed++;
+        if (printed > 6 ) {		// assuming we check every 5s, ensure we print about every 30s
+            printed = 0;
+		}
+
+    } 
+
+	last_pct = cpu_pcent;
+    ru_last = ru_now;
+    tv_last = tv_now;
+}
+
 // ===============================================================================================================
 int
 main(int argc, char **argv)
@@ -1587,28 +1640,35 @@ main(int argc, char **argv)
 		exit( 1 );
 	}
 
+	bleat_set_lvl( g_parms->init_log_level );											// set log level from config, or default init level now
 	if( (running_config = (sriov_conf_t *) malloc( sizeof( *running_config ) )) == NULL ) {
 		bleat_printf( 0, "abort: unable to allocate memory for running config" );
 		exit( 1 );
 	}
 	memset( running_config, 0, sizeof( *running_config ) );
-	rte_spinlock_init( &running_config->update_lock );			// initialise and leave unlocked
-	running_config->mir_id_mgr = mk_idm( 256 );					// make an id manager with 256 ID 'slots' for allocating mirror IDs
+	rte_spinlock_init( &running_config->update_lock );						// initialise and leave unlocked
+	running_config->mir_id_mgr = mk_idm( 256 );								// make an id manager with 256 ID 'slots' for allocating mirror IDs
 
-	snprintf( log_file, BUF_1K, "%s/vfd.log", g_parms->log_dir );
-	if( run_asynch ) {
+	if( strcmp( g_parms->log_dir, "stderr" ) != 0 ) {						// something other than stdin, we'll switch even if -f given
+		snprintf( log_file, BUF_1K, "%s/vfd.log", g_parms->log_dir );
 		bleat_printf( 1, "setting log to: %s", log_file );
-		bleat_printf( 3, "detaching from tty (daemonise)" );
-		daemonize( g_parms->pid_fname );
 		bleat_set_log( log_file, 86400 );									// open bleat log with date suffix _after_ daemonize so it doesn't close our fd
 		if( g_parms->log_keep > 0 ) {										// set days to keep log files
 			bleat_set_purge( g_parms->log_dir, "vfd.log.", g_parms->log_keep * 86400 );
 		}
 	} else {
-		bleat_printf( 2, "-f supplied, staying attached to tty" );
+		bleat_printf( 2, "stderr supplied as log file, messages will continue here" );
 	}
 	free( log_file );
-	bleat_set_lvl( g_parms->init_log_level );											// set default level
+
+	if( run_asynch ) {				// -f not given, detach from parent
+		bleat_printf( 3, "detaching from tty (daemonise)" );
+		daemonize( g_parms->pid_fname );
+	} else {
+		bleat_printf( 2, "-f supplied, staying attached to parent process" );
+	}
+
+
 	bleat_printf( 0, "VFD %s %s initialising", vnum, version );
 	bleat_printf( 0, "config dir set to: %s", g_parms->config_dir );
 
@@ -1835,6 +1895,9 @@ main(int argc, char **argv)
 		usleep(50000);			// .5s
 
 		while( vfd_req_if( g_parms, running_config, 0 ) ); 				// process _all_ pending requests before going on
+
+		chk_cpu_usage( g_parms->cpu_alrm_type, g_parms->cpu_alrm_thresh );
+
 		// Discard any RX traffic...
 		for (portid = 0; portid < n_ports; portid++)
 			discard_pf_traffic(portid);
@@ -1857,7 +1920,7 @@ main(int argc, char **argv)
 	close_ports();				// clean up the PFs, terminate mirrors
 
 	gettimeofday(&st.endTime, NULL);
-	bleat_printf( 1, "duration %.f sec\n", timeDelta(&st.endTime, &st.startTime));
+	bleat_printf( 1, "duration %.f sec\n", timeDelta(&st.endTime, &st.startTime)/1000 );
 
 	return EXIT_SUCCESS;
 }

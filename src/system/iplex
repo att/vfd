@@ -17,11 +17,19 @@
                               where n:m supplies a pf and vf number rather than all or pfs.
                 2017 09 Oct - Add mirror update command and support for config option.
                 2018 21 Feb - Add support for live config directory
+                2018 14 Mar - Allow config to be missing; uses defaults for log/config locations.
+                            Use same directory for response fifo as VFd's fifo to support
+                            containers.
+				2018 03 Apr - Allow delete when running in virtualisation's container.
+							Ensure that missing values in the config are replaced with defaults.
+							Don't stack dump if config file cannot be opened or read, or has bad json.
+							Allow VFd responses to span multiple read buffers.
 """
 
 __doc__ = """ iplex
     Usage:
     iplex [--conf=<config>] (add | update | delete | status) <port-id> [--loglevel=<value>] 
+    iplex [--conf=<config>] cpu_alarm <pctg> [--loglevel=<value>] 
     iplex [--conf=<config>] mirror <pf> <vf> <dir> [<target>]  [--loglevel=<value>]
     iplex [--conf=<config>] show <what> [--loglevel=<value>] 
     iplex [--conf=<config>] verbose [--loglevel=<value>] 
@@ -32,7 +40,7 @@ __doc__ = """ iplex
         -h, --help      show this help message and exit
         --version       show version and exit
         --loglevel=<value>  Default logvalue [default: 0]
-        <what> may be one of:  all, pfs, extended, or <n> where <n> is a PF number.
+        for show, <what> may be one of:  all, pfs, extended, or <n> where <n> is a PF number.
         <dir> is the mirror direction: one of: {in | out | all | off}.
 """
 
@@ -48,7 +56,9 @@ from logging.handlers import RotatingFileHandler
 import fcntl
 import platform
 
-VFD_CONFIG = '/etc/vfd/vfd.cfg'		# default; --conf= overrides from command line
+#VFD_CONFIG = '/etc/vfd/vfd.cfg'		# default; --conf= overrides from command line
+VFD_CONFIG = None		# there is no default; we'll search for /etc/vfd/vfd.cfg or /var/lib/vfd/etc.cfg and use those if --config not given
+
 
 # logging
 def setup_logging(logfile, config_data):
@@ -66,15 +76,60 @@ def _errorMsg(msg):
     data['msg'] = msg
     print data
 
+
+# generate a hash with the default values to use if config missing or undefined in config
+def gen_cfg_defaults( ) :
+    data = {}
+    data["config_dir"] = "/var/lib/vfd/config"                  # works for both bare metal and container world
+
+    if os.path.isdir( "/var/log/vfd" ) :                        # only on bare metal, else default to /tmp
+        data["log_dir"]  = "/var/log/vfd"
+    else :
+        data["log_dir"]  = "/tmp"
+
+    if os.path.isfile( "/var/lib/vfd/pipes/request" ) :               # fifos go in here for containers
+        data["fifo"]  = "/var/lib/vfd/pipes/request"
+    else :
+        data["fifo"]  = "/var/lib/vfd/request"   		               # assume bare metal.
+
+    return data
+
+
 # read vfd.cfg and validate
-def read_config():
-    with open(VFD_CONFIG) as data_file:
-        try:
-            data = json.load(data_file)
-        except ValueError:
-            _errorMsg(VFD_CONFIG + " is not a valid json")
-            sys.exit(1)
-        return data
+def read_config( fname ):
+    if fname == None :
+        if os.path.isfile( "/var/lib/vfd/etc/vfd.cfg" ) :       # container world where defaults don't work
+            fname = "/var/lib/vfd/etc/vfd.cfg"
+        else :
+            if os.path.isfile( "/etc/vfd.cfg" ) :               # old bare metal environment
+                fname = "/etc/vfd.cfg"
+
+    if fname == None  or  not os.path.isfile( fname ) :	# no config, gen defaults we need
+        return gen_cfg_defaults()
+
+    try :
+        with open(fname) as data_file:
+            try:
+                data = json.load(data_file)
+            except ValueError:
+                _errorMsg(fname + " does not contain valid json")
+                os._exit(1)										# do not bubble up, nor dump messy stack dump
+
+            defaults = gen_cfg_defaults()						# ensure the cfg file had all we need
+            if data["fifo"] == None :
+                data["fifo"] = defaults["fifo"]
+            if data["config_dir"] == None :
+                data["config_dir"] = defaults["config_dir"]
+            if data["log_dir"] == None :
+                data["log_dir"] = defaults["log_dir"]
+
+            return data
+
+    except :
+        e = sys.exc_info()[0]
+        _errorMsg( " unable to open or read config file: %s: %s" % (fname, e) )
+        os._exit( 1 )
+
 
 class Iplex(object):
 
@@ -82,7 +137,9 @@ class Iplex(object):
 
     def __init__(self, config_data=None, options=None, log=None):
         self.options = options
+
         self.config_data = config_data
+
         self.log = log
 
     def add(self, port_id):
@@ -100,7 +157,7 @@ class Iplex(object):
         return
 
     def delete(self, port_id):
-        self.filename = self.__assert_live_vfconfig(port_id)
+        self.filename = self.__assert_live_vfconfig(port_id)		# abort request if live directory avail and no file. 
         self.resp_fifo = self.__create_fifo()
         msg = self.__request_message('delete')
         self.__write_read_fifo(msg)
@@ -125,6 +182,13 @@ class Iplex(object):
         self.filename = None
         self.resp_fifo = self.__create_fifo()
         msg = self.__request_message('show')
+        self.__write_read_fifo(msg)
+        return
+
+    def cpu_alarm( self ) :
+        self.filename = None
+        self.resp_fifo = self.__create_fifo()
+        msg = self.__request_message( "cpu_alarm" )
         self.__write_read_fifo(msg)
         return
 
@@ -171,9 +235,15 @@ class Iplex(object):
 
     # Verify that a VF config file in the live (active) directory exists.
     # returns the filename if valid, and aborts the whole process if it is not.
+	# If the live directory is not present, we assume we are running in a container
+	# that doesn't have a mount of the live directory (it shouldn't for security reasons)
+	# and we'll let VFd reject the request if the file isn't valid. 
     #
     def __assert_live_vfconfig( self, port_id ) :
-        filename = os.path.join(self.config_data['config_dir'] + "_live", port_id)+'.json'
+        if os.path.isdir( self.config_data['config_dir'] + "_live" ) == False :
+            return
+
+        filename = os.path.join(self.config_data['config_dir'] + "_live", port_id) + '.json'
         if os.path.isfile( filename ) :
             self.log.info("valid vf config file: %s", filename)
             return filename
@@ -184,7 +254,7 @@ class Iplex(object):
 
     # Create private fifo
     def __create_fifo(self):
-        resp_fifo = Iplex.PRIVATE_FIFO_PATH+str(os.getpid())
+        resp_fifo = self.config_data['fifo'] + "_IPLEX.%d" % ( os.getpid() )         # use the same baee for the response pipe
         try:
             os.mkfifo(resp_fifo)
         except OSError, e:
@@ -208,6 +278,9 @@ class Iplex(object):
                 msg["params"]["resource"] = self.options["<pf>"] + " " + self.options["<vf>"] + " " + self.options["<dir>"]
                 if self.options["<target>"] != None:
                     msg["params"]["resource"] +=  " " + self.options["<target>"]
+            else :
+                if action == "cpu_alarm" :
+                    msg["params"]["resource"] = self.options["<pctg>"]				# pick up generic option
                 
         msg["params"]["loglevel"] = int(self.options["--loglevel"])
         msg["params"]["r_fifo"] = self.resp_fifo
@@ -229,6 +302,7 @@ class Iplex(object):
     def __write_read_fifo(self, msg):
         readFd = None
         try:
+
             writeFd = os.open(self.config_data['fifo'], os.O_WRONLY | os.O_NONBLOCK)
             os.write(writeFd, str(msg)+'\n\n')
             os.close(writeFd)
@@ -237,14 +311,20 @@ class Iplex(object):
                 if platform.system() == 'Linux':
                     fcntl.F_SETPIPE_SZ = 1031
                     fcntl.fcntl(readFd, fcntl.F_SETPIPE_SZ, 1024 * 60)
-            buf = self.__read_fd(readFd)
-            resp_data = json.dumps(buf.strip(' \n\t'))
+            buf = ""
+            rbuf = self.__read_fd(readFd)                                   # read first buffer (could be incomplete)
+            while rbuf.endswith( "@eom@" ) == False :
+                buf += rbuf
+                rbuf = self.__read_fd(readFd)                               # read next buffer (could be incomplete)
+
+            buf += rbuf.rstrip( "@eom@" )                                  # tuck in last one without end of message marker
+            resp_data = json.dumps( buf.strip(' \n\t'), indent=2 )
             print(ast.literal_eval(resp_data))
             os.close(readFd)
             os.unlink(self.resp_fifo)
         except OSError as e:
             if errno.ENXIO:
-                self.__errMsg("VFD is not running")
+                self.__errMsg("VFD is not running or fifo not available: %s" % e )
                 self.log.error("VFD does not seem to be running, please start the service ")
             else:
                 self.log.error("%s", e)
@@ -260,7 +340,7 @@ if __name__ == '__main__':
     if options["--conf"] != None:
         VFD_CONFIG = options["--conf"]
 
-    config_data = read_config()
+    config_data = read_config( VFD_CONFIG )
     log = setup_logging('iplex.log', config_data)
     iplex = Iplex(config_data, options, log)
 
@@ -278,6 +358,8 @@ if __name__ == '__main__':
         iplex.dump()
     elif options['mirror']:
         iplex.mirror()
+    elif options["cpu_alarm"]:
+		iplex.cpu_alarm()
     else:
         if options['show']:
             iplex.show()
