@@ -1101,35 +1101,10 @@ extern int vfd_del_vf( parms_t* parms, sriov_conf_t* conf, char* fname, char** r
 			*reason = strdup( mbuf );
 		}
 		free_config( vfc );
-		delete_vf_config( fname, target_dir );
 		return 0;
 	}
 
 	delete_vf_config( fname, target_dir );
-/*
-	if( parms->delete_keep ) {											// need to keep the old by renaming it with a trailing -
-		snprintf( mbuf, mblen, "%s-", fname );
-		if( rename( fname, mbuf ) < 0 ) {
-			snprintf( mbuf, mblen, "unable to rename config file: %s: %s", fname, strerror( errno ) );
-			bleat_printf( 1, "vfd_del_vf failed: %s", mbuf );
-			if( reason ) {
-				*reason = strdup( mbuf );
-			}
-			free_config( vfc );
-			return 0;
-		}
-	} else {
-		if( unlink( fname ) < 0 ) {
-			snprintf( mbuf, mblen, "unable to delete config file: %s: %s", fname, strerror( errno ) );
-			bleat_printf( 1, "vfd_del_vf failed: %s", mbuf );
-			if( reason ) {
-				*reason = strdup( mbuf );
-			}
-			free_config( vfc );
-			return 0;
-		}
-	}
-*/
 
 	bleat_printf( 2, "del: config data: name: %s", vfc->name );
 	bleat_printf( 2, "del: config data: pciid: %s", vfc->pciid );
