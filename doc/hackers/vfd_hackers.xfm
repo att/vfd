@@ -13,8 +13,15 @@
 .ju on
 .hn off
 
+.if hfm
+	.co bg white
+	.co #000000
+.fi
+
+
 .** pick up boiler plate configuration for our docs
-.im ../markdown.im
+.im ../setup.im
+.im ../setup_image.im
 
 
 .st 18p
@@ -29,32 +36,45 @@
 	.st 14
 	User's Guide
 	.bc end
-	.st &fontsize
+	.st &textsize
 
 .ei
 	.** links omitted if markdown because it seems to flag the submitter as a bot and suspends their id
 	.if &markdown 0 >
 		.dv http link:
 	.fi
-	.im caution.im 
+	.** .im caution.im 
 
-	&bold(Virtual Function Daemon -- VFd)
-	.sp
-	&bold(User's Guide)
+	.if hfm
+		.bc start
+		.st 18
+		&bold(Virtual Function Daemon -- VFd)
+		.st 14
+		.br
+		&bold(User's Guide)
+		.bc end
+	.fi
+	.st &textsize
 .fi
 
-&h1( Overview )
-&start_note
-A basic primer on SR-IOV can be found at .br
-&{http}www.intel.com/content/dam/doc/application-note/pci-sig-sr-iov-primer-sr-iov-technology-paper.pdf
-.sp .3
+.sv h1
+.sv start_note
+
+.if tfm
+	&h1( VFD -- User's Guide )
+.ei 
+	&h1( Overview )
+.fi
+&start_note( .5i )
+	A basic primer on SR-IOV can be found at .br
+	&{http}www.intel.com/content/dam/doc/application-note/pci-sig-sr-iov-primer-sr-iov-technology-paper.pdf
+	&end_note
+&start_note( .5i )
+	The VFd community is currently supporting various NICs produced by Mellanox, Broadcom, and Intel. 
 &end_note
-&start_note
-The VFd community is currently supporting various NICs produced by Mellanox, Broadcom, and Intel. 
-.sp .3
-&end_note
+
 VFd is a daemon which manages the configuration of virtual and physical functions (VFs and PFs) which 
-are exposed by an SR-IOV &note &note capable network interface card (NIC).  
+are exposed by an SR-IOV &note  capable network interface card (NIC) &note .sm .  
 Configuration and management is accomplished via DPDK and allows for the following attributes to be
 controlled:
 .sp .5
@@ -87,7 +107,7 @@ individual VF configurations, placing them into the &cw(/var) directory, and usi
 add the configuration information as a VM is created. 
 
 .sp
-&start_sized_note( .75i )
+&start_note( .75i )
 We use the terms hack, hacker, and hacking in their original computer science sense. 
 Hacking is the act of manually manipulating a programme or environment in order to tailor it to 
 the programmer's needs.  In a production environment, the overall VFd configuration, and the specifications of each
@@ -97,7 +117,7 @@ necessary configuration commands to interact with VFd.
 &end_note
 At times it may be necessary to install and make use of VFd without the usual distribution and virtual 
 environment management components. 
-This guide provides a way to hack &super together such a system and describes what is required to
+This guide provides a way to hack &note together such a system and describes what is required to
 .sp .5
 &indent
 .bl &lic1
@@ -125,6 +145,7 @@ with VFs can be determined and the VFs added (see the &ital(Limitations and Requ
 this document for information regarding the number of VFs which must be created for each PF).  
 
 
+
 &h2( Adding VFs to a PF )
 Assuming the PF is &cw( 0000:01:00.1, ) the following can be used to add VFs under it.
 
@@ -141,7 +162,9 @@ Assuming the PF is &cw( 0000:01:00.1, ) the following can be used to add VFs und
 .sp
 .di : Enable the number of VFs desired ( .sm &cw( echo 32 >max_vfs ) .sm )
 .sp
-.di : Verify that the VFs were added (ls -al in the directory and expect to find symbolic links like &cw( virtfn3->../0000:01:10.7 ) .sm )
+.if false
+.di : Verify that the VFs were added (ls -al in the directory and expect to find symbolic links like virtfn3->../0000:01:10.7) 
+.fi
 .ed
 .ju on
 &uindent
@@ -231,12 +254,12 @@ generated as VFd attempts to initialise, and the DPDK library will abort.
 .sp 1
 
 .** .cn start atbot Times-roman 8p 1i
-&start_note
+&start_note( .5i )
 All code fragments provided in this document assume Kshell; your mileage may vary with bash or other shells.
 &end_note
 Given a known PF, it is simple to determine which other devices also belong to the same group. 
 .gv figure
-Figure &script_fig shows a simple set of commands &super which can be used to find the location of a known 
+Figure &script_fig shows a simple set of commands &note which can be used to find the location of a known 
 PCI device and then all other devices in the same group. 
 The output from the command shows the group number as the last directory in the path which 
 is the group number. 
@@ -606,14 +629,21 @@ across all VFs on each PF.
 Please refer to the limits section later in this document for more details.
 
 &h3( Strip/Insert VLAN IDs )
-The VF may be configured to automatically remove the VLAN tag as each packet is received, and to automatically insert
-a VLAN tag as each packet is transmitted.
-Both functions are set with the same &cw( strip_stag ) field; as the strip and insert operations are related, they 
-are both either enabled or disabled and thus only one field is necessary.
-When this field is set to &cw( true, ) the array of VLAN IDs must contain only a single ID as it is impossible for 
-the NIC to know which VLAN ID to insert if multiple IDs are defined in the array. 
-Thus, VFd will reject the configuration if the strip stag field is set to &cw( true, ) and the VLAN array has more 
-than one element.
+The VF may be configured such that the VLAN tag in each packet is automatically removed (stripped) as the packet 
+arrives, and inserted into each packet as packets are transmitted.
+Setting the &cw( strip_stag ) field to true causes &bold(both) strip and insert to be preformed, and when set to 
+false, the VLAN tag is not removed on ingress and it is assumed that the transmitting application has added one 
+of the VLAN IDs in from the list to packets being transmitted. 
+
+
+.sp
+When the strip field is set to true, the VLAN ID is removed from all arriving packets, while the behavour for 
+transmitted packets is affected by the contents of the VLAN ID array.
+When the array contains a single VLAN ID, that ID is placed into each outgoing packet by the hardware and the 
+application is not expected to supply the ID.
+If the array contains two, or more, IDs, then the transmitting application is expected to add one of the listed
+IDs in the outgoing packet (it is impossible for the hardware to know which of the listed IDs should be applied 
+to any given packet).
 
 &h3( VF Quality of service configuration )
 In addition to the parameters noted above, a set of QoS parameters may be supplied in the VF configuration file.
@@ -812,7 +842,7 @@ behaviour with earlier versions.
 
 
 .** -----------------------------------------------------------------------------------------------
-.if tfm
+.if ! pfm
 	&h1( Notes: )
 	.sp 2
 	.cn showend

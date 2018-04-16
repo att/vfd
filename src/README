@@ -10,6 +10,8 @@ branch.  Pull the DPDK repo, and attempt to checkout v17.11.
 Once the dpdk repo has been cloned, it must be built before anything in the 
 vfd source tree can be built. To do this follow the following steps:
 
+	-   cd build            # where ever you plan to clone/build it
+    -   git clone http://dpdk.org/git/dpdk   # if you need to clone 
     -   cd dpdk				# where ever you installed it
     -   git checkout <correct-tag/branch>
     -   make config T=x86_64-native-linuxapp-gcc
@@ -50,4 +52,3 @@ build VFd.
 		- cd ../vfd
 		- make clean 
 		- make
-
