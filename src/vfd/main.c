@@ -1842,7 +1842,7 @@ main(int argc, char **argv)
 				port2config_map[portid] = -1;					// we must not allow an interrupt to map (we shouldn't get interrupts, but be parinoid)
 				bleat_printf( 0, "pf %d (%s) is NOT in vfd config file and was not initialised", portid, pciid );
 			}
-	  }
+		}
 		
 		bleat_printf( 2, "port initialisation complete" );
 
