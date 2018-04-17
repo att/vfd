@@ -23,6 +23,7 @@
 				19 Feb 2018 : Add support for 'live' config directory (#263)
 				04 Apr 2018 : Change mv to copy with src-unlink to allow for 'move' to a directory
 								on a different file system (possible container requirement).
+				17 Apr 2018 : Correct bug related to issue 291.
 */
 
 
@@ -797,7 +798,6 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		return 0;
 	}
 
-	//for( i = 0; i < vfc->nmacs-1; i++ ) {			// if a mac is duplicated it will be weeded out when we add
 	for( i = 0; i < vfc->nmacs; i++ ) {				// if a mac is duplicated it will be weeded out when we add
 		if( ! can_add_mac( port->rte_port_number, -1, vfc->macs[i] ) ) {			// must pass -1 for vfid as it's not in the config yet
 			snprintf( mbuf, sizeof( mbuf ), "mac cannot be added to this port (invalid, inuse, or max exceeded for VF): mac=%s", vfc->macs[i] ? vfc->macs[i] : "" );
