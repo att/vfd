@@ -797,9 +797,10 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		return 0;
 	}
 
-	for( i = 0; i < vfc->nmacs-1; i++ ) {			// if a mac is duplicated it will be weeded out when we add
+	//for( i = 0; i < vfc->nmacs-1; i++ ) {			// if a mac is duplicated it will be weeded out when we add
+	for( i = 0; i < vfc->nmacs; i++ ) {				// if a mac is duplicated it will be weeded out when we add
 		if( ! can_add_mac( port->rte_port_number, -1, vfc->macs[i] ) ) {			// must pass -1 for vfid as it's not in the config yet
-			snprintf( mbuf, sizeof( mbuf ), "mac cannot be added to this port (inuse, or max exceeded for VF): %s", vfc->macs[i] );
+			snprintf( mbuf, sizeof( mbuf ), "mac cannot be added to this port (invalid, inuse, or max exceeded for VF): mac=%s", vfc->macs[i] ? vfc->macs[i] : "" );
 			bleat_printf( 0, "vf not added: %s", mbuf );
 			if( reason ) {
 				*reason = strdup( mbuf );

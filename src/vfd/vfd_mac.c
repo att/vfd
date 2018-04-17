@@ -70,6 +70,9 @@ static int is_valid_mac_str( char* mac ) {
 	char*	strtp = NULL;		// strtok_r reference
 	int		ccount = 0;
 	
+	if( mac == NULL ) {
+		return 0;
+	}
 
 	if( strlen( mac ) < 17 ) {
 		return 0;
@@ -161,7 +164,7 @@ extern int can_add_mac( int port, int vfid, char* mac ) {
 	void* sresult;						// result from the symtab look up
 	
 
-	if( ! is_valid_mac_str( mac ) ) {
+	if( ! is_valid_mac_str( mac ) ) {		// will also test for nil pointer
 		bleat_printf( 1, "can_add_mac: mac is not valid: %s", mac );
 		return 0;
 	}
@@ -218,6 +221,11 @@ extern int add_mac( int port, int vfid, char* mac ) {
 	struct sriov_port_s* p = NULL;
 	int total = 0;						// number of MACs defined for the PF
 	int i;
+
+	if( mac == NULL || ! *mac ) {
+		bleat_printf( 1, "add_mac: nil mac pointer, or empty string pf/vf=%d/%d", port, vfid );
+		return 0;
+	}
 	
 	if( (p = suss_port( port )) == NULL ) {
 		bleat_printf( 1, "add_mac: port doesn't map: %d", port );
@@ -339,7 +347,7 @@ extern int push_mac( int port, int vfid, char* mac ) {
 }
 
 /*
-	Run the list of MAC addresses whe have associated with the VF and push them out to the NIC.
+	Run the list of MAC addresses we have associated with the VF and push them out to the NIC.
 	We run the list in _reverse_ order because on some NICs the last one pushed is assumed to be
 	the default MAC (there is no specific set default api).
 
