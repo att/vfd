@@ -7,7 +7,7 @@
 	Author:		E. Scott Daniels
 	Date:		28 October 2017  (broken from main.c and added extensions.
 
-	Mods:
+	Mods:		18 Apr 2018 - Correct for issue 294
 */
 
 
@@ -358,6 +358,7 @@ extern int set_macs( int port, int vfid ) {
 	struct sriov_port_s* pf = NULL;
 	char*	mac;
 	int m;
+	int si;								// start index for reverse loop
 	
 	if( (pf = suss_port( port )) == NULL ) {
 		bleat_printf( 1, "setl_macs: port doesn't map: %d", port );
@@ -369,8 +370,10 @@ extern int set_macs( int port, int vfid ) {
 		return 0;
 	}
 
-	bleat_printf( 1, "configuring %d mac addresses on pf/vf=%d/%d firstmac=%d", vf->num_macs, port, vfid, vf->first_mac );
-	for( m = vf->num_macs; m >= vf->first_mac; m-- ) {
+	si = (vf->num_macs - 1) + vf->first_mac;				// starting index
+	bleat_printf( 1, "configuring %d mac addresses on pf/vf=%d/%d firstmac=%d nm=%d si=%d", vf->num_macs, port, vfid, vf->first_mac, vf->num_macs,  si );
+
+	for( m = si; m >= vf->first_mac; m-- ) {
 		mac = vf->macs[m];
 		bleat_printf( 2, "adding mac [%d]: port: %d vf: %d mac: %s", m, port, vfid, mac );
 
@@ -378,7 +381,6 @@ extern int set_macs( int port, int vfid ) {
 			set_vf_rx_mac( port, mac, vfid, SET_ON );	// set in whitelist
 		} else {
 			set_vf_default_mac( port, mac, vfid );		// first is set as default
-			bleat_printf( 2, "Setting default mac was succesfull");
 		}
 	}
 
