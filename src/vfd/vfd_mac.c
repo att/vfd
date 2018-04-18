@@ -7,7 +7,8 @@
 	Author:		E. Scott Daniels
 	Date:		28 October 2017  (broken from main.c and added extensions.
 
-	Mods:		18 Apr 2018 - Correct for issue 294
+	Mods:		18 Apr 2018 - Correct for issue 294, and one off bug when adding
+					white list macs, and possible one off bug in clear macs.
 */
 
 
@@ -221,6 +222,7 @@ extern int add_mac( int port, int vfid, char* mac ) {
 	struct sriov_port_s* p = NULL;
 	int total = 0;						// number of MACs defined for the PF
 	int i;
+	int ip;								// insert point if good to insert mac
 
 	if( mac == NULL || ! *mac ) {
 		bleat_printf( 1, "add_mac: nil mac pointer, or empty string pf/vf=%d/%d", port, vfid );
@@ -237,8 +239,8 @@ extern int add_mac( int port, int vfid, char* mac ) {
 		return 0;
 	}
 
-																// this check must be BEFORE can_add_mac() call
-	for( i = vf->first_mac; i <= vf->num_macs; i++ ) {			// if duplicate of what defined for this VF, then its OK
+																				// this check must be BEFORE can_add_mac() call
+	for( i = vf->first_mac; i < vf->num_macs + vf->first_mac; i++ ) {			// if duplicate of what defined for this VF, then its OK
 		if( strcmp( vf->macs[i], mac ) == 0 ) {
 			bleat_printf( 1, "add_mac: no action needed: mac already in list for: pf/vf=%d/%d mac=%s", port, vfid, mac );
 			return 1;
@@ -250,12 +252,13 @@ extern int add_mac( int port, int vfid, char* mac ) {
 	}
 
 	//  --- all vetting must be before this, at this point we're good to add, so update things ----------------
-	bleat_printf( 2, "add_mac: allowed: pf/vf=%d/%d counts=%d/%d %s", port, vfid, total+1, vf->num_macs+1, mac );
-
-	sym_map( mac_stab, mac, port, (void*) 1 );			// assign this to the PF for dup checking
+	ip = vf->num_macs + vf->first_mac;					// MUST compute insert point before increasing num macs!
 	vf->num_macs++;
-	strncpy( vf->macs[vf->num_macs], mac, 17 );			// will add final 0 if a:b:c style resulting in short string
-	vf->macs[vf->num_macs][17] = 0;						// if long string passed in; ensure 0 terminated
+	bleat_printf( 2, "add_mac: allowed: pf/vf=%d/%d pf_nm=%d nm=%d fm=%d ip=%d %s", port, vfid, total+1, vf->num_macs, vf->first_mac, ip, mac );
+
+	sym_map( mac_stab, mac, port, (void*) 1 );		// assign this to the PF space for dup checking
+	strncpy( vf->macs[ip], mac, 17 );					// will add final 0 if a:b:c style resulting in short string
+	vf->macs[ip][17] = 0;								// if long string passed in; ensure 0 terminated
 
 	return 1;
 }
@@ -277,6 +280,7 @@ extern int clear_macs( int port, int vfid, int assign_random ) {
 	char*	mac;
 	char*	rmac;						// random mac
 	int m;
+	int	si;								// stop index
 	
 	if( (pf = suss_port( port )) == NULL ) {
 		bleat_printf( 1, "clear_macs: port doesn't map: %d", port );
@@ -288,7 +292,9 @@ extern int clear_macs( int port, int vfid, int assign_random ) {
 		return 0;
 	}
 
-	for( m =  vf->first_mac + 1; m <= vf->num_macs; ++m ) {				// for all but the default
+	si = vf->num_macs + vf->first_mac;
+	bleat_printf( 1, "clearing macs for pf/vf=%d/%d use_rand=%d fm=%d nm=%d si=%d", port, vfid, assign_random, vf->first_mac, vf->num_macs, si );
+	for( m = vf->first_mac + 1; m < si; ++m ) {						// for all but the default
 		mac = vf->macs[m];
 		bleat_printf( 2, "clear macs:  [%d] pf/vf=%d/%d %s", m, pf->rte_port_number, vf->num, mac );
 		
@@ -302,10 +308,11 @@ extern int clear_macs( int port, int vfid, int assign_random ) {
 		rmac = gen_rand_hrmac();								// random mac to push into the nic
 		set_vf_default_mac( port, rmac, vfid );
 
-		bleat_printf( 2, "clear macs: replacing default %s with random: %s", vf->macs[vf->first_mac], rmac );
+		bleat_printf( 2, "clear macs: replacing default (%s) with random: %s", vf->macs[vf->first_mac], rmac );
 		free( rmac );
 
 		vf->num_macs = 0;		// at this point we are not shoving any addresses to the NIC for this VF
+		vf->first_mac = 1;
 	} else {
 		bleat_printf( 2, "clear macs: leaving default [%d] %s", vf->first_mac, vf->macs[vf->first_mac] );
 		vf->num_macs = 1;		// we are leaving the default in place so adjust
@@ -331,7 +338,7 @@ extern int push_mac( int port, int vfid, char* mac ) {
 
 	
 	if( vf->num_macs > 0  && strcmp( mac, vf->macs[vf->first_mac] ) == 0 ) {		// we already have this as the default
-		bleat_printf( 2, "push_mac: mac is already default for pf/vf=%d/%d [%d]: %s", port, vfid, vf->first_mac, mac );
+		bleat_printf( 2, "push_mac: mac is already default for pf/vf=%d/%d [%d] nm=%d: %s", port, vfid, vf->first_mac, vf->num_macs, mac );
 		return 1;
 	}
 
@@ -340,9 +347,10 @@ extern int push_mac( int port, int vfid, char* mac ) {
 	}
 
 	vf->first_mac = 0;
+	vf->num_macs++;
 	strcpy( vf->macs[0], mac );			// make our copy
 
-	bleat_printf( 1, "push_mac: default mac pushed onto head of list: pf/vf=%d/%d %s", port, vfid, vf->macs[0] );
+	bleat_printf( 1, "push_mac: default mac pushed onto head of list: pf/vf=%d/%d %s num=%d", port, vfid, vf->macs[0], vf->num_macs );
 	return 1;
 }
 
@@ -361,12 +369,12 @@ extern int set_macs( int port, int vfid ) {
 	int si;								// start index for reverse loop
 	
 	if( (pf = suss_port( port )) == NULL ) {
-		bleat_printf( 1, "setl_macs: port doesn't map: %d", port );
+		bleat_printf( 1, "set_macs: port doesn't map: %d", port );
 		return 0;
 	}
 
 	if( (vf = suss_vf( port, vfid )) == NULL ) {
-		bleat_printf( 1, "clear_macs: vf doesn't map: pf/vf=%d/%d", port, vfid );
+		bleat_printf( 1, "set_macs: vf doesn't map: pf/vf=%d/%d", port, vfid );
 		return 0;
 	}
 
@@ -375,7 +383,7 @@ extern int set_macs( int port, int vfid ) {
 
 	for( m = si; m >= vf->first_mac; m-- ) {
 		mac = vf->macs[m];
-		bleat_printf( 2, "adding mac [%d]: port: %d vf: %d mac: %s", m, port, vfid, mac );
+		bleat_printf( 2, "set_mac: adding mac [%d]: port: %d vf: %d mac: %s", m, port, vfid, mac );
 
 		if( m > vf->first_mac ) {
 			set_vf_rx_mac( port, mac, vfid, SET_ON );	// set in whitelist

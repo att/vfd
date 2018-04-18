@@ -79,6 +79,7 @@
 				10 Jan 2018 - mlx5: Add VF queue sharing per TC.
 				19 Feb 2018 - Add support to ensure config directories exist. (#263)
 				26 Mar 2018 - Send log to file unless log_dir == stderr; allow -f for container with log file.
+				18 Apr 2018 - Correct stop point when dumping mac addresses.
 */
 
 
@@ -1446,7 +1447,7 @@ dump_sriov_config( sriov_conf_t* sriov_config)
 					sriov_config->ports[i].vfs[y].min_rate,
 					sriov_config->ports[i].vfs[y].link,
 					sriov_config->ports[i].vfs[y].num_vlans,
-					sriov_config->ports[i].vfs[y].num_macs + (sriov_config->ports[i].vfs[y].first_mac ? 0 : 1),
+					sriov_config->ports[i].vfs[y].num_macs,
 					split_ctl,
 					sriov_config->ports[i].mirrors[y].target,
 					sriov_config->ports[i].mirrors[y].dir,
@@ -1459,7 +1460,7 @@ dump_sriov_config( sriov_conf_t* sriov_config)
 				}
 	
 				int z;
-				for (z = sriov_config->ports[i].vfs[y].first_mac; z <= sriov_config->ports[i].vfs[y].num_macs; z++) {
+				for (z = sriov_config->ports[i].vfs[y].first_mac; z < sriov_config->ports[i].vfs[y].num_macs + sriov_config->ports[i].vfs[y].first_mac; z++) {
 					bleat_printf( 2, "dump: pf/vf: %d/%d mac[%d] %s ", sriov_config->ports[i].rte_port_number, sriov_config->ports[i].vfs[y].num, z, sriov_config->ports[i].vfs[y].macs[z]);
 				}
 			} else {

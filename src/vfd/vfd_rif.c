@@ -24,6 +24,7 @@
 				04 Apr 2018 : Change mv to copy with src-unlink to allow for 'move' to a directory
 								on a different file system (possible container requirement).
 				17 Apr 2018 : Correct bug related to issue 291.
+				18 Apr 2018 : Correct placment for first_mac initialisation.
 */
 
 
@@ -800,7 +801,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 
 	for( i = 0; i < vfc->nmacs; i++ ) {				// if a mac is duplicated it will be weeded out when we add
 		if( ! can_add_mac( port->rte_port_number, -1, vfc->macs[i] ) ) {			// must pass -1 for vfid as it's not in the config yet
-			snprintf( mbuf, sizeof( mbuf ), "mac cannot be added to this port (invalid, inuse, or max exceeded for VF): mac=%s", vfc->macs[i] ? vfc->macs[i] : "" );
+			snprintf( mbuf, sizeof( mbuf ), "mac cannot be added to this port (invalid, inuse, or max exceeded for VF): mac=(%s)", vfc->macs[i] ? vfc->macs[i] : "" );
 			bleat_printf( 0, "vf not added: %s", mbuf );
 			if( reason ) {
 				*reason = strdup( mbuf );
@@ -808,7 +809,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 			free_config( vfc );
 			return 0;
 		}
-		bleat_printf( 2, "mac address added to config: %s",  vfc->macs[i] );
+		bleat_printf( 2, "mac address can be added to config: [%d] (%s)",  i, vfc->macs[i] );
 	}
 
 	if( ! (port->flags & PF_OVERSUB) ) {						// if in strict mode, ensure TC amounts can be added to current settings without busting 100% cap
@@ -872,6 +873,8 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	// -------------------------------------------------------------------------------------------------------------
 	// CAUTION: if we fail because of a parm error it MUST happen before here!
 
+	bleat_printf( 2, "vf configuration vet complete for %s", vfc->name );
+
 	// All validation was successful, safe to update the config data
 	if( vidx == port->num_vfs ) {		// inserting at end, bump the num we have used
 		port->num_vfs++;
@@ -933,13 +936,13 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	}
 	vf->num_vlans = vfc->nvlans;
 
-	for( i = 1; i <= vfc->nmacs; i++ ) {				// src is 0 based but vf list is 1 based to allow for easy push if guests sets a default mac
+	vf->first_mac = 1;													// if guests pushes a mac, we'll add it to [0] and reset the index
+	for( i = 1; i <= vfc->nmacs; i++ ) {								// src is 0 based but vf list is 1 based to allow for easy push if guests sets a default mac
 		//strcpy( vf->macs[i], vfc->macs[i-1] );						// length vetted earlier, so this is safe
 		add_mac( port->rte_port_number, vf->num, vfc->macs[i-1] );		// this should not fail as we vetted it before
 	}
 
 	vf->num_macs = vfc->nmacs;
-	vf->first_mac = 1;								// if guests pushes a mac, we'll add it to [0] and reset the index
 
 	for( i = 0; i < MAX_TCS; i++ ) {				// copy in the VF's share of each traffic class (percentage)
 		vf->qshares[i] = vfc->qshare[i];
@@ -951,7 +954,7 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 		*reason = NULL;								// no reason passed back when successful
 	}
 
-	bleat_printf( 2, "VF was added: %s %s id=%d", vfc->name, vfc->pciid, vfc->vfid );
+	bleat_printf( 2, "VF was added to internal config: %s %s id=%d nm=%d", vfc->name, vfc->pciid, vfc->vfid, vf->num_macs );
 	free_config( vfc );
 	return 1;
 }
@@ -1116,7 +1119,7 @@ extern int vfd_del_vf( parms_t* parms, sriov_conf_t* conf, char* fname, char** r
 	if( reason ) {
 		*reason = NULL;
 	}
-	bleat_printf( 2, "VF was deleted: %s %s id=%d", vfc->name, vfc->pciid, vfc->vfid );
+	bleat_printf( 2, "VF internal config was deleted: %s %s id=%d", vfc->name, vfc->pciid, vfc->vfid );
 	free_config( vfc );
 	return 1;
 }
@@ -1483,7 +1486,7 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 							bleat_printf( 1, "vf deleted: %s", mbuf );
 						} // TODO need else -- see above
 					} else {
-						snprintf( mbuf, sizeof( mbuf ), "unable to delete vf: %s: %s", req->resource, reason );
+						snprintf( mbuf, sizeof( mbuf ), "unable to delete internal config for vf: %s: %s", req->resource, reason );
 						vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, mbuf );
 						free( reason );
 					}
