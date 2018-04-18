@@ -419,85 +419,6 @@ int valid_mtu( int port, int mtu ) {
 	return 0;
 }
 
-#ifdef KEEP
-/*
-	Pushes the mac string onto the head of the list for the given port/vf combination. Sets
-	the first mac index to be 0 so that it is used if a port/vf reset is triggered.
-	Mac is a nil terminated ascii string of the form xx:xx:xx:xx:xx:xx.
-*/
-extern void push_mac( int port, int vfid, char* mac ) {
-	struct vf_s* vf;
-	
-	if( (vf = suss_vf( port, vfid )) == NULL ) {
-		bleat_printf( 2, "push_mac: vf doesn't map: %d/%d", port, vfid );
-		return;
-	}
-
-	vf->first_mac = 0;
-	strcpy( vf->macs[0], mac );			// make our copy
-
-	bleat_printf( 1, "default mac pushed onto head of list: %s", vf->macs[0] );
-}
-
-/*
-	Accepts a mac string and adds it to the list of MACs for the pf/vf provided that:
-
-		1) the addition of a MAC does not cause the PF limit to be exceeded 
-		2) the VF has room for another MAC.  
-		3) the MAC is not duplicated on another VF on the same PF
-
-	O is returned if any of these does not hold;
-
-	If the MAC is already listed for the PF/VF given, then we do nothing and silently
-	ignore the call returning 1 (success).
-
-	The parm mac is expected to be an ASCII-z string in human readable xx:xx... form.
-*/
-extern int add_mac( int port, int vfid, char* mac ) {
-	struct vf_s* vf = NULL;				// references to our pf/vf structs
-	struct sriov_port_s* p = NULL;
-	int total = 0;						// number of MACs defined for the PF
-	int i;
-	
-
-	if( (p = suss_port( port )) == NULL ) {
-		bleat_printf( 2, "add_mac: port doesn't map: %d", port );
-		return 0;
-	}
-
-	if( (vf = suss_vf( port, vfid )) == NULL ) {
-		bleat_printf( 2, "add_mac: vf doesn't map: %d/%d", port, vfid );
-		return 0;
-	}
-
-	for( i = vf->first_mac; i <= vf->num_macs; i++ ) {	// check for duplicates; if already in then just return good and leave
-		if( strcmp( vf->macs[i], mac ) == 0 ) {
-			bleat_printf( 2, "add_mac: no action needed: mac already in table for: pf/vf=%d/%d mac=%s", port, vfid, mac );
-			return 1;
-		}
-	}
-
-	for( i = 0; i < p->num_vfs; i++ ) {
-		total += p->vfs[i].num_macs;
-	}
-
-	if( total+1 > MAX_PF_MACS ) {
-		bleat_printf( 2, "add_mac: adding mac would exceed PF limit: pf/vf=%d/%d current_pf=%d mac=%s", port, vfid, total, mac );
-		return 0;
-	}
-
-	if( vf->num_macs +1 > MAX_VF_MACS ) {
-		bleat_printf( 2, "add_mac: adding mac would exceed VF limit: pf/vf=%d/%d current_vf=%d mac=%s", port, vfid, vf->num_macs, mac );
-		return 0;
-	}
-
-	vf->num_macs++;
-	strncpy( vf->macs[vf->num_macs], mac, 17 );			// will add 0 if a:b:c style resulting in short string
-	vf->macs[vf->num_macs][17] = 0;						// if long string passed in; ensure terminated
-
-	return 1;
-}
-#endif
 
 // ---------------------------------------------------------------------------------------------------------------
 /*
@@ -1060,42 +981,8 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 					}
 
 					clear_macs( port->rte_port_number, vf->num, RESET_DEFAULT );	// remove all MAC addresses and set a random default
-
-/*
-// TODO -- remove this once clear_macs() is verified
-					for( m = vf->first_mac; m <= vf->num_macs; ++m ) {
-						mac = vf->macs[m];
-						bleat_printf( 2, "delete mac: port: %d vf: %d mac: %s", port->rte_port_number, vf->num, mac );
-		
-						if ((get_nic_type(port->rte_port_number) == VFD_MLX5) && (m == vf->first_mac))
-							vfd_mlx5_vf_mac_remove(port->rte_port_number, vf->num);  ///##### this call is wrong!  
-						else
-							set_vf_rx_mac(port->rte_port_number, mac, vf->num, SET_OFF );
-					}
-
-					vf->num_macs = 0;							// shouldn't be referenced, but prevent accidents
-*/
 				} else {
 					set_macs( port->rte_port_number, vf->num );
-
-/*
-// remove when set_macs verified
-//TODO:  use stuff in mac module to set macs so that verification on the PF level happens (either here or when we populate this struct)
-					bleat_printf( 2, "configuring %d mac addresses: port: %d vf: %d firstmac=%d", vf->num_macs, port->rte_port_number, vf->num, vf->first_mac );
-					for( m = vf->num_macs; m >= vf->first_mac; m-- ) {				// must run in reverse order because of FV oddness
-						mac = vf->macs[m];
-						bleat_printf( 2, "adding mac [%d]: port: %d vf: %d mac: %s", m, port->rte_port_number, vf->num, mac );
-
-						if( parms->forreal ) {
-							if( m > vf->first_mac ) {
-								set_vf_rx_mac( port->rte_port_number, mac, vf->num, SET_ON );	// set in whitelist
-							} else {
-								set_vf_default_mac( port->rte_port_number, mac, vf->num );		// first is set as default
-								bleat_printf( 2, "Setting default mac was succesfull");
-							}
-						}
-					}
-*/
 				}
 
 				if( vf->rate || vf->min_rate ) {
