@@ -1620,11 +1620,17 @@ port_init(uint16_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_po
 	int retval;
 	uint16_t q;
 	int i;
+	int nports;
 
 	port_conf.rxmode.max_rx_pkt_len = pf->mtu;
 	port_conf.rxmode.jumbo_frame = pf->mtu >= 1500;
 
-	if (port >= rte_eth_dev_count()) {
+#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH >= 05  
+	nports = rte_eth_dev_count_avail();
+#else
+	nports = rte_eth_dev_count();
+#endif
+	if( port >= nports ) {
 		bleat_printf( 0, "CRI: abort: port >= rte_eth_dev_count");
 		return 1;
 	}

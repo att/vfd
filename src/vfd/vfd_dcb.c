@@ -128,8 +128,16 @@ extern int dcb_port_init( sriov_port_t *pf, __attribute__((__unused__)) struct r
 	const uint16_t tx_rings = 4;
 	int retval;
 	uint16_t q;
+
+	int n_ports;
+
+#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH >= 05  
+		n_ports = rte_eth_dev_count_avail();
+#else
+		n_ports = rte_eth_dev_count();
+#endif
 	
-	if( pf == NULL || (port = pf->rte_port_number) >= rte_eth_dev_count()) {
+	if( pf == NULL || (port = pf->rte_port_number) >= n_ports ) {
 		bleat_printf( 0, "CRI: abort: dcb_port_init: nil pf pointer, or port >= rte_eth_dev_count" );
 		return 1;
 	}
