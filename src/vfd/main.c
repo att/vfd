@@ -620,10 +620,7 @@ char*  gen_stats( sriov_conf_t* conf, int pf_only, int pf ) {
 	int		l;
 	int		i;
 	struct rte_eth_dev_info dev_info;
-
-#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH >= 05  
-	char	pci_name[RTE_ETH_NAME_MAX_LEN];
-#endif
+	struct rte_pci_device const* pci_dev;			// starting with 18.05 this not a part of dev info
 
 	rblen = BUF_SIZE;
 	rbuf = (char *) malloc( sizeof( char ) * rblen );
@@ -654,25 +651,24 @@ char*  gen_stats( sriov_conf_t* conf, int pf_only, int pf ) {
 		memset( &dev_info, 0, sizeof( dev_info ) );										// no status from rte function, but if it fails to populate we need to know, so 0s required
 		rte_eth_dev_info_get( conf->ports[i].rte_port_number, &dev_info );				// must use port number that we mapped during initialisation
 
-#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH >= 05  
-		if( ! rte_eth_dev_get_name_by_port( pf, pci_name ) ) {
-			continue;
-		}
-		l = snprintf( buf, sizeof( buf ), "pf   %4d    %s", conf->ports[i].rte_port_number, pci_name );
-#else
-		if( dev_info.pci_dev == NULL ) {
+		#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH >= 05  
+			pci_dev = port_to_pcidev( conf->ports[i].rte_port_number );			// must suss it out on our own starting in 18.05
+		#else
+			pci_dev = dev_info.pci_dev;
+		#endif
+
+		if( pci_dev == NULL ) {
 			continue;
 		}
 
 		l = snprintf( buf, sizeof( buf ), "%s   %4d    %04X:%02X:%02X.%01X",
-					"pf",
-					conf->ports[i].rte_port_number,
-					dev_info.pci_dev->addr.domain,
-					dev_info.pci_dev->addr.bus,
-					dev_info.pci_dev->addr.devid,
-					dev_info.pci_dev->addr.function);
-							
-#endif
+			"pf",
+			conf->ports[i].rte_port_number,
+			pci_dev->addr.domain,
+			pci_dev->addr.bus,
+			pci_dev->addr.devid,
+			pci_dev->addr.function);
+
 		if( l + rbidx > rblen ) {
 			rblen += BUF_SIZE;
 			rbuf = (char *) realloc( rbuf, sizeof( char ) * rblen );
@@ -697,15 +693,7 @@ char*  gen_stats( sriov_conf_t* conf, int pf_only, int pf ) {
 		rbidx += l;
 		
 		if( ! pf_only ) {
-			struct rte_pci_device const* pci_dev;
-
-#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH >= 05  
-			pci_dev = port_to_pcidev( conf->ports[i].rte_port_number );			// must suss it out on our own starting in 18.05
-#else
-			pci_dev = dev_info.pci_dev;
-#endif
 			// pack PCI ARI into 32bit to be used to get VF's ARI later
-			//uint32_t pf_ari = dev_info.pci_dev->addr.bus << 8 | dev_info.pci_dev->addr.devid << 3 | dev_info.pci_dev->addr.function;
 			uint32_t pf_ari = pci_dev->addr.bus << 8 | pci_dev->addr.devid << 3 | pci_dev->addr.function;
 			
 			//iterate over active (configured) VF's only
@@ -1603,11 +1591,11 @@ main(int argc, char **argv)
 		
 		rte_openlog_stream(stderr);						// log level for initialisation will be set with eal_init call
 
-#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH >= 05  
-		n_ports = rte_eth_dev_count_avail();
-#else
-		n_ports = rte_eth_dev_count();
-#endif
+		#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH >= 05  
+			n_ports = rte_eth_dev_count_avail();
+		#else
+			n_ports = rte_eth_dev_count();
+		#endif
 		if( n_ports > MAX_PORTS ) {
 			bleat_printf( 0, "WARN: hardware reports %d ports which exceeds max supported ports (%d); processing only %d ports", n_ports, MAX_PORTS, MAX_PORTS );
 			n_ports = MAX_PORTS;
@@ -1662,11 +1650,11 @@ main(int argc, char **argv)
 
 			pfidx = -1;																// default to PF not in our config list
 			rte_eth_dev_info_get(portid, &dev_info);
-#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH >= 05  
-			pci_dev = port_to_pcidev( portid );										// must suss it out on our own starting in 18.05
-#else
-			pci_dev = dev_info.pci_dev;
-#endif
+			#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH >= 05  
+				pci_dev = port_to_pcidev( portid );										// must suss it out on our own starting in 18.05
+			#else
+				pci_dev = dev_info.pci_dev;
+			#endif
 			snprintf(pciid, sizeof( pciid ), "%04x:%02x:%02x.%01x", pci_dev->addr.domain, pci_dev->addr.bus, pci_dev->addr.devid, pci_dev->addr.function);
 			for(i = 0; i < running_config->num_ports; ++i) {						// must record the 'real' PF number as that likely won't match array order
 				if (strcmp(pciid, running_config->ports[i].pciid) == 0) {
