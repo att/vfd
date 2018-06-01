@@ -25,6 +25,7 @@
 								on a different file system (possible container requirement).
 				17 Apr 2018 : Correct bug related to issue 291.
 				18 Apr 2018 : Correct placment for first_mac initialisation.
+				24 Apr 2018 : Correct double free bug if pciid wasn't right in a config file.
 */
 
 
@@ -654,7 +655,6 @@ extern int vfd_add_vf( sriov_conf_t* conf, char* fname, char** reason ) {
 	if( port == NULL ) {
 		snprintf( mbuf, sizeof( mbuf ), "%s: could not find port %s in the config", vfc->name, vfc->pciid );
 		bleat_printf( 1, "vf not added: %s", mbuf );
-		free_config( vfc );
 		if( reason ) {
 			*reason = strdup( mbuf );
 		}
@@ -995,7 +995,8 @@ extern void vfd_add_all_vfs(  parms_t* parms, sriov_conf_t* conf ) {
 	for( i = 0; i < llen; i++ ) {
 		bleat_printf( 2, "parsing %s", flist[i] );
 		if( ! vfd_add_vf( conf, flist[i], NULL ) ) {
-			bleat_printf( 0, "add_all_vfs: could not add %s", flist[i] );
+			bleat_printf( 0, "add_all_vfs: could not add %s (moved off to %s)", flist[i], parms->config_dir );
+			delete_vf_config( flist[i], parms->config_dir );
 		}
 	}
 	
