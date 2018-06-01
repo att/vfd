@@ -334,6 +334,82 @@ struct rq_entry
 
 // ----------- inline expansions ---------------------------------------------------------------------
 
+#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH >= 05  
+
+/*
+	Provide an easy way to map port id to a pci device info set.
+*/
+static inline struct rte_pci_device const* port_to_pcidev( portid_t port ) {
+	struct rte_eth_dev_info dev_info;
+	const struct rte_pci_device *pci_dev;
+	const struct rte_bus *bus;
+
+	rte_eth_dev_info_get( port, &dev_info );
+    bus = rte_bus_find_by_device( dev_info.device );
+
+    if( bus && !strcmp( bus->name, "pci" ) ) {
+        pci_dev = RTE_DEV_TO_PCI( dev_info.device );
+    } else {
+        return NULL;
+    }
+
+	return pci_dev;
+}
+
+// pci info is not a part of device struct starting in 18.05, so must fetch it ourselves
+/*
+	Read a value from a port/register offset combination.
+*/
+static inline uint32_t port_pci_reg_read( portid_t port, uint32_t reg_off ) {
+	struct rte_eth_dev_info dev_info;
+	const struct rte_pci_device *pci_dev;
+	const struct rte_bus *bus;
+	void *reg_addr;
+	uint32_t reg_v;
+
+	rte_eth_dev_info_get( port, &dev_info );
+    bus = rte_bus_find_by_device( dev_info.device );
+
+    if( bus && !strcmp( bus->name, "pci" ) ) {
+        pci_dev = RTE_DEV_TO_PCI( dev_info.device );
+    } else {
+        return -1;
+    }
+
+
+	reg_addr = (void *) ( (char *) pci_dev->mem_resource[0].addr + reg_off );
+	reg_v = *(( volatile uint32_t *)reg_addr );
+	return rte_le_to_cpu_32( reg_v );
+}
+
+
+/*
+	Write  to a port/offset register on a pci device.
+*/
+static inline void port_pci_reg_write( portid_t port, uint32_t reg_off, uint32_t reg_v ) {
+	struct rte_eth_dev_info dev_info;
+	const struct rte_pci_device *pci_dev;
+	const struct rte_bus *bus;
+	void *reg_addr;
+
+	rte_eth_dev_info_get( port, &dev_info );
+    bus = rte_bus_find_by_device( dev_info.device );
+
+    if( bus && !strcmp( bus->name, "pci" ) ) {
+        pci_dev = RTE_DEV_TO_PCI( dev_info.device );
+    } else {
+        return;
+    }
+
+
+	reg_addr = (void *) ( (char *) pci_dev->mem_resource[0].addr + reg_off );
+	reg_v = *(( volatile uint32_t *)reg_addr );
+	*((volatile uint32_t *) reg_addr) = rte_cpu_to_le_32( reg_v );
+}
+
+
+#else
+	// should work for all versions prior to 18.05
 /**
  * Read/Write operations on a PCI register of a port.
  */
@@ -353,9 +429,6 @@ port_pci_reg_read(portid_t port, uint32_t reg_off)
 	return rte_le_to_cpu_32(reg_v);
 }
 
-#define port_id_pci_reg_read(pt_id, reg_off) \
-	port_pci_reg_read(&ports[(pt_id)], (reg_off))
-
 static inline void
 port_pci_reg_write(portid_t port, uint32_t reg_off, uint32_t reg_v)
 {
@@ -368,6 +441,10 @@ port_pci_reg_write(portid_t port, uint32_t reg_off, uint32_t reg_v)
 		((char *)dev_info.pci_dev->mem_resource[0].addr + reg_off);
 	*((volatile uint32_t *)reg_addr) = rte_cpu_to_le_32(reg_v);
 }
+#endif
+
+#define port_id_pci_reg_read(pt_id, reg_off) \
+	port_pci_reg_read(&ports[(pt_id)], (reg_off))
 
 #define port_id_pci_reg_write(pt_id, reg_off, reg_value) \
 	port_pci_reg_write(&ports[(pt_id)], (reg_off), (reg_value))
