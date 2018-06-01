@@ -968,9 +968,10 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 					for(v = 0; v < vf->num_vlans; ++v) {
 						int vlan = vf->vlans[v];
 						int strip_on = (vf->strip_stag || vf->strip_ctag) ? 1 : 0;
-						if ((get_nic_type(port->rte_port_number) != VFD_MLX5) || !strip_on) // strip/insert vlan is set differently in mlx5
+						if ((get_nic_type(port->rte_port_number) != VFD_MLX5) || !strip_on) { // strip/insert vlan is set differently in mlx5
 							bleat_printf( 2, "add vlan: port: %d vf=%d vlan=%d", port->rte_port_number, vf->num, vlan );
 							set_vf_rx_vlan(port->rte_port_number, vlan, vf_mask, on );		// add the vlan id to the list
+						}
 					}
 				}
 
