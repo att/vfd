@@ -9,6 +9,8 @@
 
 	Mods:		18 Apr 2018 - Correct for issue 294, and one off bug when adding
 					white list macs, and possible one off bug in clear macs.
+				07 Jun 2018 - Correct bug (issue 304) which was causing the
+					mac insertion point to be advanced when it should have been.
 */
 
 
@@ -170,7 +172,7 @@ extern int can_add_mac( int port, int vfid, char* mac ) {
 		return 0;
 	}
 
-	if( (p = suss_port( port )) == NULL ) {									// port must be known to count currently defined macs
+	if( (p = suss_port( port )) == NULL ) {									// port must be known in order to count currently defined macs
 		bleat_printf( 1, "can_add_mac: port doesn't map: %d", port );
 		return 0;
 	}
@@ -314,8 +316,13 @@ extern int clear_macs( int port, int vfid, int assign_random ) {
 		vf->num_macs = 0;		// at this point we are not shoving any addresses to the NIC for this VF
 		vf->first_mac = 1;
 	} else {
-		bleat_printf( 2, "clear macs: leaving default [%d] %s", vf->first_mac, vf->macs[vf->first_mac] );
-		vf->num_macs = 1;		// we are leaving the default in place so adjust
+		if( vf->num_macs > 0 ) {
+			bleat_printf( 2, "clear macs: leaving default [%d] %s", vf->first_mac, vf->macs[vf->first_mac] );
+			vf->num_macs = 1;		// we are leaving the default in place so adjust
+		} else {
+			bleat_printf( 2, "clear macs: no default,  not shoving any macs to NIC" );
+			vf->num_macs = 0;
+		}
 	}
 
 	return 1;
@@ -346,9 +353,12 @@ extern int push_mac( int port, int vfid, char* mac ) {
 		return 0;								// reason is logged by can_add function, so no msg here
 	}
 
-	vf->first_mac = 0;
-	vf->num_macs++;
-	strcpy( vf->macs[0], mac );			// make our copy
+	if( vf->first_mac > 0 ) {			// if [0] was not the head, then we must set and bump counter; else this is an overlay so no increase to count
+		vf->first_mac = 0;
+		vf->num_macs++;
+	}
+	strncpy( vf->macs[0], mac, 17 );			// make our copy
+	vf->macs[0][17] = 0;						// ensure terminated
 
 	bleat_printf( 1, "push_mac: default mac pushed onto head of list: pf/vf=%d/%d %s num=%d", port, vfid, vf->macs[0], vf->num_macs );
 	return 1;
