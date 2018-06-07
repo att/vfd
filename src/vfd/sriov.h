@@ -520,7 +520,7 @@ void ping_vfs(portid_t port_id, int vf);
 int port_init(uint16_t port, struct rte_mempool *mbuf_pool, int hw_strip_crc, sriov_port_t *pf );
 void tx_set_loopback(portid_t port_id, u_int8_t on);
 
-void ether_aton_r(const char *asc, struct ether_addr * addr);
+int ether_aton_r(const char *asc, struct ether_addr * addr);
 int xdigit(char c);
 
 void print_port_errors(struct rte_eth_stats et_stats, int col);

@@ -32,6 +32,7 @@
 				06 Apr 2017 - Add set flowcontrol function, add mtu/jumbo confirmation msg to log.
 				22 May 2017 - Add ability to remove a whitelist RX mac.
 				10 Oct 2017 - Add range check on mirror target.
+				07 Jun 2017 - Don't use an empty MAC address from the white list.
 
 	useful doc:
 				 http://www.intel.com/content/dam/doc/design-guide/82599-sr-iov-driver-companion-guide.pdf
@@ -114,35 +115,34 @@ get_num_vfs( uint32_t port_id ) {
 
 /*
 	Accept a null termianted, human readable MAC and convert it into
-	an ether_addr struct.
+	an ether_addr struct. Returns 0 if the string had an invalid
+	address; 1 otherwise.
 */
-void
-ether_aton_r(const char *asc, struct ether_addr *addr)
-{
-  int i, val0, val1;
+int ether_aton_r(const char *asc, struct ether_addr *addr) {
+	int i, val0, val1;
 
-  for (i = 0; i < ETHER_ADDR_LEN; ++i){
-    val0 = xdigit(*asc);
-    asc++;
+	for (i = 0; i < ETHER_ADDR_LEN; ++i){
+		val0 = xdigit(*asc);
+		asc++;
 
-    if (val0 < 0)
-      return;
+		if (val0 < 0)
+			return 0;
 
-    val1 = xdigit(*asc);
-    asc++;
-    if (val1 < 0)
-      return;
+		val1 = xdigit(*asc);
+		asc++;
+		if (val1 < 0)
+			return 0;
 
-    addr->addr_bytes[i] = (u_int8_t)((val0 << 4) + val1);
+		addr->addr_bytes[i] = (u_int8_t)((val0 << 4) + val1);
 
-    if (i < ETHER_ADDR_LEN - 1){
-      if (*asc != ':')
-        return;
-      asc++;
-    }
-  }
-  if (*asc != '\0')
-    return;
+		if (i < ETHER_ADDR_LEN - 1){
+			if (*asc != ':')
+				return 0;
+			asc++;
+		}
+	}
+
+	return *asc == '\0';
 }
 
 
@@ -582,7 +582,11 @@ set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  uint8_t on)
 {
   int diag = 0;
   struct ether_addr mac_addr;
-  ether_aton_r(mac, &mac_addr);
+
+	if( ! ether_aton_r(mac, &mac_addr) ) {					// convert colon string to usable address bytes
+		bleat_printf( 0, "set rx whitelist mac not attempted: bad MAC pf/vf=%d/%d on/off=%d mac=%s", (int)port_id, (int)vf, on, mac );
+		return;
+	}
 
   uint dev_type = get_nic_type(port_id);
 	if(on)
@@ -646,7 +650,10 @@ set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  uint8_t on)
 void set_vf_default_mac( portid_t port_id, const char* mac, uint32_t vf ) {
 	int diag = 0;
 	struct ether_addr mac_addr;
-	ether_aton_r(mac, &mac_addr);
+
+	if( ! ether_aton_r(mac, &mac_addr) ) {					// convert colon string to usable address bytes
+		bleat_printf( 0, "set default rx mac not attempted, bad mac: pf/vf=%d/%d mac=%s", (int)port_id, (int)vf, mac );
+	}
 
 	uint dev_type = get_nic_type(port_id);
 	switch (dev_type) {
