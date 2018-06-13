@@ -5,9 +5,17 @@
 
 fig_src = 
 
-all:V: vfd_debug.pdf  vfd_debug.md
+all:V: vfd_debug.pdf  vfd_debug.md strip_issue.pdf strip_issue.md
 
 #figures:V: ${fig_src:%=figures/%.eps}
+
+strip_issue.ps:: ../setup.im strip_issue.xfm
+	pfm strip_issue.xfm strip_issue.ps
+
+strip_issue.md:: ../setup.im strip_issue.xfm
+	MARKDOWN=1 tfm strip_issue.xfm strip_issue.o
+	sed 's/^ //' strip_issue.o >vfd_strip_issue.md
+	rm strip_issue.o
 
 vfd_debug.ps:: ../setup.im debug.xfm
 	pfm debug.xfm vfd_debug.ps
