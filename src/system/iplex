@@ -182,8 +182,9 @@ class Iplex(object):
             config_id = config_id + ".json"                         # allow either form filename or .filename
         self.filename = config_id
 
-        self.output_file = "/tmp/iplex%d.exp" % ( os.getpid() )     # where we expect vfd to write the requested config data
-        msg = self.__request_message( 'export' )
+        
+        self.output_file = "%s/iplex%d.exp" % (self.config_data['config_dir'], os.getpid())     # where we expect vfd to write the requested config data
+        msg = self.__request_message( "export" )
         self.__write_read_fifo( msg, print2err=True )
         
         if os.path.isfile( self.output_file ) :
