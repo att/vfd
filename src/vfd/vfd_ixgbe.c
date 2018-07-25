@@ -1,6 +1,10 @@
 
 #include "sriov.h"
 
+/*
+	Send a ping to the indicated pf/vf combination, or to all vfs on the pf
+	if vf == -1. We will ensure that we have configured the vf first.
+*/
 int  
 vfd_ixgbe_ping_vfs( __attribute__((__unused__)) uint16_t port_id,  __attribute__((__unused__)) int16_t vf_id)
 {
@@ -12,20 +16,31 @@ vfd_ixgbe_ping_vfs( __attribute__((__unused__)) uint16_t port_id,  __attribute__
 	{
 		for (i = 0; i < vf_num; i++)
 		{
-			diag = rte_pmd_ixgbe_ping_vf(port_id, i);
-			if (diag < 0) 
-				bleat_printf( 0, "vfd_ixgbe_ping_vfs failed: (port_pi=%d, vf_id=%d) failed rc=%d", port_id, i, diag );
+			if( suss_vf( port_id, i ) ) {						// if this is configured
+				diag = rte_pmd_ixgbe_ping_vf(port_id, i);
+				if (diag < 0) {
+					bleat_printf( 0, "vfd_ixgbe_ping_vfs failed: (port_pi=%d, vf_id=%d) failed rc=%d", port_id, i, diag );
+				} else {
+					bleat_printf( 2, "VF pinged successfully" );
+				}
+			} else {
+				bleat_printf( 2, "rte_pmd_ixgbe_ping_vfs skipped: port_id=%d, vf_id=%d (not configured)", port_id, i );
+			}
 		}
 	}
 	else  // only specified
 	{
-		diag = rte_pmd_ixgbe_ping_vf(port_id, vf_id);
-	}
+		if( suss_vf( port_id, vf_id ) ) {						// if this is configured
+			diag = rte_pmd_ixgbe_ping_vf(port_id, vf_id);
 	
-	if (diag < 0) {
-		bleat_printf( 0, "rte_pmd_ixgbe_ping_vfs failed: (port_pi=%d, vf_id=%d) failed rc=%d", port_id, vf_id, diag );
-	} else {
-		bleat_printf( 3, "rte_pmd_ixgbe_ping_vfs successful: port_id=%d, vf_id=%d", port_id, vf_id);
+			if (diag < 0) {
+				bleat_printf( 0, "rte_pmd_ixgbe_ping_vfs failed: (port_pi=%d, vf_id=%d) failed rc=%d", port_id, vf_id, diag );
+			} else {
+				bleat_printf( 3, "rte_pmd_ixgbe_ping_vfs successful: port_id=%d, vf_id=%d", port_id, vf_id);
+			}
+		} else {
+			bleat_printf( 2, "rte_pmd_ixgbe_ping_vfs skipped: port_id=%d, vf_id=%d (not configured)", port_id, vf_id);
+		}
 	}
 	
 	return 0;
