@@ -40,7 +40,7 @@ __doc__ = """ iplex
         -h, --help      show this help message and exit
         --version       show version and exit
         --loglevel=<value>  Default logvalue [default: 0]
-        for show, <what> may be one of:  all, pfs, extended, or <n> where <n> is a PF number.
+        For show, <what> may be one of:  all, pfs, extended, or <n> where <n> is a PF number.
         <dir> is the mirror direction: one of: {in | out | all | off}.
 """
 
