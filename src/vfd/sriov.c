@@ -258,7 +258,7 @@ set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk)
 		return 0;
 
 
-	rte_eth_link_get_nowait(port_id, &link);
+	rte_eth_link_get(port_id, &link);
 	if (rate > link.link_speed) {
 		bleat_printf( 0, "set_vf_rate: invalid rate value: %u bigger than link speed: %u", rate, link.link_speed);
 		return 1;
@@ -1323,7 +1323,7 @@ process_refresh_queue(void)
 int nic_value_speed( uint8_t id ) {
 	struct rte_eth_link link;
 
-	rte_eth_link_get_nowait( id, &link );
+	rte_eth_link_get( id, &link );
 	return (int) link.link_speed;
 }
 */
@@ -1333,7 +1333,7 @@ nic_stats_clear(portid_t port_id)
 {
 
 	rte_eth_stats_reset(port_id);
-	bleat_printf( 3, "\n  NIC statistics for port %d cleared", port_id);
+	bleat_printf( 3, "NIC statistics for port %d cleared", port_id);
 }
 
 
@@ -1342,7 +1342,12 @@ nic_stats_display(uint16_t port_id, char * buff, int bsize)
 {
 	struct rte_eth_stats stats;
 	struct rte_eth_link link;
-	rte_eth_link_get_nowait(port_id, &link);
+	char status[5];
+
+	memset( &link, 0, sizeof( link ) );
+	link.link_speed = 1;						// no return code, fill with strange values to determine success/failure of call
+
+	rte_eth_link_get(port_id, &link);
 	rte_eth_stats_get(port_id, &stats);	
 
 	uint dev_type = get_nic_type(port_id);
@@ -1368,12 +1373,14 @@ nic_stats_display(uint16_t port_id, char * buff, int bsize)
 			break;	
 	}
 	
-
-	char status[5];
-	if(!link.link_status)
-		stpcpy(status, "DOWN");
-	else
-		stpcpy(status, "UP  ");
+	if( link.link_speed == 1 ) {   // unchanged, so assume all data is unreliable
+		stpcpy(status, "-UNK-");
+	} else {
+		if(!link.link_status)
+			stpcpy(status, "DOWN");
+		else
+			stpcpy(status, "UP  ");
+	}
 
 		//" %6s %6"PRIu16" %6"PRIu16" %15"PRIu64" %15"PRIu64" %15"PRIu64" %15"PRIu64" %15"PRIu64" %15"PRIu64" %15"PRIu64" %15"PRIu32" %lld\n",
 	return snprintf( buff, bsize, " %6s  %6d %6d %15lld %15lld %15lld %15lld %15lld %15lld %15d %15lld\n",
@@ -1588,10 +1595,10 @@ int lsi_event_callback(uint16_t port_id, enum rte_eth_event_type type, void *par
 	RTE_SET_USED(param);
 	RTE_SET_USED(data);
 
-	bleat_printf( 3, "Event type: %s", type == RTE_ETH_EVENT_INTR_LSC ? "LSC interrupt" : "unknown event");
-	rte_eth_link_get_nowait(port_id, &link);
+	bleat_printf( 2, "lsi callback event type: %s port=%d", type == RTE_ETH_EVENT_INTR_LSC ? "LSC interrupt" : "unknown event", port_id );
+	rte_eth_link_get(port_id, &link);
 	if (link.link_status) {
-		bleat_printf( 3, "Port %d Link Up - speed %u Mbps - %s",
+		bleat_printf( 3, "lsi callback: port %d Link Up - speed %u Mbps - %s",
 				port_id, (unsigned)link.link_speed,
 			(link.link_duplex == ETH_LINK_FULL_DUPLEX) ?
 				("full-duplex") : ("half-duplex"));

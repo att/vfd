@@ -860,7 +860,7 @@ extern int vfd_update_nic( parms_t* parms, sriov_conf_t* conf ) {
 
 		port = &conf->ports[i];
 
-		rte_eth_link_get_nowait(port->rte_port_number, &link);
+		rte_eth_link_get(port->rte_port_number, &link);
 
 		//  WHY is this and disable pool done every time?  why is it not just done at the time of add?
 		tx_set_loopback( port->rte_port_number, !!(port->flags & PF_LOOPBACK) );		// enable loopback if set (disabled: all vm-vm traffic must go to TOR and back

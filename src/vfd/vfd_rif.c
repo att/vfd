@@ -26,6 +26,8 @@
 				17 Apr 2018 : Correct bug related to issue 291.
 				18 Apr 2018 : Correct placment for first_mac initialisation.
 				24 Apr 2018 : Correct double free bug if pciid wasn't right in a config file.
+				25 Jul 2018 : Add support for export command. Correct bug when unrecognised command
+								sent (was not responding with error to requestor).
 */
 
 
@@ -84,7 +86,7 @@ static void relocate_vf_config( parms_t* parms, char* filename, const_str suffix
 	}
 
 	if( len >= sizeof( wbuf ) ) {			// truncated, config directory path just too bloody long
-		bleat_printf( 0, "cannot construct a target file or path to relocate %%s", filename );
+		bleat_printf( 0, "cannot construct a target file or path to relocate %s", filename );
 		return;
 	}
 
@@ -133,6 +135,36 @@ static void delete_vf_config( const_str fname, const_str target_dir ) {
 
 	bleat_printf( 2, "del_vf_conf: moved %s to %s", fname, wbuf );
 	
+}
+
+/*
+	Create a copy of the named configuration file from the live directory to the named
+	location. 
+	Returns 1 if successful, 0 otherwise.
+*/
+static int copy_vf_config( parms_t* parms, char* src_name, const_str dest_name ) {
+	char	wbuf[2048];
+	unsigned int len;
+	int		state = 0;
+
+	memset( wbuf, 0, sizeof( wbuf ) );			// keeps valgrind happy
+
+	len = snprintf( wbuf, sizeof( wbuf ), "%s_live/%s", parms->config_dir, src_name );	// add the config dir prefix
+
+	if( len >= sizeof( wbuf ) ) {			// truncated, config directory path just too bloody long
+		bleat_printf( 0, "copy_vf_config: cannot construct a source path using %s", src_name );
+		errno = EINVAL;
+		return 0;
+	}
+
+	if( ! cp_file( wbuf, dest_name, 0 ) ) {				// copy and keep source (0)
+		bleat_printf( 0, "config file copy from %s to %s failed: %s", wbuf, dest_name, strerror( errno ) );
+	} else {
+		bleat_printf( 2, "config file copied successfully from %s to %s", wbuf, dest_name );
+		state = 1;
+	}
+
+	return state;
 }
 
 
@@ -1314,6 +1346,10 @@ extern req_t* vfd_read_request( parms_t* parms ) {
 			req->rtype = RT_CPU_ALARM;
 			break;
 
+		case 'e':
+			req->rtype = RT_EXPORT;			// export a live config
+			break;
+
 		case 'd':
 		case 'D':
 			if( strcmp( stuff, "dump" ) == 0 ) {
@@ -1341,9 +1377,10 @@ extern req_t* vfd_read_request( parms_t* parms ) {
 			break;	
 
 		default:
+			req->rtype = RT_UNKNOWN;
 			bleat_printf( 0, "ERR: unrecognised action in request: %s", rbuf );
-			jw_nuke( jblob );
-			return NULL;
+			//jw_nuke( jblob );
+			//return NULL;
 			break;
 	}
 
@@ -1354,6 +1391,11 @@ extern req_t* vfd_read_request( parms_t* parms ) {
 			req->resource = strdup( stuff );
 		}
 	}
+
+	if( (stuff = jw_string( jblob, "params.output")) != NULL ) {
+		req->output = strdup( stuff );
+	}
+
 	if( (stuff = jw_string( jblob, "params.r_fifo")) != NULL ) {
 		req->resp_fifo = strdup( stuff );
 	} else {
@@ -1408,7 +1450,6 @@ static char* gen_exstats( sriov_conf_t* conf ) {
 	return rbuf;
 }
 
-												
 /*
 	Request interface. Checks the request pipe and handles a reqest. If
 	forever is set then this is a black hole (never returns).
@@ -1508,6 +1549,16 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 						}
 
 						free( stats_buf );
+					}
+					break;
+
+				case RT_EXPORT:						// copy the named config file to a supplied location
+					if( copy_vf_config( parms, req->resource, req->output ) ) {
+						snprintf( mbuf, sizeof( mbuf ), "config %s exported to %s", req->resource, req->output );
+						vfd_response( req->resp_fifo, RESP_OK, req->vfd_rid, mbuf );
+					} else {
+						snprintf( mbuf, sizeof( mbuf ), "unable to export config %s to %s: %s", req->resource, req->output, strerror( errno ) );
+						vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, mbuf );
 					}
 					break;
 
@@ -1647,7 +1698,7 @@ extern int vfd_req_if( parms_t *parms, sriov_conf_t* conf, int forever ) {
 					
 
 				default:
-					vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, "dummy request handler: urrecognised request." );
+					vfd_response( req->resp_fifo, RESP_ERROR, req->vfd_rid, "urrecognised request." );
 					break;
 			}
 
