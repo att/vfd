@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# vi: sw=4 ts=4 expandtab :
+# vi: sw=4 ts=4 et :
 """
     Mnemonic:   iplex.py
     Abstract:   iplex is a cli to VF Daemon, used by nova (compute) and operators
@@ -24,11 +24,13 @@
 							Ensure that missing values in the config are replaced with defaults.
 							Don't stack dump if config file cannot be opened or read, or has bad json.
 							Allow VFd responses to span multiple read buffers.
+                2018 25 Jul - Add support for export command.
 """
 
 __doc__ = """ iplex
     Usage:
     iplex [--conf=<config>] (add | update | delete | status) <port-id> [--loglevel=<value>] 
+    iplex [--conf=<config>] export <config-id> [--loglevel=<value>] 
     iplex [--conf=<config>] cpu_alarm <pctg> [--loglevel=<value>] 
     iplex [--conf=<config>] mirror <pf> <vf> <dir> [<target>]  [--loglevel=<value>]
     iplex [--conf=<config>] show <what> [--loglevel=<value>] 
@@ -42,6 +44,7 @@ __doc__ = """ iplex
         --loglevel=<value>  Default logvalue [default: 0]
         For show, <what> may be one of:  all, pfs, extended, or <n> where <n> is a PF number.
         <dir> is the mirror direction: one of: {in | out | all | off}.
+       For export, <config-id> is the configuration file name used to add the configuration.
 """
 
 from docopt import docopt
@@ -56,7 +59,6 @@ from logging.handlers import RotatingFileHandler
 import fcntl
 import platform
 
-#VFD_CONFIG = '/etc/vfd/vfd.cfg'		# default; --conf= overrides from command line
 VFD_CONFIG = None		# there is no default; we'll search for /etc/vfd/vfd.cfg or /var/lib/vfd/etc.cfg and use those if --config not given
 
 
@@ -87,10 +89,9 @@ def gen_cfg_defaults( ) :
     else :
         data["log_dir"]  = "/tmp"
 
-    if os.path.isfile( "/var/lib/vfd/pipes/request" ) :               # fifos go in here for containers
-        data["fifo"]  = "/var/lib/vfd/pipes/request"
-    else :
-        data["fifo"]  = "/var/lib/vfd/request"   		               # assume bare metal.
+    data["fifo"]  = "/var/lib/vfd/pipes/request"                # preferred path
+    if not os.path.exists( data["fifo"] ) :                     # not setup for containers, fallback to bare metal setup
+        data["fifo"]  = "/var/lib/vfd/request"                  # assume bare metal.
 
     return data
 
@@ -99,9 +100,9 @@ def gen_cfg_defaults( ) :
 def read_config( fname ):
     if fname == None :
         if os.path.isfile( "/var/lib/vfd/etc/vfd.cfg" ) :       # container world where defaults don't work
-            fname = "/var/lib/vfd/etc/vfd.cfg"
+            fname = "/var/lib/vfd/vfd.cfg"
         else :
-            if os.path.isfile( "/etc/vfd.cfg" ) :               # old bare metal environment
+            if os.path.isfile( "/etc/vfd/vfd.cfg" ) :           # old bare metal environment
                 fname = "/etc/vfd.cfg"
 
     if fname == None  or  not os.path.isfile( fname ) :	# no config, gen defaults we need
@@ -137,10 +138,9 @@ class Iplex(object):
 
     def __init__(self, config_data=None, options=None, log=None):
         self.options = options
-
         self.config_data = config_data
-
         self.log = log
+        self.output_file = None
 
     def add(self, port_id):
         self.filename = self.__validate_file(port_id)
@@ -170,6 +170,17 @@ class Iplex(object):
         self.__write_read_fifo( msg )
         return
         
+    def export( self, config_id ) :
+        self.filename = None
+        self.resp_fifo = self.__create_fifo()
+        self.filename = config_id
+        self.output_file = "/tmp/iplex%d.exp" % ( os.getpid() )     # where we expect vfd to write the requested config data
+        msg = self.__request_message( 'export' )
+        self.__write_read_fifo( msg, print2err=True )
+        
+        if os.path.isfile( self.output_file ) :
+            os.system( "cat " + self.output_file + "; rm -f " + self.output_file )         # config info to stdout, then cleanup
+        return
 
     def status(self, port_id):
         self.filename = self.__validate_file(port_id)
@@ -264,13 +275,16 @@ class Iplex(object):
         return resp_fifo
 
     # Build the request message
-    def __request_message(self, action):
+    def __request_message( self, action ) :
         msg = {}
         msg["action"] = action
         msg["params"] = {}
         if self.filename is not None:
             msg["params"]["filename"] = self.filename
-        
+
+        if self.output_file != None :                                       # some commands cause vfd to write some output to a file; this is it
+            msg["params"]["output"] = self.output_file
+ 
         if action == "show":
             msg["params"]["resource"] = self.options["<what>"]				# pick up generic option
         else:
@@ -299,7 +313,11 @@ class Iplex(object):
         return ''.join(buffer).strip(' \n\t')
 
     # write data to public fifo and read from private fifo
-    def __write_read_fifo(self, msg):
+    # if print2err is true, then the returned json from VFd is written to stderr -- we assume that more
+    # important data (e.g. export output) will be written to stdout and allows the user to capture that
+    # without the ugly mess of getting both.
+    #
+    def __write_read_fifo( self, msg, print2err=False ) :
         readFd = None
         try:
 
@@ -318,8 +336,13 @@ class Iplex(object):
                 rbuf = self.__read_fd(readFd)                               # read next buffer (could be incomplete)
 
             buf += rbuf.rstrip( "@eom@" )                                  # tuck in last one without end of message marker
+
             resp_data = json.dumps( buf.strip(' \n\t'), indent=2 )
-            print(ast.literal_eval(resp_data))
+            if print2err :
+                sys.stderr.write( ast.literal_eval(resp_data) + "\n" )
+            else :
+                print(ast.literal_eval(resp_data))
+
             os.close(readFd)
             os.unlink(self.resp_fifo)
         except OSError as e:
@@ -359,7 +382,9 @@ if __name__ == '__main__':
     elif options['mirror']:
         iplex.mirror()
     elif options["cpu_alarm"]:
-		iplex.cpu_alarm()
+        iplex.cpu_alarm()
+    elif options["export"]:
+        iplex.export( options["<config-id>"] )
     else:
         if options['show']:
             iplex.show()

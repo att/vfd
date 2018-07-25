@@ -27,6 +27,8 @@
 #define RT_DUMP 6
 #define RT_MIRROR 7				// mirror on/off command
 #define RT_CPU_ALARM 8			// set the cpu alarm threshold
+#define RT_EXPORT 9				// copy a live config file to given filename
+#define RT_UNKNOWN 100
 
 #define BUF_1K	1024			// simple buffer size constants
 #define BUF_10K BUF_1K * 10
@@ -34,6 +36,7 @@
 typedef struct request {
 	int		rtype;				// type: RT_ const
 	char*	resource;			// parm file name, show target, etc.
+	char*	output;				// filename where any external output from the request should be sent
 	char*	resp_fifo;			// name of the return pipe
 	int		log_level;			// for verbose
 	char*	vfd_rid;			// request id that must be placed into the response (allows single response pipe by request process)
