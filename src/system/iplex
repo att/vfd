@@ -173,7 +173,15 @@ class Iplex(object):
     def export( self, config_id ) :
         self.filename = None
         self.resp_fifo = self.__create_fifo()
+
+        tokens = config_id.split( "/" )                             # we don't want path, so strip it if there
+        config_id = tokens[-1]
+
+        tokens = config_id.split( "." )
+        if tokens[-1] != "json" :
+            config_id = config_id + ".json"                         # allow either form filename or .filename
         self.filename = config_id
+
         self.output_file = "/tmp/iplex%d.exp" % ( os.getpid() )     # where we expect vfd to write the requested config data
         msg = self.__request_message( 'export' )
         self.__write_read_fifo( msg, print2err=True )
