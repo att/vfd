@@ -3,11 +3,14 @@
 
 <../master.mk
 
-fig_src = 
+# ops_trouble figures
+ot_fig_src = diag_mirror1  diag_overview1  diat_mirror1  flow1
 
-all:V: vfd_debug.pdf  vfd_debug.md strip_issue.pdf strip_issue.md
 
-#figures:V: ${fig_src:%=figures/%.eps}
+all:V: png_figures eps_figures vfd_debug.pdf  vfd_debug.md strip_issue.pdf strip_issue.md ops_trouble.pdf ops_trouble.md
+
+eps_figures:V: ${ot_fig_src:%=figures/%.eps}
+png_figures:V: ${ot_fig_src:%=figures/%.png}
 
 strip_issue.ps:: ../setup.im strip_issue.xfm
 	pfm strip_issue.xfm strip_issue.ps
@@ -25,3 +28,7 @@ vfd_debug.md:: ../setup.im debug.xfm
 	sed 's/^ //' vfd_debug.o >vfd_debug.md
 	rm vfd_debug.o
 
+ops_trouble.ps:: ../setup.im figures ops_trouble.xfm
+	pfm ${prereq##* } $target
+
+ops_trouble.md:: ../setup.im figures ops_chart_append.im ops_trouble.xfm

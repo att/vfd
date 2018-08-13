@@ -77,24 +77,26 @@
 		.dv cimage .bc start .br ^<img src="$4"^> .br .bc end .fg $3 ^: .sp 1
 	.ei
 		.if tfm
-			.if markdown
+			.if &markdown 0 >
 				.dv image ![cannot display: $4]($4) ^&break .fg $3 ^: .sp 1
 				.dv cimage ![cannot display: $4]($4) ^&break .fg $3 ^: .sp 1 
 			.ei
-				.dv image .br ^[image]  .br .fg $3 ^: .br
-				.dv cimage .br ^[image] .br .fg $3 ^:  .br
+				.dv image .br ^[image not supported]  ^&br .fg $3 ^: .br
+				.dv cimage .br ^[image not supported] ^&br .fg $3 ^:  .br
 			.fi
 		.fi
 	.fi
 .fi
 
-.** shift allows us to indent the nested capture end command by 1 tab making our code look pretty.
+.** Create the 'super macro' in the _iim_image.ca file. This is used ONLY for pfm generated
+.** documents as for html and txt output images are never floated to the next page.
+.** Shift allows us to indent the nested capture end command by 1 tab making our code look pretty.
 .** Vars are expanded only by the inner capture (into the image specific file)
 .** 
 .ca shift start _iim_image.ca
 	.ca expand start _iim_image_&{_iim_icount}.ca
 		.ep &_iim_eps_cmds l=&{_iim_image_needs}i
-		.fg &_iim_fig_text
+		&cfig( &_iim_fig_text )
 		.sp 1
 	.ca end
 

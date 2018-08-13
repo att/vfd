@@ -26,3 +26,12 @@
 %.txt : %.xfm
 	tfm ${prereq%% *} $target 
 
+# generate into a temporary file, then strip first column blank 
+# because markdown is bloody space sensitive.
+#
+%.md:: %.xfm
+	MARKDOWN=1 tfm ${prereq##* } mdtf.o
+	sed 's/^ //' mdtf.o >$target
+	rm -f mdtf.o
+
+
