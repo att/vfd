@@ -134,7 +134,7 @@ by one of the following and is not a VFd bug.
 .if tfm
 	.sp 5
 	.ln
-	.im caution.im 
+	.im ../caution.im 
 .fi
 
 .st 8p

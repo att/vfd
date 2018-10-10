@@ -561,6 +561,7 @@ static int vfd_eal_init( parms_t* parms ) {
 			}
 		}
 	}
+
 	if( parms->cpu_mask == NULL ) {
 		parms->cpu_mask = strdup( "0x04" );
 	} else {
