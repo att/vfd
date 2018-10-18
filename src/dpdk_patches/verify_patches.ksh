@@ -20,6 +20,12 @@ function usage
 # out for build.
 #
 function dpdk_ver {
+	if [[ -n $force_ver ]]		# -V ver given on command line; pretend that is what is there
+	then
+		echo "$force_ver"
+		return
+	fi
+
 	(
 		cd $RTE_SDK; 
 		git branch -l|grep "*"| awk '
@@ -50,6 +56,7 @@ do
 		-f)		force=1;;
 
 		-v)		verbose=1;;
+		-V)		force_ver=$2; shift;;		# force a version -- allows dpdk master to be used as version V
 
 		*)	
 			echo "option $1 was not recognised"
@@ -75,6 +82,7 @@ fi
 
 
 version=$( dpdk_ver )				# get the dpdk version 
+version=${version%%-*}				# if 1802-rc1 strip the rc crap
 if (( verbose ))
 then
 	echo "looking for patches of the form dpdk$version" >&2
