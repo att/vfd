@@ -11,7 +11,7 @@
 
 function usage
 {
-	echo "usage: $0 [-d patch_dir] [-f] [-n] [-s] [-v] {yymm | vyy.mm[_rcxx]}"
+	echo "usage: $0 [-d patch_dir] [-f] [-n] [-s] [-v]"
 	echo "   where yymm is the year/month of the dpdk release"
 	echo "   -n is no execute mode"
 }
@@ -37,7 +37,6 @@ VFD_PATH=$PWD
 
 vlevel=0
 forreal=""
-check=0
 verify=0
 action="appling: "
 past_action="applied"
@@ -53,7 +52,6 @@ do
 
 		-s)		
 				action="summarise: "
-				check=1
 				past_action="summarised"
 				summary="--stat --summary"
 				;;
@@ -83,6 +81,7 @@ fi
 
 
 if [[ -n $1 ]] 						# version given
+then
 	if [[ $1 == "v"*"."* ]]				# something like v18.02 given
 	then
 		version=${1//[v.]/}
@@ -90,7 +89,6 @@ if [[ -n $1 ]] 						# version given
 	else
 		version=$1
 	fi
-	dver=$( dpdk_ver )
 	if [[ $dver != $version ]]
 	then
 		echo "### ERROR ### version from command line ($version) does NOT match checked out version in RTE_SDK ($dver)"
@@ -111,6 +109,7 @@ else
 			exit 1
 		fi
 		echo "### WARN ###  force mode enabled, continuing even though in error state"
+	fi
 fi
 
 
@@ -133,7 +132,10 @@ fi
 log=/tmp/PID$$.log				# so we can know whta $$ is since generated in subshell
 for patch in $patches
 do
-	echo ""
+	if (( vlevel ))
+	then
+		echo ""
+	fi
 
 	if (( verify ))				# prompt user to let them pick patches to apply from the list
 	then
@@ -148,25 +150,25 @@ do
 	(
 		cd $RTE_SDK
 
-		if (( check ))
+		git apply  -v --check  --ignore-whitespace $patch 2>&1|awk '/does not apply/ { found=1 } END { exit( !(found+0) ) }'
+		if (( $? == 0 ))
 		then
-			git apply  -v --check  --ignore-whitespace $patch 2>&1|awk '/does not apply/ { found=1 } END { exit( !(found+0) ) }'
-			if (( $? == 0 ))
+			if (( vlevel ))
 			then
-				echo "[OK]    DPDK patch already applied, or is not valid for this version: $patch"
-			else
-				if (( vlevel ))
-				then
-					echo "[INFO] patch is needed: $patch"
-				fi
+				echo "[OK]    DPDK patch already applied, or is not needed for this version: $patch"
 			fi
-		fi
+		else
+			if (( vlevel ))
+			then
+				echo "[INFO] applying patch: $patch"
+			fi
 
-		if [[ -z $forreal ]]
-		then
-			echo "$action $patch"
+			if [[ -z $forreal ]]
+			then
+				echo "$action $patch"
+			fi
+			$forreal git apply $verbose $summary --ignore-whitespace $patch	>$log 2>&1 # if summary is on, apply is off
 		fi
-		$forreal git apply $verbose $summary --ignore-whitespace $patch	>$log 2>&1 # if summary is on, apply is off
 	)
 	if (( $? != 0 ))
 	then
@@ -185,12 +187,6 @@ do
 		then
 			cat $log
 		fi
-	fi
-
-
-	if [[ -z $forreal ]]
-	then
-		echo "patch successfully $past_action"
 	fi
 done
 
