@@ -38,6 +38,7 @@
 				 http://www.intel.com/content/dam/doc/design-guide/82599-sr-iov-driver-companion-guide.pdf
 */
 
+
 #include "vfdlib.h"
 #include "sriov.h"
 #include "vfd_dcb.h"
@@ -1342,7 +1343,7 @@ nic_stats_display(uint16_t port_id, char * buff, int bsize)
 {
 	struct rte_eth_stats stats;
 	struct rte_eth_link link;
-	char status[5];
+	char status[6];
 
 	memset( &link, 0, sizeof( link ) );
 	link.link_speed = 1;						// no return code, fill with strange values to determine success/failure of call
@@ -1634,13 +1635,22 @@ port_init(uint16_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_po
 	int retval;
 	uint16_t q;
 	int i;
+	int	set_jumbo = 0;
 	int nports;
 
 	port_conf.rxmode.max_rx_pkt_len = pf->mtu;
-	port_conf.rxmode.jumbo_frame = pf->mtu >= 1500;
+	#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH >= 5  
+		if( pf->mtu > 1500 ) {
+			set_jumbo = 1;
+			port_conf.rxmode.offloads |= DEV_RX_OFFLOAD_JUMBO_FRAME;
+		}
+	#else
+		port_conf.rxmode.jumbo_frame = pf->mtu >= 1500;
+		set_jumbo = port_conf.rxmode.jumbo_frame;
+	#endif
 
-	#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH >= 05  
-		nports = rte_eth_dev_count_avail();
+	#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH >= 5  
+		nports= rte_eth_dev_count_avail();
 	#else
 		nports = rte_eth_dev_count();
 	#endif
@@ -1649,11 +1659,15 @@ port_init(uint16_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_po
 		return 1;
 	}
 
-	bleat_printf( 2, "port %d max_mtu=%d jumbo=%d", (int) port, (int) port_conf.rxmode.max_rx_pkt_len, (int) port_conf.rxmode.jumbo_frame );
+	bleat_printf( 2, "port %d max_mtu=%d jumbo=%d", (int) port, (int) port_conf.rxmode.max_rx_pkt_len, set_jumbo );
 
 	if( !hw_strip_crc ) {
 		bleat_printf( 2, "hardware crc stripping is now disabled for port %d", port );
-		port_conf.rxmode.hw_strip_crc = 0;
+		#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH >= 5  
+			port_conf.rxmode.offloads &= ~DEV_RX_OFFLOAD_VLAN_STRIP;
+		#else
+			port_conf.rxmode.hw_strip_crc = 0;		// REMOVE this after 19.05; offload bit fields deprecated 18.08
+		#endif
 	}
 
 	// Configure the Ethernet device.
