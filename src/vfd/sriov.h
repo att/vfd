@@ -20,7 +20,9 @@
 #define _SRIOV_H_
 
 
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 
 #include <inttypes.h>
 
@@ -178,25 +180,46 @@ typedef uint16_t streamid_t;
 /*
 	Provides a static port configuration struct with defaults.
 */
+#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH >= 8  
 static const struct rte_eth_conf port_conf_default = {
 	.rxmode = {
-		.max_rx_pkt_len = 9000,
-		.jumbo_frame 		= ENABLED,
-		.header_split   = 0, /**< Header Split disabled */
-		.hw_ip_checksum = 1,		// enable hw to do the checksum
-		.hw_vlan_filter = 0, /**< VLAN filtering disabled */
-		.hw_vlan_strip  = 1, /**< VLAN strip enabled. */
-		.hw_vlan_extend = 0, /**< Extended VLAN disabled. */
-		.hw_strip_crc   = 1, /**< CRC stripped by hardware */
-		},
-		.txmode = {
-			//.hw_vlan_insert_pvid = 1,
-      .mq_mode = ETH_MQ_TX_NONE,
+	.max_rx_pkt_len = 9000,
+#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH > 8  
+	.offloads = (DEV_RX_OFFLOAD_CHECKSUM | DEV_RX_OFFLOAD_VLAN_STRIP),
+#else
+	.offloads = (DEV_RX_OFFLOAD_CHECKSUM | DEV_RX_OFFLOAD_CRC_STRIP | DEV_RX_OFFLOAD_VLAN_STRIP),
+#endif
+
+	},
+	.txmode = {
+		//.hw_vlan_insert_pvid = 1,
+   		.mq_mode = ETH_MQ_TX_NONE,
 	},
 	.intr_conf = {
 		.lsc = ENABLED, 		// < lsc interrupt feature enabled
 	},
 };
+#else
+static const struct rte_eth_conf port_conf_default = {			// deprecated bit fields supported only through 18.05 based builds
+	.rxmode = {
+		.max_rx_pkt_len = 9000,
+		.jumbo_frame	= ENABLED,
+		.header_split   = 0, /**< Header Split disabled * */
+		.hw_ip_checksum = 1,		// enable hw to do the checksum */
+		.hw_vlan_filter = 0, /**< VLAN filtering disabled * */
+		.hw_vlan_strip  = 1, /**< VLAN strip enabled. * */
+		.hw_vlan_extend = 0, /**< Extended VLAN disabled.  */
+		.hw_strip_crc   = 1, /**< CRC stripped by hardware */
+	},
+	.txmode = {
+		//.hw_vlan_insert_pvid = 1,
+   		.mq_mode = ETH_MQ_TX_NONE,
+	},
+	.intr_conf = {
+		.lsc = ENABLED, 		// < lsc interrupt feature enabled
+	},
+};
+#endif
 
 
 unsigned int itvl_idx;

@@ -142,7 +142,13 @@ extern int dcb_port_init( sriov_port_t *pf, __attribute__((__unused__)) struct r
 	}
 
 	port_conf.rxmode.max_rx_pkt_len = pf->mtu;
-	port_conf.rxmode.jumbo_frame = pf->mtu > 1500;
+	#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH >= 5  
+		if( pf->mtu > 1500 ) {
+			port_conf.rxmode.offloads |= DEV_RX_OFFLOAD_JUMBO_FRAME;
+		}
+	#else
+		port_conf.rxmode.jumbo_frame = pf->mtu >= 1500;
+	#endif
 
 	// Configure the Ethernet device.
 	retval = rte_eth_dev_configure(port, rx_rings, tx_rings, &port_conf);

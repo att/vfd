@@ -14,6 +14,7 @@
 libvfd = $(PWD)/../lib/libvfd.a
 libjsmn = $(PWD)/../lib/jsmn/libjsmn.a
 headers = $(PWD)/../lib/vfdlib.h
+patch_dir = $(PWD)/../dpdk_patches
 
 ifeq ($(RTE_SDK),)
 $(error "Please define RTE_SDK environment variable")
@@ -39,8 +40,9 @@ VFD_VERSION = $(shell junk=$$( (git log -n 1 2>/dev/null || echo Commit non-git-
 	 cid="$${junk%%\|*}";\
 	 date="$${junk\#\#*\|}";\
 	 tag=$$( git tag -l --contains $$cid 2>/dev/null | head -1 );\
+	 patches=$$( $(patch_dir)/verify_patches.ksh -d $(patch_dir) -b 2>/dev/null | head -1 );\
 	 mod=$$( git status 2>/dev/null | awk '/modified:/ { m="+++" } END { print m }' );\
-	 printf "%s%s%s\n" "$$mod" "$$cid-$${tag:-notag}" "$$date"; )
+	 printf "%s%s%s\n" "$$mod" "$$cid-$${tag:-notag}-$${patches}" "$$date"; )
 	 
 
 
@@ -65,7 +67,7 @@ CFLAGS_main.o += -Wno-return-type
 endif
 
 
-EXTRA_CFLAGS += -O3 -g -Wfatal-errors -DVFD_VERSION='"$(VFD_VERSION)"'
+EXTRA_CFLAGS += -O3 -pg -Wfatal-errors -DVFD_VERSION='"$(VFD_VERSION)"'
 
 
 
@@ -76,3 +78,4 @@ clean:
 
 verify:
 	echo "$(VFD_VERSION)"
+	$(patch_dir)/verify_patches.ksh -d $${PWD%/*}/dpdk_patches -f -v

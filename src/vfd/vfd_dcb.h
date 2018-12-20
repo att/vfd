@@ -15,12 +15,19 @@
 */
 static const struct rte_eth_conf eth_dcb_default = {
 	.rxmode = {
+#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH > 8  
+		.offloads = (DEV_RX_OFFLOAD_CHECKSUM | DEV_RX_OFFLOAD_VLAN_STRIP),
+#else
+		.offloads = (DEV_RX_OFFLOAD_CHECKSUM | DEV_RX_OFFLOAD_CRC_STRIP | DEV_RX_OFFLOAD_VLAN_STRIP),
+#endif
+/*
 		.mq_mode        = ETH_MQ_RX_VMDQ_DCB,	// both sr-iov and dcb support
 		.split_hdr_size = 0,
 		.header_split   = 0, 
 		.hw_ip_checksum = 0, 
 		.hw_vlan_filter = 0, 
 		.jumbo_frame    = 0, 
+*/
 	},
 	.txmode = {
 		.mq_mode =  ETH_MQ_TX_VMDQ_DCB,			// vmdq causes vt mode to be set which is what we want
