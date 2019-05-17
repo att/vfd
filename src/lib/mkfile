@@ -1,7 +1,8 @@
 # mk is better (see plan-9)
 MKSHELL = ksh
 
-jsmn_lib = -L jsmn -ljsmn
+# jsmn no longer builds into a library
+jsmn_lib = 
 cc = gcc
 cflags = -I jsmn -g
 

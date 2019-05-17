@@ -49,12 +49,16 @@ echo $json >$json_file
 md5sum $output |read value junk
 if [[ $value != "8349f6f812a412e021dbb0948e8f375e" ]]	# didn't match what we expected
 then
+	echo "------ test output below -----"
 	cat $output
+	echo "------------------------------"
+	echo "value=$value expected=8349f6f812a412e021dbb0948e8f375e"
 	echo "[FAIL] output didn't match what was expected"
 	rm /tmp/PID$$.*
 	exit 1
 fi
 
+echo "[PASS]"
 rm /tmp/PID$$.*
 exit 0
 

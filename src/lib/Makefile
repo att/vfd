@@ -5,7 +5,8 @@
 
 MKSHELL = ksh
 
-jsmn_lib = -L jsmn -ljsmn
+# jsmn no longer builds into a library
+jsmn_lib = 
 vfd_lib = -L . -lvfd
 
 cflags = -I jsmn -g

@@ -11,6 +11,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#define JSMN_STATIC 1		// jsmn no longer builds into a library; this pulls as static functions
 #include <jsmn.h>
 
 #include "vfdlib.h"

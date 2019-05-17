@@ -247,7 +247,7 @@ log=${1:-all_tests.log}
 
 
 # tests that can be run directly with valgrind
-for x in id_mgr_test "vf_config_test vf_test.cfg" "parm_file_test parm_test.cfg" fifo_test
+for x in id_mgr_test "vf_config_test parm_file_test.cfg" "parm_file_test parm_test.cfg" fifo_test
 do
 	printf "running %-20s"  "${x%% *}"
 	printf "\n----- %s -----\n" "$x" >>$log 
