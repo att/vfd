@@ -1,0 +1,149 @@
+
+
+.ll 6.5i
+.sf Helvetica
+.st 10p
+
+.if hfm
+	.co bg white
+	.co #000000
+.fi
+
+.dh 1 m=.5i  e=no s=21 i=0 p=16 f=Helvetica-bold
+.dh 2  m=.5i s=21 i=0      p=14 f=Helvetica-bold 
+.dh 3  m=.5i s=10 i=0      p=12 f=Helvetica-bold
+
+.hn off
+
+.im ../setup.im
+
+	
+.dv sub_title VLAN ID Stripped When Strip Disabled
+.st 18p
+.sf Helvetica
+.gv date
+.if pfm
+	.bc start
+	Virtual Function Daemon -- VFd
+	.br
+	.st 14
+	&sub_title
+	.bc end
+	.st &textsize
+.ei
+	.im ../caution.im 
+
+	&bold(Virtual Function Daemon -- VFd)
+	.sp
+	&bold(&sub_title)
+.fi
+
+.** while it makes sense to leave spaces after opening and before closing of macro parens (e.g. &ital( word )
+.** this actually causes issues for the space sensitive markdown world. Since we must support this beast
+.** of an output format, be warned that spaces will likely cause issues, as well as make it more difficult
+.** to spell check.
+
+.sp 2
+&h2(Overview)
+An odd &ital(failure case) has been observed in some environments and is documented here as, at least 
+at the time of the writing, the unexpected behaviour is caused by the manner which the DPDK application
+configures the device via DPDK library calls. 
+With the same application, and thus the same &ital(internal) device configuration, we have observed
+different results with regard to VLAN ID stripping on Rx packets. 
+
+.sp
+It is the intent of this brief to describe what was observed, and what we believe is the correct behaviour.
+We will also indicate the application device settings that are related, and potential causes of
+unexpected behaviour.
+
+
+&h2(Symptom)
+The initial symptom of the problem was that in the VF configuration file the value of stag stripping 
+was set to false, yet the VLAN ID was being removed from the packets received by the DPDK application.
+This symptom was not observed in all environments; in some, the VLAN IDs remained in the packet as 
+was expected.  
+.sp
+
+Further examination of the NIC registers indicated that indeed stripping was enabled, however 
+VFd logs indicated that the option was being turned off when the VF was configured on the NIC.
+When the kernel driver (ixgbevf) was used in the guest, the packets arrived with the VLAN ID as 
+was expected.
+
+
+&h2(Cause)
+The problem was observed in conjunction with the DPDK application (gobbler &note .sm )
+&start_note( .5i )
+	Gobbler is available as a test tool in the VFd gadgets repo:
+	&{http}github.com/att/vfd.gadgets.git
+&end_note
+and was directly related to setting the &ital(Rx offload) DEV_RX_OFFLOAD_VLAN_STRIP flag. 
+When this offload flag was not set by the application, the expected behaviour in the "failing"
+environment was observed. 
+
+
+&h2(Conclusions)
+It is logical to assume that if the DPDK application sets the strip offload that the VLAN ID should 
+be stripped from Rx packets regardless of the setting pushed to the NIC by VFd as the result of the 
+VF configuration file. 
+We assert that this &ital(is) the correct behaviour, and the &ital(problem) that was observed really
+was not a problem.
+.sp
+
+However, it seems there are some environments (likely some versions of the Niantic NIC itself) where the 
+strip offload setting by the DPDK application does not reach the NIC, and the VFd configuration setting
+always applies. 
+We consider this to be incorrect behaviour, but is not something that is within VFd's control and it
+is up to the systems administration staff to ensure that the VF configuration provided to VFd reflects
+the desired strip stag setting based on the application's needs.
+
+.sp
+When troubleshooting VLAN ID stripping "bugs,"  it is likely that the unexpected behaviour is caused
+by one of the following and is not a VFd bug.
+.sp .5
+&beg_list
+&item The strip stag setting in the VF's configuration file is incorrect, and the application is not
+	setting the offload properly or at all and the default is incorrect.
+
+&item The DPDK application is setting the strip related offload which is opposite to the value
+	in VFd VF configuration file, and the expectation is that the value in the VFd configuration
+	is enforced. 
+
+&item The DPDK application is attempting to set the strip related offload, however the underlying
+	device is not being updated with the setting and the setting expected is opposite of that
+	configured in the VFd VF configuration.
+&end_list
+
+
+
+.** -----------------------------------------------------------------------------------------------
+.if tfm
+	&h1( Notes: )
+	.sp 2
+	.cn showend
+	&line
+.fi
+
+.** -----------------------------------------------------------------------------------------------
+.gv remain
+.if &_iremain < 4
+	.pa
+.ei
+	.sp 5
+.fi
+
+.if tfm
+	.sp 5
+	.ln
+	.im ../caution.im 
+.fi
+
+.st 8p
+.gv version
+.gv Date
+&def_list( .75i &ditext )
+&di(Source) vfd/doc/strip_issue.xfm
+&di(Original) 13 June 2018
+&di(Revised) &_date
+&di(Formatter) &_ver
+&end_dlist
+

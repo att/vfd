@@ -1,0 +1,23 @@
+
+This directory contains source for various documents that
+relate to debugging packet flow to/from SR-IOV guests
+using VFs managed by VFd.
+
+Documents are compiled into PDF, and markdown output. The
+markdown output is placed into the VFd wiki:
+
+	1) clone the wiki 
+		git clone https://github.com/att/vfd.wiki.git
+
+	2) switch to the vfd.wiki directory
+
+	3) copy in the updated markdown file, or add a new
+		one if it wasn't a part of the wiki
+
+	4) commit and push the changes
+
+
+The document name in the wiki repo should be of the form
+Foo-Bar-Is-Good.md  where the dashes (-) will be replaced
+on the wiki table of contents making an easily read title.
+

@@ -32,10 +32,12 @@
 				06 Apr 2017 - Add set flowcontrol function, add mtu/jumbo confirmation msg to log.
 				22 May 2017 - Add ability to remove a whitelist RX mac.
 				10 Oct 2017 - Add range check on mirror target.
+				07 Jun 2017 - Don't use an empty MAC address from the white list.
 
 	useful doc:
 				 http://www.intel.com/content/dam/doc/design-guide/82599-sr-iov-driver-companion-guide.pdf
 */
+
 
 #include "vfdlib.h"
 #include "sriov.h"
@@ -114,35 +116,34 @@ get_num_vfs( uint32_t port_id ) {
 
 /*
 	Accept a null termianted, human readable MAC and convert it into
-	an ether_addr struct.
+	an ether_addr struct. Returns 0 if the string had an invalid
+	address; 1 otherwise.
 */
-void
-ether_aton_r(const char *asc, struct ether_addr *addr)
-{
-  int i, val0, val1;
+int ether_aton_r(const char *asc, struct ether_addr *addr) {
+	int i, val0, val1;
 
-  for (i = 0; i < ETHER_ADDR_LEN; ++i){
-    val0 = xdigit(*asc);
-    asc++;
+	for (i = 0; i < ETHER_ADDR_LEN; ++i){
+		val0 = xdigit(*asc);
+		asc++;
 
-    if (val0 < 0)
-      return;
+		if (val0 < 0)
+			return 0;
 
-    val1 = xdigit(*asc);
-    asc++;
-    if (val1 < 0)
-      return;
+		val1 = xdigit(*asc);
+		asc++;
+		if (val1 < 0)
+			return 0;
 
-    addr->addr_bytes[i] = (u_int8_t)((val0 << 4) + val1);
+		addr->addr_bytes[i] = (u_int8_t)((val0 << 4) + val1);
 
-    if (i < ETHER_ADDR_LEN - 1){
-      if (*asc != ':')
-        return;
-      asc++;
-    }
-  }
-  if (*asc != '\0')
-    return;
+		if (i < ETHER_ADDR_LEN - 1){
+			if (*asc != ':')
+				return 0;
+			asc++;
+		}
+	}
+
+	return *asc == '\0';
 }
 
 
@@ -258,7 +259,7 @@ set_vf_rate_limit(portid_t port_id, uint16_t vf, uint16_t rate, uint64_t q_msk)
 		return 0;
 
 
-	rte_eth_link_get_nowait(port_id, &link);
+	rte_eth_link_get(port_id, &link);
 	if (rate > link.link_speed) {
 		bleat_printf( 0, "set_vf_rate: invalid rate value: %u bigger than link speed: %u", rate, link.link_speed);
 		return 1;
@@ -582,7 +583,11 @@ set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  uint8_t on)
 {
   int diag = 0;
   struct ether_addr mac_addr;
-  ether_aton_r(mac, &mac_addr);
+
+	if( ! ether_aton_r(mac, &mac_addr) ) {					// convert colon string to usable address bytes
+		bleat_printf( 0, "set rx whitelist mac not attempted: bad MAC pf/vf=%d/%d on/off=%d mac=%s", (int)port_id, (int)vf, on, mac );
+		return;
+	}
 
   uint dev_type = get_nic_type(port_id);
 	if(on)
@@ -646,7 +651,10 @@ set_vf_rx_mac(portid_t port_id, const char* mac, uint32_t vf,  uint8_t on)
 void set_vf_default_mac( portid_t port_id, const char* mac, uint32_t vf ) {
 	int diag = 0;
 	struct ether_addr mac_addr;
-	ether_aton_r(mac, &mac_addr);
+
+	if( ! ether_aton_r(mac, &mac_addr) ) {					// convert colon string to usable address bytes
+		bleat_printf( 0, "set default rx mac not attempted, bad mac: pf/vf=%d/%d mac=%s", (int)port_id, (int)vf, mac );
+	}
 
 	uint dev_type = get_nic_type(port_id);
 	switch (dev_type) {
@@ -1316,7 +1324,7 @@ process_refresh_queue(void)
 int nic_value_speed( uint8_t id ) {
 	struct rte_eth_link link;
 
-	rte_eth_link_get_nowait( id, &link );
+	rte_eth_link_get( id, &link );
 	return (int) link.link_speed;
 }
 */
@@ -1326,7 +1334,7 @@ nic_stats_clear(portid_t port_id)
 {
 
 	rte_eth_stats_reset(port_id);
-	bleat_printf( 3, "\n  NIC statistics for port %d cleared", port_id);
+	bleat_printf( 3, "NIC statistics for port %d cleared", port_id);
 }
 
 
@@ -1335,7 +1343,12 @@ nic_stats_display(uint16_t port_id, char * buff, int bsize)
 {
 	struct rte_eth_stats stats;
 	struct rte_eth_link link;
-	rte_eth_link_get_nowait(port_id, &link);
+	char status[6];
+
+	memset( &link, 0, sizeof( link ) );
+	link.link_speed = 1;						// no return code, fill with strange values to determine success/failure of call
+
+	rte_eth_link_get(port_id, &link);
 	rte_eth_stats_get(port_id, &stats);	
 
 	uint dev_type = get_nic_type(port_id);
@@ -1361,12 +1374,14 @@ nic_stats_display(uint16_t port_id, char * buff, int bsize)
 			break;	
 	}
 	
-
-	char status[5];
-	if(!link.link_status)
-		stpcpy(status, "DOWN");
-	else
-		stpcpy(status, "UP  ");
+	if( link.link_speed == 1 ) {   // unchanged, so assume all data is unreliable
+		stpcpy(status, "-UNK-");
+	} else {
+		if(!link.link_status)
+			stpcpy(status, "DOWN");
+		else
+			stpcpy(status, "UP  ");
+	}
 
 		//" %6s %6"PRIu16" %6"PRIu16" %15"PRIu64" %15"PRIu64" %15"PRIu64" %15"PRIu64" %15"PRIu64" %15"PRIu64" %15"PRIu64" %15"PRIu32" %lld\n",
 	return snprintf( buff, bsize, " %6s  %6d %6d %15lld %15lld %15lld %15lld %15lld %15lld %15d %15lld\n",
@@ -1581,10 +1596,10 @@ int lsi_event_callback(uint16_t port_id, enum rte_eth_event_type type, void *par
 	RTE_SET_USED(param);
 	RTE_SET_USED(data);
 
-	bleat_printf( 3, "Event type: %s", type == RTE_ETH_EVENT_INTR_LSC ? "LSC interrupt" : "unknown event");
-	rte_eth_link_get_nowait(port_id, &link);
+	bleat_printf( 2, "lsi callback event type: %s port=%d", type == RTE_ETH_EVENT_INTR_LSC ? "LSC interrupt" : "unknown event", port_id );
+	rte_eth_link_get(port_id, &link);
 	if (link.link_status) {
-		bleat_printf( 3, "Port %d Link Up - speed %u Mbps - %s",
+		bleat_printf( 3, "lsi callback: port %d Link Up - speed %u Mbps - %s",
 				port_id, (unsigned)link.link_speed,
 			(link.link_duplex == ETH_LINK_FULL_DUPLEX) ?
 				("full-duplex") : ("half-duplex"));
@@ -1620,20 +1635,39 @@ port_init(uint16_t port, __attribute__((__unused__)) struct rte_mempool *mbuf_po
 	int retval;
 	uint16_t q;
 	int i;
+	int	set_jumbo = 0;
+	int nports;
 
 	port_conf.rxmode.max_rx_pkt_len = pf->mtu;
-	port_conf.rxmode.jumbo_frame = pf->mtu >= 1500;
+	#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH >= 5  
+		if( pf->mtu > 1500 ) {
+			set_jumbo = 1;
+			port_conf.rxmode.offloads |= DEV_RX_OFFLOAD_JUMBO_FRAME;
+		}
+	#else
+		port_conf.rxmode.jumbo_frame = pf->mtu >= 1500;
+		set_jumbo = port_conf.rxmode.jumbo_frame;
+	#endif
 
-	if (port >= rte_eth_dev_count()) {
+	#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH >= 5  
+		nports= rte_eth_dev_count_avail();
+	#else
+		nports = rte_eth_dev_count();
+	#endif
+	if( port >= nports ) {
 		bleat_printf( 0, "CRI: abort: port >= rte_eth_dev_count");
 		return 1;
 	}
 
-	bleat_printf( 2, "port %d max_mtu=%d jumbo=%d", (int) port, (int) port_conf.rxmode.max_rx_pkt_len, (int) port_conf.rxmode.jumbo_frame );
+	bleat_printf( 2, "port %d max_mtu=%d jumbo=%d", (int) port, (int) port_conf.rxmode.max_rx_pkt_len, set_jumbo );
 
 	if( !hw_strip_crc ) {
 		bleat_printf( 2, "hardware crc stripping is now disabled for port %d", port );
-		port_conf.rxmode.hw_strip_crc = 0;
+		#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH >= 5  
+			port_conf.rxmode.offloads &= ~DEV_RX_OFFLOAD_VLAN_STRIP;
+		#else
+			port_conf.rxmode.hw_strip_crc = 0;		// REMOVE this after 19.05; offload bit fields deprecated 18.08
+		#endif
 	}
 
 	// Configure the Ethernet device.

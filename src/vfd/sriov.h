@@ -20,7 +20,9 @@
 #define _SRIOV_H_
 
 
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 
 #include <inttypes.h>
 
@@ -178,25 +180,46 @@ typedef uint16_t streamid_t;
 /*
 	Provides a static port configuration struct with defaults.
 */
+#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH >= 8  
 static const struct rte_eth_conf port_conf_default = {
 	.rxmode = {
-		.max_rx_pkt_len = 9000,
-		.jumbo_frame 		= ENABLED,
-		.header_split   = 0, /**< Header Split disabled */
-		.hw_ip_checksum = 1,		// enable hw to do the checksum
-		.hw_vlan_filter = 0, /**< VLAN filtering disabled */
-		.hw_vlan_strip  = 1, /**< VLAN strip enabled. */
-		.hw_vlan_extend = 0, /**< Extended VLAN disabled. */
-		.hw_strip_crc   = 1, /**< CRC stripped by hardware */
-		},
-		.txmode = {
-			//.hw_vlan_insert_pvid = 1,
-      .mq_mode = ETH_MQ_TX_NONE,
+	.max_rx_pkt_len = 9000,
+#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH > 8  
+	.offloads = (DEV_RX_OFFLOAD_CHECKSUM | DEV_RX_OFFLOAD_VLAN_STRIP),
+#else
+	.offloads = (DEV_RX_OFFLOAD_CHECKSUM | DEV_RX_OFFLOAD_CRC_STRIP | DEV_RX_OFFLOAD_VLAN_STRIP),
+#endif
+
+	},
+	.txmode = {
+		//.hw_vlan_insert_pvid = 1,
+   		.mq_mode = ETH_MQ_TX_NONE,
 	},
 	.intr_conf = {
 		.lsc = ENABLED, 		// < lsc interrupt feature enabled
 	},
 };
+#else
+static const struct rte_eth_conf port_conf_default = {			// deprecated bit fields supported only through 18.05 based builds
+	.rxmode = {
+		.max_rx_pkt_len = 9000,
+		.jumbo_frame	= ENABLED,
+		.header_split   = 0, /**< Header Split disabled * */
+		.hw_ip_checksum = 1,		// enable hw to do the checksum */
+		.hw_vlan_filter = 0, /**< VLAN filtering disabled * */
+		.hw_vlan_strip  = 1, /**< VLAN strip enabled. * */
+		.hw_vlan_extend = 0, /**< Extended VLAN disabled.  */
+		.hw_strip_crc   = 1, /**< CRC stripped by hardware */
+	},
+	.txmode = {
+		//.hw_vlan_insert_pvid = 1,
+   		.mq_mode = ETH_MQ_TX_NONE,
+	},
+	.intr_conf = {
+		.lsc = ENABLED, 		// < lsc interrupt feature enabled
+	},
+};
+#endif
 
 
 unsigned int itvl_idx;
@@ -334,6 +357,82 @@ struct rq_entry
 
 // ----------- inline expansions ---------------------------------------------------------------------
 
+#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH >= 05  
+
+/*
+	Provide an easy way to map port id to a pci device info set.
+*/
+static inline struct rte_pci_device const* port_to_pcidev( portid_t port ) {
+	struct rte_eth_dev_info dev_info;
+	const struct rte_pci_device *pci_dev;
+	const struct rte_bus *bus;
+
+	rte_eth_dev_info_get( port, &dev_info );
+    bus = rte_bus_find_by_device( dev_info.device );
+
+    if( bus && !strcmp( bus->name, "pci" ) ) {
+        pci_dev = RTE_DEV_TO_PCI( dev_info.device );
+    } else {
+        return NULL;
+    }
+
+	return pci_dev;
+}
+
+// pci info is not a part of device struct starting in 18.05, so must fetch it ourselves
+/*
+	Read a value from a port/register offset combination.
+*/
+static inline uint32_t port_pci_reg_read( portid_t port, uint32_t reg_off ) {
+	struct rte_eth_dev_info dev_info;
+	const struct rte_pci_device *pci_dev;
+	const struct rte_bus *bus;
+	void *reg_addr;
+	uint32_t reg_v;
+
+	rte_eth_dev_info_get( port, &dev_info );
+    bus = rte_bus_find_by_device( dev_info.device );
+
+    if( bus && !strcmp( bus->name, "pci" ) ) {
+        pci_dev = RTE_DEV_TO_PCI( dev_info.device );
+    } else {
+        return -1;
+    }
+
+
+	reg_addr = (void *) ( (char *) pci_dev->mem_resource[0].addr + reg_off );
+	reg_v = *(( volatile uint32_t *)reg_addr );
+	return rte_le_to_cpu_32( reg_v );
+}
+
+
+/*
+	Write  to a port/offset register on a pci device.
+*/
+static inline void port_pci_reg_write( portid_t port, uint32_t reg_off, uint32_t reg_v ) {
+	struct rte_eth_dev_info dev_info;
+	const struct rte_pci_device *pci_dev;
+	const struct rte_bus *bus;
+	void *reg_addr;
+
+	rte_eth_dev_info_get( port, &dev_info );
+    bus = rte_bus_find_by_device( dev_info.device );
+
+    if( bus && !strcmp( bus->name, "pci" ) ) {
+        pci_dev = RTE_DEV_TO_PCI( dev_info.device );
+    } else {
+        return;
+    }
+
+
+	reg_addr = (void *) ( (char *) pci_dev->mem_resource[0].addr + reg_off );
+	reg_v = *(( volatile uint32_t *)reg_addr );
+	*((volatile uint32_t *) reg_addr) = rte_cpu_to_le_32( reg_v );
+}
+
+
+#else
+	// should work for all versions prior to 18.05
 /**
  * Read/Write operations on a PCI register of a port.
  */
@@ -353,9 +452,6 @@ port_pci_reg_read(portid_t port, uint32_t reg_off)
 	return rte_le_to_cpu_32(reg_v);
 }
 
-#define port_id_pci_reg_read(pt_id, reg_off) \
-	port_pci_reg_read(&ports[(pt_id)], (reg_off))
-
 static inline void
 port_pci_reg_write(portid_t port, uint32_t reg_off, uint32_t reg_v)
 {
@@ -368,6 +464,10 @@ port_pci_reg_write(portid_t port, uint32_t reg_off, uint32_t reg_v)
 		((char *)dev_info.pci_dev->mem_resource[0].addr + reg_off);
 	*((volatile uint32_t *)reg_addr) = rte_cpu_to_le_32(reg_v);
 }
+#endif
+
+#define port_id_pci_reg_read(pt_id, reg_off) \
+	port_pci_reg_read(&ports[(pt_id)], (reg_off))
 
 #define port_id_pci_reg_write(pt_id, reg_off, reg_value) \
 	port_pci_reg_write(&ports[(pt_id)], (reg_off), (reg_value))
@@ -443,7 +543,7 @@ void ping_vfs(portid_t port_id, int vf);
 int port_init(uint16_t port, struct rte_mempool *mbuf_pool, int hw_strip_crc, sriov_port_t *pf );
 void tx_set_loopback(portid_t port_id, u_int8_t on);
 
-void ether_aton_r(const char *asc, struct ether_addr * addr);
+int ether_aton_r(const char *asc, struct ether_addr * addr);
 int xdigit(char c);
 
 void print_port_errors(struct rte_eth_stats et_stats, int col);

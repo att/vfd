@@ -1,0 +1,17 @@
+
+&h1( Appendix &app_letter -- Dianosis Flow Charts )
+
+The following flow chart is intended to provide a logical sequence of
+steps while attempting to diagnose the problem where a guest application
+is unable to send and/or receive packets using one or more SR-IOV 
+devices.
+In geneeral, process boxes with a orange exiting arrow imply a question 
+of &ital( problem still exists ) along that path; if the answer is &ital( No, )
+then following through the chart ceases at that point, and continues when the
+answer is &ital( Yes. )
+Process boxes which have an exiting black arrow indicate an unconditional 
+flow into the next element.
+
+
+&image( figures/flow1.eps x=.25i close proportional : 6 : Basic diagnostic flow chart. : &{image_url_base}/flow1.png)
+
