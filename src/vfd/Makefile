@@ -12,7 +12,9 @@
 #### change this if needed
 #libconf = /usr/lib/x86_64-linux-gnu/libconfig.a
 libvfd = $(PWD)/../lib/libvfd.a
-libjsmn = $(PWD)/../lib/jsmn/libjsmn.a
+
+# jsmn no longer builds into a library
+libjsmn = 
 headers = $(PWD)/../lib/vfdlib.h
 patch_dir = $(PWD)/../dpdk_patches
 
