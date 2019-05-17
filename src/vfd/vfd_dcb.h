@@ -15,7 +15,7 @@
 */
 static const struct rte_eth_conf eth_dcb_default = {
 	.rxmode = {
-#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH > 8  
+#if RTE_VER_YEAR > 18 || (RTE_VER_YEAR >= 18   && RTE_VER_MONTH > 8)
 		.offloads = (DEV_RX_OFFLOAD_CHECKSUM | DEV_RX_OFFLOAD_VLAN_STRIP),
 #else
 		.offloads = (DEV_RX_OFFLOAD_CHECKSUM | DEV_RX_OFFLOAD_CRC_STRIP | DEV_RX_OFFLOAD_VLAN_STRIP),

@@ -180,16 +180,11 @@ typedef uint16_t streamid_t;
 /*
 	Provides a static port configuration struct with defaults.
 */
-#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH >= 8  
+#if RTE_VER_YEAR > 18 || (RTE_VER_YEAR >= 18   && RTE_VER_MONTH >= 8)
 static const struct rte_eth_conf port_conf_default = {
 	.rxmode = {
 	.max_rx_pkt_len = 9000,
-#if RTE_VER_YEAR >= 18   && RTE_VER_MONTH > 8  
 	.offloads = (DEV_RX_OFFLOAD_CHECKSUM | DEV_RX_OFFLOAD_VLAN_STRIP),
-#else
-	.offloads = (DEV_RX_OFFLOAD_CHECKSUM | DEV_RX_OFFLOAD_CRC_STRIP | DEV_RX_OFFLOAD_VLAN_STRIP),
-#endif
-
 	},
 	.txmode = {
 		//.hw_vlan_insert_pvid = 1,
