@@ -7,7 +7,7 @@ idna==2.5
 ipaddress==1.0.18
 paramiko==2.2.4
 pcapy==0.11.1
-py==1.4.33
+py==1.10.0
 pyasn1==0.3.1
 pycparser==2.18
 PyNaCl==1.1.2
