@@ -5,7 +5,7 @@
 	Abstract:	Functions to manage a range of numeric IDs.
 				Create a new id manager with mk_idm() and then the caller can allocate
 				new IDs in the range of 0 through num_ids-1, and can return them
-				when finshed so they can be allocated again. 
+				when finished so they can be allocated again. 
 
 	Author:		E. Scott Daniels
 	Date:		28 June 2017
@@ -33,7 +33,7 @@ typedef struct id {
 } idm_t;
 
 /*
-	Make a new manager block, ititialise it and return. Num_ids is the number
+	Make a new manager block, initialise it and return. Num_ids is the number
 	of total IDs to support.
 */
 extern void* mk_idm( int num_ids ) {
@@ -105,7 +105,7 @@ extern int idm_alloc( void* vid ) {
 	Allows the user to allocate a specific ID; returns 1 if
 	the ID was unused and is now marked in use, and 0 if the ID
 	was already assigned and should not otherwise be used. A return 
-	of -1 indicated an error (bad value passed in etc.).
+	of -1 indicates an error (bad value passed in etc.).
 */
 extern int idm_use( void* vid, int id_val ) {
 	idm_t*	id;
@@ -122,7 +122,7 @@ extern int idm_use( void* vid, int id_val ) {
 		return -1;
 	}
 	
-	i = id_val / 8;					// offset into bit poool
+	i = id_val / 8;					// offset into bit pool
 	if( i > id->nallocated ) {		// shouldn't happen, but prevent accidents
 		return -1;
 	}
@@ -156,7 +156,7 @@ extern int idm_is_used( void* vid, int id_val ) {
 		return -1;
 	}
 	
-	i = id_val / 8;					// offset into bit poool
+	i = id_val / 8;					// offset into bit pool
 	if( i > id->nallocated ) {		// shouldn't happen, but prevent accidents
 		return -1;
 	}
@@ -188,7 +188,7 @@ extern void idm_return( void* vid, int id_val ) {
 		return;
 	}
 	
-	i = id_val / 8;				// offset into bit poool
+	i = id_val / 8;				// offset into bit pool
 	if( i > id->nallocated ) {		// shouldn't happen, but prevent accidents
 		return;
 	}

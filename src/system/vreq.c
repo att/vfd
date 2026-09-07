@@ -6,7 +6,7 @@
 				without sudo (the intent is that this command is installed suid root).
 				Vreq will accept only the commands which are allowed by all users
 				as opposed to explicitly checking to see if the executing user is 
-				indeed root and allowing privledged commands if the uid/euid is root;
+				indeed root and allowing privileged commands if the uid/euid is root;
 				the limit makes it easier to vet from a security point of view at the 
 				expense of some duplication of the code with iplex (maybe iplex should 
 				invoke this for the generic user commands).
@@ -108,7 +108,7 @@ extern cl_parms_t* crack_args( int argc, char** argv ) {
 		}
 	}
 
-	snprintf( wbuf, sizeof( wbuf ), "%s_vreq.%d", parms->vfd_channel, getpid() );		// base respons on the inbound channel name
+	snprintf( wbuf, sizeof( wbuf ), "%s_vreq.%d", parms->vfd_channel, getpid() );		// base response on the inbound channel name
 	parms->resp_channel = strdup( wbuf );
 
 	parms->argc = argc - parg;	// set up positional parameter info
