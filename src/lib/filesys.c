@@ -41,7 +41,7 @@ extern int rm_file( const_str fname, int backup ) {
 	has a trailing slash we assume it's a directory and bang on
 	the filename, otherwise we use the name as is.
 
-	We assume that the files can be moved with the rname() system
+	We assume that the files can be moved with the rename() system
 	call which might require that the files are in the same filesystem.
 
 	Returns true on success; false otherwise and errno should be
@@ -147,7 +147,7 @@ extern mode_t file_mode( const_str pathname ) {
 }
 
 /*
-	Convenience funcitons
+	Convenience functions
 */
 extern int is_dir( const_str pathname ) {
 	mode_t mode;
@@ -201,7 +201,7 @@ extern int cp_file( const_str path1, const_str path2, int rm_src ) {
 	char*	dest = NULL;
 	const_str	cp = NULL;
 	int		len = 0;
-	int		sfd;				// soruce file des
+	int		sfd;				// source file des
 	int		dfd;				// dest file des
 	char	rbuf[4096];
 
@@ -226,7 +226,7 @@ extern int cp_file( const_str path1, const_str path2, int rm_src ) {
 
 		snprintf( dest, len, "%s/%s", path2, cp );		// build the full dest path
 	} else {
-		dest = strdup( path2 );								// so we can unditionally free later
+		dest = strdup( path2 );								// so we can unconditionally free later
 	}
 
 	if( (sfd = open( path1, O_RDONLY )) < 0 ) {

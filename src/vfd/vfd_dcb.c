@@ -78,10 +78,10 @@ struct rte_eth_conf *vfd_dcb_init( uint8_t port ) {
 	the index in our configuration.
 */
 extern int vfd_dcb_config( sriov_port_t *pf ) {
-	uint8_t port;									// rte port number that underlying funcitons need
+	uint8_t port;									// rte port number that underlying functions need
 	struct rte_eth_dev *pf_dev;						// real device info managed by dpdk
 	int	i;
-	uint8_t tc_pctgs[MAX_TCS];						// collection of percentages to give to underlying funcitons
+	uint8_t tc_pctgs[MAX_TCS];						// collection of percentages to give to underlying functions
 
 	port = pf->rte_port_number;						// vetted by caller, so assume good
  	pf_dev = &rte_eth_devices[port];				// device info from dpdk
@@ -95,7 +95,7 @@ extern int vfd_dcb_config( sriov_port_t *pf ) {
 		ixgbe_configure_dcb( pf_dev );											// set up dcb
 		qos_set_tdplane( port, tc_pctgs, pf->tc2bwg, pf->ntcs, pf->mtu );		// configure tc plane with our percentages
 		qos_set_txpplane( port, tc_pctgs, pf->tc2bwg, pf->ntcs, pf->mtu );		// configure packet plane with our percentages
-		qos_enable_arb( port );													// finally turn arbitors on
+		qos_enable_arb( port );													// finally turn arbiters on
 	} else {
 		vfd_mlx5_set_prio_trust(port);
 		return vfd_mlx5_set_qos_pf(port, pf->tc_config, pf->ntcs);
@@ -117,7 +117,7 @@ extern int vfd_dcb_config( sriov_port_t *pf ) {
 	Return 0 if there were no errors, 1 otherwise.  The calling programme should
 	not continue if this function returns anything but 0.
 
-	This funciton is a complete replacement for port_init() and this should be invoked
+	This function is a complete replacement for port_init() and this should be invoked
 	when running in dcb (qos) mode instead of port_init().
 */
 extern int dcb_port_init( sriov_port_t *pf, __attribute__((__unused__)) struct rte_mempool *mbuf_pool)
@@ -216,7 +216,7 @@ extern int dcb_port_init( sriov_port_t *pf, __attribute__((__unused__)) struct r
 
 	rte_eth_promiscuous_enable(port);						// Enable RX in promiscuous mode for the Ethernet device.
 
-	if( vfd_dcb_config( pf ) != 0 ) {						// finally set the dcb config, enable arbitors, etc.
+	if( vfd_dcb_config( pf ) != 0 ) {						// finally set the dcb config, enable arbiters, etc.
 		bleat_printf( 0, "CRI: abort: dcb_port_init: dcb initialisation failed" );
 		return 1;
 	}

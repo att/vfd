@@ -1,7 +1,7 @@
 //vi: ts=4 sw=4 noet:
 /*
 	Mnemonic:	jw_xapi.c
-	Abstract:	This is an extended api set for the 'primatives' in jwrapper.
+	Abstract:	This is an extended api set for the 'primitives' in jwrapper.
 	Author:		E. Scott Daniels
 	Date:		11 Feb 2017
 

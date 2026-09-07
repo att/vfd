@@ -46,7 +46,7 @@ extern void free_list( char** list, int size ) {
 }
 
 /*
-	Internal funciton which supports either a prefix or suffix match
+	Internal function which supports either a prefix or suffix match
 
 	Files in the directory (dname) are listed and added to the list which is 
 	returned if:
@@ -66,7 +66,7 @@ extern void free_list( char** list, int size ) {
 
 	If len is not NULL, then the number of files placed into the list is returned.
 	If len is NULL, then we bail -- it's meaningless to return the list without
-	communicating how long it is, and free_list() requires the lenght to work 
+	communicating how long it is, and free_list() requires the length to work 
 	properly.
 */
 static char** mk_list( char* dname, const char* match, int flags, int* len ) {
@@ -83,7 +83,7 @@ static char** mk_list( char* dname, const char* match, int flags, int* len ) {
 	int		cmp_len;			// length for prefix compare
 
 
-	memset( &fentry, 0, sizeof( fentry ) );					// probably unecessary, but keeps valgrind from complaining as readdir_r may not completely populate the struct
+	memset( &fentry, 0, sizeof( fentry ) );					// probably unnecessary, but keeps valgrind from complaining as readdir_r may not completely populate the struct
 
 	if( dname == NULL || match == NULL || len == NULL ) {
 		errno = ENOENT;										// simulate system level error
@@ -110,7 +110,7 @@ static char** mk_list( char* dname, const char* match, int flags, int* len ) {
 	cmp_len = strlen( match );
 
 	while( (state = readdir_r( dfd, &fentry, &fep )) == 0 ) {
-		if( fep == NULL ) {							 							// succes and nil pointer indicate no more entries
+		if( fep == NULL ) {							 							// success and nil pointer indicate no more entries
 			list[lidx] = NULL;
 			if( len != NULL ) {
 				*len = lidx;													// return the number of entries if user supplied pointer
@@ -178,7 +178,7 @@ static char** mk_list( char* dname, const char* match, int flags, int* len ) {
 	If the suffix is given as "", then all files which do NOT begin
 	with a dot (.) are returned. 
 
-	If qualifiy is set, then each file name in the list is appended
+	If qualify is set, then each file name in the list is appended
 	to the directory name with a slant inserted. Any other value is 
 
 	A NULL list is returned on error and errno set in most cases.
